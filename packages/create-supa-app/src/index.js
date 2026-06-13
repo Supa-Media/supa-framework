@@ -325,10 +325,35 @@ async function main() {
     const authKeyboard = emailOtp ? "email-address" : "phone-pad";
     const authAutocomplete = emailOtp ? "email" : "tel";
 
-    // HTTP routes for http.ts
+    // HTTP imports + routes injected into http.ts only when a feature needs them.
+    const httpImports = [];
     const httpRoutes = [];
     if (payments) {
-      httpRoutes.push('  ...stripeWebhookRoutes,');
+      httpImports.push('import { httpAction } from "./_generated/server";');
+      httpImports.push(
+        'import { handleStripeWebhook, verifyStripeSignature } from "@supa/convex/payments";',
+      );
+      httpRoutes.push(
+        [
+          "",
+          "// Stripe webhook endpoint",
+          "http.route({",
+          '  path: "/stripe/webhook",',
+          '  method: "POST",',
+          "  handler: httpAction(async (ctx, request) => {",
+          "    const body = await request.text();",
+          '    const signature = request.headers.get("stripe-signature") ?? "";',
+          "    try {",
+          "      const event = await verifyStripeSignature(body, signature);",
+          "      await handleStripeWebhook(ctx, event);",
+          '      return new Response("ok", { status: 200 });',
+          "    } catch {",
+          '      return new Response("Invalid signature", { status: 400 });',
+          "    }",
+          "  }),",
+          "});",
+        ].join("\n"),
+      );
     }
 
     // Provider injection for _layout.tsx. SafeAreaProvider + SupaConvexProvider
@@ -379,7 +404,7 @@ async function main() {
     const envVars = [];
     envVars.push("# Convex");
     envVars.push("CONVEX_DEPLOYMENT=");
-    envVars.push(`NEXT_PUBLIC_CONVEX_URL=`);
+    envVars.push("EXPO_PUBLIC_CONVEX_URL=");
     envVars.push("");
     if (phoneOtp) {
       envVars.push("# Twilio (Phone OTP)");
@@ -435,6 +460,7 @@ async function main() {
       AUTH_PLACEHOLDER: authPlaceholder,
       AUTH_KEYBOARD: authKeyboard,
       AUTH_AUTOCOMPLETE: authAutocomplete,
+      HTTP_IMPORTS: httpImports.join("\n"),
       HTTP_ROUTES: httpRoutes.join("\n"),
       EXTRA_MOBILE_DEPS: extraMobileDepsBlock,
       PROVIDER_IMPORTS: providerImports.join("\n"),
@@ -492,9 +518,8 @@ async function main() {
     console.log(`  \u2713 ${strictness.charAt(0).toUpperCase() + strictness.slice(1)} deployment strictness`);
     console.log("");
   } catch (err) {
-    prompt.close();
     if (err.code === "ERR_USE_AFTER_CLOSE") {
-      // User pressed Ctrl+C
+      // User pressed Ctrl+C during an interactive prompt
       console.log("\nAborted.");
       process.exit(0);
     }
