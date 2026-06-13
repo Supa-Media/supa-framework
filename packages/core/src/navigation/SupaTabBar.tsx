@@ -96,7 +96,9 @@ export function SupaTabBar({
       ]}
     >
       {state.routes.map((route, index) => {
-        const { options } = descriptors[route.key];
+        const descriptor = descriptors[route.key];
+        if (!descriptor) return null;
+        const { options } = descriptor;
         const isFocused = state.index === index;
         const tintColor = isFocused ? activeTintColor : inactiveTintColor;
 

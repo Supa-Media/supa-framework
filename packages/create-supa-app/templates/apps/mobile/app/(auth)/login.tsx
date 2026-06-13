@@ -1,37 +1,158 @@
-import { View, Text, StyleSheet } from "react-native";
+import { useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  StyleSheet,
+  ActivityIndicator,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import { useAuthActions } from "@convex-dev/auth/react";
 
+/**
+ * OTP login for {{APP_NAME}}.
+ *
+ * Two steps: request a one-time code for the {{AUTH_ID_FIELD}}, then verify it.
+ * Backed by @convex-dev/auth's "{{AUTH_PRIMARY_PROVIDER}}" provider
+ * (configured in apps/convex/auth.ts).
+ */
 export default function LoginScreen() {
+  const { signIn } = useAuthActions();
+  const router = useRouter();
+
+  const [step, setStep] = useState<"request" | "verify">("request");
+  const [identifier, setIdentifier] = useState("");
+  const [code, setCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function requestCode() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await signIn("{{AUTH_PRIMARY_PROVIDER}}", { {{AUTH_ID_FIELD}}: identifier.trim() });
+      setStep("verify");
+    } catch (e) {
+      setError("Couldn't send your code. Check your {{AUTH_ID_FIELD}} and try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function verifyCode() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await signIn("{{AUTH_PRIMARY_PROVIDER}}", {
+        {{AUTH_ID_FIELD}}: identifier.trim(),
+        code: code.trim(),
+      });
+      router.replace("/(app)/(tabs)");
+    } catch (e) {
+      setError("That code didn't work. Try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>{{APP_NAME}}</Text>
-        <Text style={styles.subtitle}>Sign in to continue</Text>
-        {/* Replace with @supa/core LoginForm component */}
+        <Text style={styles.subtitle}>
+          {step === "request"
+            ? "Sign in to continue"
+            : `Enter the code sent to ${identifier}`}
+        </Text>
+
+        {step === "request" ? (
+          <TextInput
+            style={styles.input}
+            value={identifier}
+            onChangeText={setIdentifier}
+            placeholder="{{AUTH_PLACEHOLDER}}"
+            placeholderTextColor="#9ca3af"
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="{{AUTH_KEYBOARD}}"
+            autoComplete="{{AUTH_AUTOCOMPLETE}}"
+            editable={!submitting}
+          />
+        ) : (
+          <TextInput
+            style={styles.input}
+            value={code}
+            onChangeText={setCode}
+            placeholder="123456"
+            placeholderTextColor="#9ca3af"
+            keyboardType="number-pad"
+            autoComplete="one-time-code"
+            editable={!submitting}
+          />
+        )}
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        <Pressable
+          style={[styles.button, submitting && styles.buttonDisabled]}
+          onPress={step === "request" ? requestCode : verifyCode}
+          disabled={submitting || (step === "request" ? !identifier : !code)}
+        >
+          {submitting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>
+              {step === "request" ? "Send code" : "Verify"}
+            </Text>
+          )}
+        </Pressable>
+
+        {step === "verify" ? (
+          <Pressable
+            onPress={() => {
+              setStep("request");
+              setCode("");
+              setError(null);
+            }}
+            disabled={submitting}
+          >
+            <Text style={styles.link}>Use a different {{AUTH_ID_FIELD}}</Text>
+          </Pressable>
+        ) : null}
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
+  container: { flex: 1, backgroundColor: "#fff" },
   content: {
     flex: 1,
     justifyContent: "center",
-    alignItems: "center",
     paddingHorizontal: 24,
+    gap: 12,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: "700",
-    marginBottom: 8,
-  },
-  subtitle: {
+  title: { fontSize: 32, fontWeight: "700", marginBottom: 4 },
+  subtitle: { fontSize: 16, color: "#666", marginBottom: 16 },
+  input: {
+    borderWidth: 1,
+    borderColor: "#d1d5db",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 16,
-    color: "#666",
-    marginBottom: 32,
   },
+  button: {
+    backgroundColor: "#111827",
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  buttonDisabled: { opacity: 0.5 },
+  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  link: { color: "#2563eb", textAlign: "center", marginTop: 4 },
+  error: { color: "#dc2626", fontSize: 14 },
 });

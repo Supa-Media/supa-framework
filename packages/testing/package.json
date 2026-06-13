@@ -1,6 +1,6 @@
 {
   "name": "@supa/testing",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Reusable test suites that catch common Expo/React Native gotchas — routing conflicts, web bundle safety, React resolution, native import gating",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -21,7 +21,16 @@
     "native-imports"
   ],
   "devDependencies": {
-    "@types/node": "^20.0.0"
+    "@types/node": "^22.0.0",
+    "typescript": "~5.9.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lilseyi/supa-framework.git",
+    "directory": "packages/testing"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "license": "MIT"
 }

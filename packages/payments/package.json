@@ -1,6 +1,6 @@
 {
   "name": "@supa/payments",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Stripe payment integration for Supa apps — hooks, components, and config for subscriptions and checkout",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -37,15 +37,30 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "convex": ">=1.0.0",
-    "react": ">=18.0.0",
-    "react-native": ">=0.76.0",
+    "convex": ">=1.31.0",
+    "react": ">=19.0.0",
+    "react-native": ">=0.81.0",
     "@stripe/stripe-react-native": ">=0.35.0"
   },
   "peerDependenciesMeta": {
     "@stripe/stripe-react-native": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "typescript": "~5.9.2",
+    "@types/react": "~19.1.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "convex": "^1.31.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lilseyi/supa-framework.git",
+    "directory": "packages/payments"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "license": "MIT"
 }

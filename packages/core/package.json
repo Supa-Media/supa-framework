@@ -1,6 +1,6 @@
 {
   "name": "@supa/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Runtime core for the Supa framework — providers, hooks, and navigation for Convex + Expo apps",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -41,17 +41,17 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "@convex-dev/auth": ">=0.0.62",
-    "@react-native-community/netinfo": ">=11.0.0",
+    "@convex-dev/auth": ">=0.0.90",
+    "@react-native-community/netinfo": ">=11.4.0",
     "@react-navigation/bottom-tabs": ">=7.0.0",
-    "convex": ">=1.13.0",
-    "expo": ">=52.0.0",
-    "expo-secure-store": ">=14.0.0",
-    "expo-updates": ">=0.26.0",
-    "react": ">=18.0.0",
-    "react-native": ">=0.76.0",
-    "react-native-keyboard-controller": ">=1.0.0",
-    "react-native-safe-area-context": ">=4.0.0"
+    "convex": ">=1.31.0",
+    "expo": ">=54.0.0",
+    "expo-secure-store": ">=15.0.0",
+    "expo-updates": ">=29.0.0",
+    "react": ">=19.0.0",
+    "react-native": ">=0.81.0",
+    "react-native-keyboard-controller": ">=1.20.0",
+    "react-native-safe-area-context": ">=5.6.0"
   },
   "peerDependenciesMeta": {
     "expo-updates": {
@@ -69,6 +69,29 @@
     "@react-navigation/bottom-tabs": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "typescript": "~5.9.2",
+    "@types/react": "~19.1.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "expo": "~54.0.23",
+    "expo-secure-store": "~15.0.8",
+    "expo-updates": "^29.0.15",
+    "@convex-dev/auth": "^0.0.90",
+    "@react-native-community/netinfo": "11.4.1",
+    "@react-navigation/bottom-tabs": "^7.0.0",
+    "react-native-keyboard-controller": "^1.20.2",
+    "react-native-safe-area-context": "~5.6.0",
+    "convex": "^1.31.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lilseyi/supa-framework.git",
+    "directory": "packages/core"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "license": "MIT"
 }
