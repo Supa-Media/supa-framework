@@ -25,6 +25,21 @@ function toPascalCase(str) {
     .join("");
 }
 
+/**
+ * Singularize a (usually plural) tenant noun for schema field names.
+ * Naive `replace(/s$/)` mangles common plurals ("communities" → "communitie"),
+ * which then leak into id fields like `communitieId`. Handle the frequent cases.
+ */
+function singularize(word) {
+  if (!word) return word;
+  if (/ies$/i.test(word)) return word.replace(/ies$/i, "y"); // communities → community
+  if (/(sses|shes|ches|xes|zes)$/i.test(word))
+    return word.replace(/es$/i, ""); // businesses → business
+  if (/ss$/i.test(word)) return word; // already singular (e.g. "address")
+  if (/s$/i.test(word)) return word.replace(/s$/i, ""); // chapters → chapter
+  return word;
+}
+
 function createPrompt() {
   const rl = createInterface({
     input: process.stdin,
@@ -250,13 +265,23 @@ async function main() {
       }
     }
 
+    // An app with no auth method can never sign in (the login screen would call
+    // signIn against zero providers). Default to email OTP rather than scaffold a
+    // dead-end. (#1 from review.)
+    if (!emailOtp && !phoneOtp) {
+      console.warn(
+        "No auth method selected — defaulting to Email OTP (an app needs at least one).",
+      );
+      emailOtp = true;
+    }
+
     console.log("");
     console.log("Scaffolding your app...");
     console.log("");
 
     // ── Build template variables ──
     const appNamePascal = toPascalCase(appName);
-    const tenantNameSingular = tenantName ? tenantName.replace(/s$/, "") : "";
+    const tenantNameSingular = singularize(tenantName);
 
     // Build auth providers string for schema and config
     const authProviders = [];
@@ -329,14 +354,28 @@ async function main() {
     const httpImports = [];
     const httpRoutes = [];
     if (payments) {
-      httpImports.push('import { httpAction } from "./_generated/server";');
+      // handleStripeWebhook writes to the DB (ctx.db), but an httpAction only has
+      // an action context (runQuery/runMutation), so the write must go through an
+      // internalMutation. (#6 from review.)
+      httpImports.push(
+        'import { httpAction, internalMutation } from "./_generated/server";',
+      );
+      httpImports.push('import { internal } from "./_generated/api";');
+      httpImports.push('import { v } from "convex/values";');
       httpImports.push(
         'import { handleStripeWebhook, verifyStripeSignature } from "@supa/convex/payments";',
       );
       httpRoutes.push(
         [
           "",
-          "// Stripe webhook endpoint",
+          "// Stripe webhook — verify in the HTTP action, then write via a mutation.",
+          "export const processStripeEvent = internalMutation({",
+          "  args: { event: v.any() },",
+          "  handler: async (ctx, { event }) => {",
+          "    await handleStripeWebhook(ctx, event);",
+          "  },",
+          "});",
+          "",
           "http.route({",
           '  path: "/stripe/webhook",',
           '  method: "POST",',
@@ -345,7 +384,7 @@ async function main() {
           '    const signature = request.headers.get("stripe-signature") ?? "";',
           "    try {",
           "      const event = await verifyStripeSignature(body, signature);",
-          "      await handleStripeWebhook(ctx, event);",
+          "      await ctx.runMutation(internal.http.processStripeEvent, { event });",
           '      return new Response("ok", { status: 200 });',
           "    } catch {",
           '      return new Response("Invalid signature", { status: 400 });',
@@ -407,10 +446,13 @@ async function main() {
     envVars.push("EXPO_PUBLIC_CONVEX_URL=");
     envVars.push("");
     if (phoneOtp) {
-      envVars.push("# Twilio (Phone OTP)");
+      envVars.push("# Twilio (Phone OTP via @convex-dev/auth + Twilio Verify)");
       envVars.push(`TWILIO_ACCOUNT_SID=op://${vaultName || "Vault"}/Twilio/account-sid`);
       envVars.push(`TWILIO_AUTH_TOKEN=op://${vaultName || "Vault"}/Twilio/auth-token`);
       envVars.push(`TWILIO_PHONE_NUMBER=op://${vaultName || "Vault"}/Twilio/phone-number`);
+      // Required by @supa/convex createPhoneOtp's Twilio Verify bridge flow.
+      envVars.push(`TWILIO_VERIFY_SERVICE_SID=op://${vaultName || "Vault"}/Twilio/verify-service-sid`);
+      envVars.push(`PHONE_TOKEN_BRIDGE_SECRET=op://${vaultName || "Vault"}/Twilio/phone-token-bridge-secret`);
       envVars.push("");
     }
     if (emailOtp) {
