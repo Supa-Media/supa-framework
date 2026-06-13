@@ -1,5 +1,5 @@
 {
-  "name": "@supa/dev",
+  "name": "@supa-media/dev",
   "version": "0.2.0",
   "description": "Development orchestrator — runs Convex dev + Expo together",
   "main": "src/index.js",

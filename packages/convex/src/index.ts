@@ -1,5 +1,5 @@
 /**
- * @supa/convex
+ * @supa-media/convex
  *
  * Backend package for the Supa framework — OTP auth, schema helpers,
  * and backend utilities for Convex.

@@ -208,7 +208,7 @@ export function checkReactResolution(
  *
  * @example
  * ```ts
- * import { testReactResolution } from '@supa/testing';
+ * import { testReactResolution } from '@supa-media/testing';
  * test('react resolution', () => testReactResolution('/path/to/apps/mobile'));
  * ```
  */

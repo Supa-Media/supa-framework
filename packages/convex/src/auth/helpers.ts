@@ -6,7 +6,7 @@
  *
  * Usage:
  * ```ts
- * import { requireAuth, requireAuthId, getOptionalAuth } from "@supa/convex/auth";
+ * import { requireAuth, requireAuthId, getOptionalAuth } from "@supa-media/convex/auth";
  *
  * export const myQuery = query({
  *   handler: async (ctx) => {

@@ -8,12 +8,12 @@
  *   - expo.android.versionCode (integer, auto-incremented)
  *
  * Usage:
- *   npx @supa/scripts bump-version --patch
- *   npx @supa/scripts bump-version --minor
- *   npx @supa/scripts bump-version --major
- *   npx @supa/scripts bump-version --version 2.0.0
- *   npx @supa/scripts bump-version --patch --dry-run
- *   npx @supa/scripts bump-version --patch --app-json ./apps/mobile/app.json
+ *   npx @supa-media/scripts bump-version --patch
+ *   npx @supa-media/scripts bump-version --minor
+ *   npx @supa-media/scripts bump-version --major
+ *   npx @supa-media/scripts bump-version --version 2.0.0
+ *   npx @supa-media/scripts bump-version --patch --dry-run
+ *   npx @supa-media/scripts bump-version --patch --app-json ./apps/mobile/app.json
  */
 
 const fs = require("fs");

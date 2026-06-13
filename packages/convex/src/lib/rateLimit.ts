@@ -6,7 +6,7 @@
  *
  * Requires a `rateLimits` table in your schema:
  * ```ts
- * import { supaRateLimitTable } from "@supa/convex/lib";
+ * import { supaRateLimitTable } from "@supa-media/convex/lib";
  *
  * export default defineSchema({
  *   ...supaRateLimitTable,

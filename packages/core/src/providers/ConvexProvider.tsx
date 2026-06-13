@@ -73,7 +73,7 @@ function getClient(url: string): ConvexReactClient {
  * @example
  * ```tsx
  * // app/_layout.tsx
- * import { SupaConvexProvider } from '@supa/core/providers';
+ * import { SupaConvexProvider } from '@supa-media/core/providers';
  *
  * export default function RootLayout() {
  *   return (

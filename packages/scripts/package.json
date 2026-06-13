@@ -1,5 +1,5 @@
 {
-  "name": "@supa/scripts",
+  "name": "@supa-media/scripts",
   "version": "0.2.0",
   "description": "CI/deploy helper scripts for Supa apps",
   "bin": {

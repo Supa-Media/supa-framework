@@ -7,7 +7,7 @@
  * Usage:
  * ```ts
  * // convex/auth.ts
- * import { createSupaAuth } from "@supa/convex/auth";
+ * import { createSupaAuth } from "@supa-media/convex/auth";
  *
  * export const { auth, signIn, signOut, store, isAuthenticated } = createSupaAuth({
  *   appName: "MyApp",

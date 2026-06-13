@@ -8,7 +8,7 @@
  * Usage:
  * ```ts
  * import { defineSchema } from "convex/server";
- * import { supaAuthTables, supaTenantTables } from "@supa/convex/schema";
+ * import { supaAuthTables, supaTenantTables } from "@supa-media/convex/schema";
  *
  * const tenantTables = supaTenantTables({
  *   tenantName: "organization",

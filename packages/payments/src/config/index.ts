@@ -21,7 +21,7 @@ let configMap: StripeConfigMap | null = null;
  *
  * @example
  * ```ts
- * import { configureStripe } from "@supa/payments/config";
+ * import { configureStripe } from "@supa-media/payments/config";
  *
  * configureStripe({
  *   development: {

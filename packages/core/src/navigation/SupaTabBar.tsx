@@ -40,7 +40,7 @@ export interface SupaTabBarProps extends BottomTabBarProps {
  * @example
  * ```tsx
  * import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
- * import { SupaTabBar } from '@supa/core/navigation';
+ * import { SupaTabBar } from '@supa-media/core/navigation';
  *
  * const Tab = createBottomTabNavigator();
  *

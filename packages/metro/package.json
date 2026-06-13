@@ -1,5 +1,5 @@
 {
-  "name": "@supa/metro",
+  "name": "@supa-media/metro",
   "version": "0.2.0",
   "description": "Metro bundler config factory for pnpm monorepos with Expo",
   "main": "src/index.js",

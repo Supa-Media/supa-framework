@@ -12,9 +12,9 @@
  *   4. app.json "expo.version" field
  *
  * Usage:
- *   npx @supa/scripts generate-ota-version
- *   npx @supa/scripts generate-ota-version --runtime-version 1.0.21
- *   npx @supa/scripts generate-ota-version --app-json ./apps/mobile/app.json
+ *   npx @supa-media/scripts generate-ota-version
+ *   npx @supa-media/scripts generate-ota-version --runtime-version 1.0.21
+ *   npx @supa-media/scripts generate-ota-version --app-json ./apps/mobile/app.json
  */
 
 const fs = require("fs");

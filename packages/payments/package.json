@@ -1,5 +1,5 @@
 {
-  "name": "@supa/payments",
+  "name": "@supa-media/payments",
   "version": "0.2.0",
   "description": "Stripe payment integration for Supa apps — hooks, components, and config for subscriptions and checkout",
   "main": "dist/index.js",

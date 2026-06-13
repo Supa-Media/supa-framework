@@ -275,7 +275,7 @@ export function checkWebBundleSafety(
  *
  * @example
  * ```ts
- * import { testWebBundleSafety } from '@supa/testing';
+ * import { testWebBundleSafety } from '@supa-media/testing';
  * test('web bundle is safe', () => testWebBundleSafety({ srcDir: 'apps/mobile' }));
  * ```
  */

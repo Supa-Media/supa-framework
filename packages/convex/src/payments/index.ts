@@ -6,7 +6,7 @@
  *
  * Usage:
  * ```ts
- * import { handleStripeWebhook, getSubscriptionStatus } from "@supa/convex/payments";
+ * import { handleStripeWebhook, getSubscriptionStatus } from "@supa-media/convex/payments";
  * ```
  */
 
@@ -213,7 +213,7 @@ interface StripeWebhookEvent {
  * Usage:
  * ```ts
  * // convex/http.ts
- * import { handleStripeWebhook } from "@supa/convex/payments";
+ * import { handleStripeWebhook } from "@supa-media/convex/payments";
  *
  * const http = httpRouter();
  * http.route({

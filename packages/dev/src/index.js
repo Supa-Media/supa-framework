@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * @supa/dev — Development orchestrator
+ * @supa-media/dev — Development orchestrator
  *
  * Runs Convex dev + Expo together with labeled, colored output.
  *
  * Usage:
- *   require('@supa/dev').run()
+ *   require('@supa-media/dev').run()
  *
  * CLI flags:
  *   --mobile   Run only Expo (assumes Convex is running separately)
@@ -405,7 +405,7 @@ function run() {
   }
 }
 
-// Support both `require('@supa/dev').run()` and direct CLI execution
+// Support both `require('@supa-media/dev').run()` and direct CLI execution
 module.exports = { run };
 module.exports.run = run;
 module.exports.findWorkspaceRoot = findWorkspaceRoot;

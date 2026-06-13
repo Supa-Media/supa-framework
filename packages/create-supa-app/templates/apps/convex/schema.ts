@@ -1,5 +1,5 @@
 import { defineSchema } from "convex/server";
-import { {{SCHEMA_IMPORTS}} } from "@supa/convex/schema";
+import { {{SCHEMA_IMPORTS}} } from "@supa-media/convex/schema";
 
 /**
  * Database schema for {{APP_NAME}}.

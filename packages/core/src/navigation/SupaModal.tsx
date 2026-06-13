@@ -48,7 +48,7 @@ export interface SupaModalProps {
  * @example
  * ```tsx
  * // app/modal.tsx (Expo Router modal route)
- * import { SupaModal } from '@supa/core/navigation';
+ * import { SupaModal } from '@supa-media/core/navigation';
  * import { router } from 'expo-router';
  *
  * export default function MyModal() {

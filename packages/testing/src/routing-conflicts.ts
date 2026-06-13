@@ -347,7 +347,7 @@ export function detectRoutingConflicts(appDir: string): RoutingConflictResult {
  *
  * @example
  * ```ts
- * import { testRoutingConflicts } from '@supa/testing';
+ * import { testRoutingConflicts } from '@supa-media/testing';
  * test('no routing conflicts', () => testRoutingConflicts('/path/to/app'));
  * ```
  */

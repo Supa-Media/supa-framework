@@ -1,5 +1,5 @@
 /**
- * Type definitions for @supa/payments
+ * Type definitions for @supa-media/payments
  *
  * Covers Stripe subscriptions, products, prices, checkout sessions,
  * and the hook return types used by consumer apps.

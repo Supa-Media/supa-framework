@@ -1,5 +1,5 @@
 /**
- * Provider exports for @supa/notifications
+ * Provider exports for @supa-media/notifications
  */
 
 export { NotificationProvider } from "./NotificationProvider";

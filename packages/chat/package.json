@@ -1,5 +1,5 @@
 {
-  "name": "@supa/chat",
+  "name": "@supa-media/chat",
   "version": "0.2.0",
   "description": "Production-grade real-time messaging for Supa apps — paginated message lists, offline caching, and optimistic sends",
   "main": "dist/index.js",

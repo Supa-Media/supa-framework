@@ -16,7 +16,7 @@
     "build:production": "eas build --profile production"
   },
   "dependencies": {
-    "@supa/core": "^0.2.0",
+    "@supa-media/core": "^0.2.0",
 {{EXTRA_MOBILE_DEPS}}
     "@{{APP_SLUG}}/shared": "workspace:*",
     "@{{APP_SLUG}}/convex": "workspace:*",
@@ -40,9 +40,9 @@
     "@react-native-community/netinfo": "11.4.1"
   },
   "devDependencies": {
-    "@supa/linter": "^0.2.0",
-    "@supa/metro": "^0.2.0",
-    "@supa/testing": "^0.2.0",
+    "@supa-media/linter": "^0.2.0",
+    "@supa-media/metro": "^0.2.0",
+    "@supa-media/testing": "^0.2.0",
     "@types/node": "^22.0.0",
     "@types/react": "~19.1.0",
     "eslint": "^8.57.0",

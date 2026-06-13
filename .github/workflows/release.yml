@@ -1,8 +1,8 @@
-# Publishes @supa/* packages to GitHub Packages (private npm registry).
+# Publishes @supa-media/* packages to GitHub Packages (private npm registry).
 #
 # On push to main, builds every dist-shipping package and runs
 # `changeset publish`. Per-package `publishConfig.registry` points each
-# @supa/* package at https://npm.pkg.github.com, and the GITHUB_TOKEN
+# @supa-media/* package at https://npm.pkg.github.com, and the GITHUB_TOKEN
 # (via NODE_AUTH_TOKEN + registry-url) authorizes the publish.
 #
 # Run manually via the Actions tab (workflow_dispatch) or automatically on
@@ -46,7 +46,7 @@ jobs:
           node-version: "22"
           cache: pnpm
           registry-url: "https://npm.pkg.github.com"
-          scope: "@supa"
+          scope: "@supa-media"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

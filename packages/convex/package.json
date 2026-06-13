@@ -1,5 +1,5 @@
 {
-  "name": "@supa/convex",
+  "name": "@supa-media/convex",
   "version": "0.2.0",
   "description": "Backend package for the Supa framework — OTP auth, schema helpers, and backend utilities for Convex",
   "main": "src/index.ts",

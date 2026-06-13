@@ -1,5 +1,5 @@
 /**
- * @supa/chat
+ * @supa-media/chat
  *
  * Production-grade real-time messaging for Supa apps.
  *

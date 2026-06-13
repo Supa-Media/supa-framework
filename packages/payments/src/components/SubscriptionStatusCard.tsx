@@ -9,7 +9,7 @@
  *
  * @example
  * ```tsx
- * import { SubscriptionStatusCard } from "@supa/payments/components";
+ * import { SubscriptionStatusCard } from "@supa-media/payments/components";
  *
  * <SubscriptionStatusCard
  *   subscription={subscriptionData}

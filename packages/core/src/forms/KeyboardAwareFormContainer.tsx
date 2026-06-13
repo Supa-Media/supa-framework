@@ -49,7 +49,7 @@ export interface KeyboardAwareFormContainerProps {
  *
  * @example
  * ```tsx
- * import { KeyboardAwareFormContainer } from '@supa/core/forms';
+ * import { KeyboardAwareFormContainer } from '@supa-media/core/forms';
  *
  * function CreatePostScreen() {
  *   return (

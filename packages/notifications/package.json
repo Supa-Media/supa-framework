@@ -1,5 +1,5 @@
 {
-  "name": "@supa/notifications",
+  "name": "@supa-media/notifications",
   "version": "0.2.0",
   "description": "Push notification infrastructure for Supa apps — provider, hooks, and handlers for Expo + Convex",
   "main": "dist/index.js",

@@ -27,7 +27,7 @@ interface ErrorBoundaryState {
  *
  * @example
  * ```tsx
- * import { ErrorBoundary } from '@supa/core/providers';
+ * import { ErrorBoundary } from '@supa-media/core/providers';
  *
  * <ErrorBoundary
  *   onError={(error) => Sentry.captureException(error)}

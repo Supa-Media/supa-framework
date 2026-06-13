@@ -9,7 +9,7 @@
  *
  * Usage:
  * ```ts
- * import { sendNotification, registerPushToken } from "@supa/convex/notifications";
+ * import { sendNotification, registerPushToken } from "@supa-media/convex/notifications";
  * ```
  */
 

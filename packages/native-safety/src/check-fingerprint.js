@@ -8,9 +8,9 @@
  * before deploying an OTA update.
  *
  * Usage:
- *   npx @supa/native-safety check-fingerprint                    # Check against stored baseline
- *   npx @supa/native-safety check-fingerprint --update            # Update the stored baseline
- *   npx @supa/native-safety check-fingerprint --project-dir .     # Specify project directory
+ *   npx @supa-media/native-safety check-fingerprint                    # Check against stored baseline
+ *   npx @supa-media/native-safety check-fingerprint --update            # Update the stored baseline
+ *   npx @supa-media/native-safety check-fingerprint --project-dir .     # Specify project directory
  *
  * Exit codes:
  *   0 - Fingerprint matches baseline (or --update was used)
@@ -123,7 +123,7 @@ async function main() {
       "Create one by running:"
     );
     console.error(
-      `  npx @supa/native-safety check-fingerprint --update --project-dir ${args.projectDir}\n`
+      `  npx @supa-media/native-safety check-fingerprint --update --project-dir ${args.projectDir}\n`
     );
     console.error(
       "This should be done after each native build and committed to the repo."
@@ -152,7 +152,7 @@ async function main() {
     "After rebuilding, update the baseline with:"
   );
   console.error(
-    `  npx @supa/native-safety check-fingerprint --update --project-dir ${args.projectDir}\n`
+    `  npx @supa-media/native-safety check-fingerprint --update --project-dir ${args.projectDir}\n`
   );
   process.exit(1);
 }

@@ -294,7 +294,7 @@ async function main() {
     if (chat) features.push("chat");
     if (payments) features.push("payments");
 
-    // Schema composables — names match @supa/convex/schema exports.
+    // Schema composables — names match @supa-media/convex/schema exports.
     // supaAuthTables is always imported + spread by the template itself.
     const schemaImports = ["supaAuthTables"];
     const schemaSpread = [];
@@ -363,7 +363,7 @@ async function main() {
       httpImports.push('import { internal } from "./_generated/api";');
       httpImports.push('import { v } from "convex/values";');
       httpImports.push(
-        'import { handleStripeWebhook, verifyStripeSignature } from "@supa/convex/payments";',
+        'import { handleStripeWebhook, verifyStripeSignature } from "@supa-media/convex/payments";',
       );
       httpRoutes.push(
         [
@@ -404,7 +404,7 @@ async function main() {
 
     if (pushNotifications) {
       providerImports.push(
-        'import { NotificationProvider } from "@supa/notifications";',
+        'import { NotificationProvider } from "@supa-media/notifications";',
       );
       providerOpen.push("        <NotificationProvider>");
       providerClose.push("        </NotificationProvider>");
@@ -414,17 +414,17 @@ async function main() {
     // are only added when the feature is enabled, so unused deps don't ship.
     const extraMobileDeps = [];
     if (pushNotifications) {
-      extraMobileDeps.push('"@supa/notifications": "^0.2.0"');
+      extraMobileDeps.push('"@supa-media/notifications": "^0.2.0"');
       extraMobileDeps.push('"expo-notifications": "~0.32.16"');
       extraMobileDeps.push('"expo-device": "~8.0.10"');
     }
     if (chat) {
-      extraMobileDeps.push('"@supa/chat": "^0.2.0"');
+      extraMobileDeps.push('"@supa-media/chat": "^0.2.0"');
       extraMobileDeps.push('"@react-native-async-storage/async-storage": "2.2.0"');
       extraMobileDeps.push('"zustand": "^5.0.2"');
     }
     if (payments) {
-      extraMobileDeps.push('"@supa/payments": "^0.2.0"');
+      extraMobileDeps.push('"@supa-media/payments": "^0.2.0"');
     }
     const extraMobileDepsBlock =
       extraMobileDeps.length > 0
@@ -450,7 +450,7 @@ async function main() {
       envVars.push(`TWILIO_ACCOUNT_SID=op://${vaultName || "Vault"}/Twilio/account-sid`);
       envVars.push(`TWILIO_AUTH_TOKEN=op://${vaultName || "Vault"}/Twilio/auth-token`);
       envVars.push(`TWILIO_PHONE_NUMBER=op://${vaultName || "Vault"}/Twilio/phone-number`);
-      // Required by @supa/convex createPhoneOtp's Twilio Verify bridge flow.
+      // Required by @supa-media/convex createPhoneOtp's Twilio Verify bridge flow.
       envVars.push(`TWILIO_VERIFY_SERVICE_SID=op://${vaultName || "Vault"}/Twilio/verify-service-sid`);
       envVars.push(`PHONE_TOKEN_BRIDGE_SECRET=op://${vaultName || "Vault"}/Twilio/phone-token-bridge-secret`);
       envVars.push("");

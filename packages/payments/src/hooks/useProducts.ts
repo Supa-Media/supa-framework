@@ -45,7 +45,7 @@ interface RawPrice {
  * @example
  * ```tsx
  * import { useQuery, api } from "../convex/_generated";
- * import { useProducts } from "@supa/payments/hooks";
+ * import { useProducts } from "@supa-media/payments/hooks";
  *
  * function PricingPage() {
  *   const data = useQuery(api.payments.listProducts);

@@ -6,12 +6,12 @@ module.exports = {
     type: "suggestion",
     docs: {
       description:
-        "Forms with multiple TextInput components should be wrapped in KeyboardAwareFormContainer from @supa/core/forms.",
+        "Forms with multiple TextInput components should be wrapped in KeyboardAwareFormContainer from @supa-media/core/forms.",
       recommended: true,
     },
     messages: {
       missingKeyboardAware:
-        "Component '{{name}}' renders {{count}} TextInput elements but is not wrapped in KeyboardAwareFormContainer. Import KeyboardAwareFormContainer from '@supa/core/forms' and wrap the form content to ensure proper keyboard handling.",
+        "Component '{{name}}' renders {{count}} TextInput elements but is not wrapped in KeyboardAwareFormContainer. Import KeyboardAwareFormContainer from '@supa-media/core/forms' and wrap the form content to ensure proper keyboard handling.",
     },
     schema: [
       {
@@ -169,7 +169,7 @@ module.exports = {
       ImportDeclaration(node) {
         const source = node.source.value;
         if (
-          source === "@supa/core/forms" ||
+          source === "@supa-media/core/forms" ||
           source.includes("KeyboardAwareFormContainer")
         ) {
           for (const spec of node.specifiers) {

@@ -1,5 +1,5 @@
 {
-  "name": "@supa/core",
+  "name": "@supa-media/core",
   "version": "0.2.0",
   "description": "Runtime core for the Supa framework — providers, hooks, and navigation for Convex + Expo apps",
   "main": "dist/index.js",

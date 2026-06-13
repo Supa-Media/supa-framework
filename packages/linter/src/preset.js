@@ -7,7 +7,7 @@ const supaPlugin = require("./index");
  *
  * Usage in consumer's eslint.config.js:
  *
- *   import supaPreset from '@supa/linter/preset';
+ *   import supaPreset from '@supa-media/linter/preset';
  *   export default [...supaPreset, { // consumer overrides }];
  */
 module.exports = [
@@ -16,11 +16,11 @@ module.exports = [
       "@supa": supaPlugin,
     },
     rules: {
-      "@supa/no-ungated-native-import": "error",
-      "@supa/route-file-no-logic": "warn",
-      "@supa/require-layout-file": "warn",
-      "@supa/keyboard-aware-forms": "warn",
-      "@supa/platform-file-pairs": "warn",
+      "@supa-media/no-ungated-native-import": "error",
+      "@supa-media/route-file-no-logic": "warn",
+      "@supa-media/require-layout-file": "warn",
+      "@supa-media/keyboard-aware-forms": "warn",
+      "@supa-media/platform-file-pairs": "warn",
     },
   },
   {

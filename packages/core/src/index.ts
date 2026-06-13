@@ -1,5 +1,5 @@
 /**
- * @supa/core - Runtime core for the Supa framework.
+ * @supa-media/core - Runtime core for the Supa framework.
  *
  * Provides providers, hooks, navigation components, and form utilities
  * for building Convex + Expo applications.

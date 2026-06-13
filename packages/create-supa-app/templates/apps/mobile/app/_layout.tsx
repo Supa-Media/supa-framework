@@ -1,7 +1,7 @@
 import { Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { SupaConvexProvider } from "@supa/core/providers";
+import { SupaConvexProvider } from "@supa-media/core/providers";
 {{PROVIDER_IMPORTS}}
 
 /**
@@ -13,7 +13,7 @@ import { SupaConvexProvider } from "@supa/core/providers";
  *
  * The Convex URL is passed explicitly from app code: Expo only inlines
  * `EXPO_PUBLIC_*` env vars in app code, NOT inside node_modules (where
- * @supa/core lives), so the provider can't read it on its own.
+ * @supa-media/core lives), so the provider can't read it on its own.
  */
 export default function RootLayout() {
   return (
