@@ -7,11 +7,13 @@
     "dev": "convex dev"
   },
   "dependencies": {
-    "@supa/convex": "workspace:*",
+    "@supa-media/convex": "^0.2.0",
     "@{{APP_SLUG}}/shared": "workspace:*",
-    "convex": "^1.16.0"
+    "@convex-dev/auth": "^0.0.90",
+    "convex": "^1.31.3"
   },
   "devDependencies": {
-    "typescript": "^5.5.0"
+    "@types/node": "^22.0.0",
+    "typescript": "~5.9.2"
   }
 }

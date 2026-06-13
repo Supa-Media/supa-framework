@@ -28,7 +28,7 @@ import type { UsePaymentSheetResult } from "../types";
  * @example
  * ```tsx
  * import { useStripe } from "@stripe/stripe-react-native";
- * import { usePaymentSheet } from "@supa/payments/hooks";
+ * import { usePaymentSheet } from "@supa-media/payments/hooks";
  *
  * function CheckoutButton({ clientSecret }: { clientSecret: string }) {
  *   const stripe = useStripe();
@@ -74,7 +74,7 @@ export function usePaymentSheet(
       if (!stripe) {
         // eslint-disable-next-line no-console
         console.warn(
-          "[@supa/payments] No Stripe instance provided to usePaymentSheet. " +
+          "[@supa-media/payments] No Stripe instance provided to usePaymentSheet. " +
             "Pass the result of useStripe() from @stripe/stripe-react-native."
         );
         return;
@@ -88,7 +88,7 @@ export function usePaymentSheet(
       if (error) {
         // eslint-disable-next-line no-console
         console.error(
-          "[@supa/payments] Failed to initialize payment sheet:",
+          "[@supa-media/payments] Failed to initialize payment sheet:",
           error.message
         );
         return;

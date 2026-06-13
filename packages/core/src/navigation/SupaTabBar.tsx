@@ -40,7 +40,7 @@ export interface SupaTabBarProps extends BottomTabBarProps {
  * @example
  * ```tsx
  * import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
- * import { SupaTabBar } from '@supa/core/navigation';
+ * import { SupaTabBar } from '@supa-media/core/navigation';
  *
  * const Tab = createBottomTabNavigator();
  *
@@ -96,7 +96,9 @@ export function SupaTabBar({
       ]}
     >
       {state.routes.map((route, index) => {
-        const { options } = descriptors[route.key];
+        const descriptor = descriptors[route.key];
+        if (!descriptor) return null;
+        const { options } = descriptor;
         const isFocused = state.index === index;
         const tintColor = isFocused ? activeTintColor : inactiveTintColor;
 

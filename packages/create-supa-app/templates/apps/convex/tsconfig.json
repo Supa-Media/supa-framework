@@ -6,7 +6,8 @@
     "strict": true,
     "skipLibCheck": true,
     "allowJs": true,
-    "outDir": "./dist",
+    "types": ["node"],
+    "noEmit": true,
     "paths": {
       "@shared/*": ["../../packages/shared/src/*"]
     }

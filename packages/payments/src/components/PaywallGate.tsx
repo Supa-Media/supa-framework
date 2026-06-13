@@ -6,7 +6,7 @@
  *
  * @example
  * ```tsx
- * import { PaywallGate } from "@supa/payments/components";
+ * import { PaywallGate } from "@supa-media/payments/components";
  *
  * <PaywallGate
  *   subscription={subscriptionData}

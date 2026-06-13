@@ -112,7 +112,7 @@ export function NotificationProvider({
 
     if (!isPhysicalDevice()) {
       console.warn(
-        "[@supa/notifications] Push notifications require a physical device"
+        "[@supa-media/notifications] Push notifications require a physical device"
       );
       setPermissionStatus("denied");
       return false;
@@ -133,7 +133,7 @@ export function NotificationProvider({
       return granted;
     } catch (error) {
       console.error(
-        "[@supa/notifications] Error requesting permission:",
+        "[@supa-media/notifications] Error requesting permission:",
         error
       );
       setPermissionStatus("denied");
@@ -155,7 +155,7 @@ export function NotificationProvider({
 
     if (!resolvedProjectId) {
       console.warn(
-        "[@supa/notifications] No projectId available for push token. " +
+        "[@supa-media/notifications] No projectId available for push token. " +
           "Pass projectId prop or configure eas.projectId in app config."
       );
       return;
@@ -175,7 +175,7 @@ export function NotificationProvider({
       setIsTokenRegistered(true);
     } catch (error) {
       console.error(
-        "[@supa/notifications] Failed to get push token:",
+        "[@supa-media/notifications] Failed to get push token:",
         error
       );
     }
@@ -249,7 +249,7 @@ export function NotificationProvider({
         }
       } catch (error) {
         console.error(
-          "[@supa/notifications] Error checking permissions:",
+          "[@supa-media/notifications] Error checking permissions:",
           error
         );
       }
@@ -282,7 +282,7 @@ export function NotificationProvider({
         }
       } catch (error) {
         console.error(
-          "[@supa/notifications] Error reading initial notification:",
+          "[@supa-media/notifications] Error reading initial notification:",
           error
         );
       }

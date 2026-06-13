@@ -1,5 +1,5 @@
 /**
- * @supa/chat — Type definitions
+ * @supa-media/chat — Type definitions
  *
  * Core types for the chat system. These are backend-agnostic; adapters
  * translate backend-specific shapes into these types.

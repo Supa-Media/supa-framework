@@ -6,7 +6,7 @@
  * Usage:
  * ```ts
  * import { defineSchema } from "convex/server";
- * import { supaAuthTables, supaChatTables } from "@supa/convex/schema";
+ * import { supaAuthTables, supaChatTables } from "@supa-media/convex/schema";
  *
  * export default defineSchema({
  *   ...supaAuthTables,

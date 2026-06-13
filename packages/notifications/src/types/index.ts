@@ -1,5 +1,5 @@
 /**
- * Type definitions for @supa/notifications
+ * Type definitions for @supa-media/notifications
  */
 
 // =============================================================================

@@ -12,7 +12,7 @@
  *
  * ```ts
  * // app/_layout.tsx (top level, outside component)
- * import { registerBackgroundHandler } from "@supa/notifications/handlers";
+ * import { registerBackgroundHandler } from "@supa-media/notifications/handlers";
  * registerBackgroundHandler();
  * ```
  */
@@ -38,6 +38,8 @@ export function registerBackgroundHandler(
   Notifications!.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
       shouldPlaySound: true,
       shouldSetBadge: true,
     }),

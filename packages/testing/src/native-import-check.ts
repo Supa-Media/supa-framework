@@ -11,7 +11,7 @@
  * 3. Checks that all native deps in package.json are classified
  * 4. Reports violations with file paths and line numbers
  *
- * See also: `@supa/native-safety` for the CLI enforcement script.
+ * See also: `@supa-media/native-safety` for the CLI enforcement script.
  */
 
 import * as fs from "fs";
@@ -207,7 +207,7 @@ export function checkNativeImports(
  *
  * @example
  * ```ts
- * import { testNativeImports } from '@supa/testing';
+ * import { testNativeImports } from '@supa-media/testing';
  * test('no ungated native imports', () => testNativeImports({
  *   srcDir: 'apps/mobile',
  *   nativeDepsPath: 'native-deps.json',

@@ -8,7 +8,7 @@ const platformFilePairs = require("./rules/platform-file-pairs");
 
 const plugin = {
   meta: {
-    name: "@supa/linter",
+    name: "@supa-media/linter",
     version: "0.1.0",
   },
   rules: {
@@ -25,11 +25,11 @@ const plugin = {
 plugin.configs.recommended = {
   plugins: ["@supa"],
   rules: {
-    "@supa/no-ungated-native-import": "error",
-    "@supa/route-file-no-logic": "warn",
-    "@supa/require-layout-file": "warn",
-    "@supa/keyboard-aware-forms": "warn",
-    "@supa/platform-file-pairs": "warn",
+    "@supa-media/no-ungated-native-import": "error",
+    "@supa-media/route-file-no-logic": "warn",
+    "@supa-media/require-layout-file": "warn",
+    "@supa-media/keyboard-aware-forms": "warn",
+    "@supa-media/platform-file-pairs": "warn",
   },
 };
 

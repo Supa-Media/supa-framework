@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * @supa/claude sync
+ * @supa-media/claude sync
  *
  * Syncs Claude Code configuration templates into a Supa app's .claude/ directory
  * and generates CLAUDE.md from the template with app-specific values.
  *
  * Usage:
- *   npx @supa/claude sync
- *   npx @supa/claude sync --force   # overwrite existing files without prompting
- *   npx @supa/claude sync --dry-run # show what would be changed without writing
+ *   npx @supa-media/claude sync
+ *   npx @supa-media/claude sync --force   # overwrite existing files without prompting
+ *   npx @supa-media/claude sync --dry-run # show what would be changed without writing
  */
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from "fs";
@@ -139,7 +139,7 @@ function sync(projectRoot, options = {}) {
     unchanged: [],
   };
 
-  console.log(`\n  @supa/claude sync`);
+  console.log(`\n  @supa-media/claude sync`);
   console.log(`  Project: ${config.appName}`);
   console.log(`  Target:  ${claudeDir}\n`);
 
@@ -280,13 +280,13 @@ function main() {
 
   if (command === "help" || args.includes("--help") || args.includes("-h")) {
     console.log(`
-  @supa/claude - Claude Code configuration for Supa apps
+  @supa-media/claude - Claude Code configuration for Supa apps
 
   Usage:
-    npx @supa/claude sync              Sync templates into .claude/ and generate CLAUDE.md
-    npx @supa/claude sync --force      Overwrite existing files
-    npx @supa/claude sync --dry-run    Preview changes without writing files
-    npx @supa/claude help              Show this help message
+    npx @supa-media/claude sync              Sync templates into .claude/ and generate CLAUDE.md
+    npx @supa-media/claude sync --force      Overwrite existing files
+    npx @supa-media/claude sync --dry-run    Preview changes without writing files
+    npx @supa-media/claude help              Show this help message
 
   Configuration:
     The sync command reads app-specific values from supa.config.ts (or .js/.mjs)
@@ -303,7 +303,7 @@ function main() {
   }
 
   if (command !== "sync") {
-    console.error(`  Unknown command: ${command}\n  Run 'npx @supa/claude help' for usage.`);
+    console.error(`  Unknown command: ${command}\n  Run 'npx @supa-media/claude help' for usage.`);
     process.exit(1);
   }
 

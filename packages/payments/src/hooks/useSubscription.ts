@@ -38,7 +38,7 @@ interface RawSubscriptionData {
  * @example
  * ```tsx
  * import { useQuery, api } from "../convex/_generated";
- * import { useSubscription } from "@supa/payments/hooks";
+ * import { useSubscription } from "@supa-media/payments/hooks";
  *
  * function BillingPage({ communityId }: { communityId: string }) {
  *   const data = useQuery(api.billing.getSubscriptionStatus, {

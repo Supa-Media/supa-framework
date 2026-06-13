@@ -1,6 +1,6 @@
 {
-  "name": "@supa/native-safety",
-  "version": "0.1.0",
+  "name": "@supa-media/native-safety",
+  "version": "0.2.0",
   "description": "Native dependency gating enforcement for Expo apps — critical for safe OTA updates",
   "main": "src/index.js",
   "types": "src/index.d.ts",
@@ -31,5 +31,13 @@
     "native-modules",
     "fingerprint"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Supa-Media/supa-framework.git",
+    "directory": "packages/native-safety"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "license": "MIT"
 }

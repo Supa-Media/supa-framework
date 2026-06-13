@@ -93,7 +93,7 @@ export interface OTAUpdateProviderProps {
  *
  * @example
  * ```tsx
- * import { OTAUpdateProvider } from '@supa/core/providers';
+ * import { OTAUpdateProvider } from '@supa-media/core/providers';
  *
  * export default function RootLayout() {
  *   return (

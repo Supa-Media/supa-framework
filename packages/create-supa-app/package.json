@@ -1,6 +1,6 @@
 {
   "name": "create-supa-app",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Interactive scaffolder for new Supa apps",
   "bin": {
     "create-supa-app": "src/index.js"
@@ -8,7 +8,12 @@
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Supa-Media/supa-framework.git",
+    "directory": "packages/create-supa-app"
   },
   "files": [
     "src",

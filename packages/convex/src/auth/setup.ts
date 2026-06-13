@@ -7,7 +7,7 @@
  * Usage:
  * ```ts
  * // convex/auth.ts
- * import { createSupaAuth } from "@supa/convex/auth";
+ * import { createSupaAuth } from "@supa-media/convex/auth";
  *
  * export const { auth, signIn, signOut, store, isAuthenticated } = createSupaAuth({
  *   appName: "MyApp",
@@ -44,6 +44,12 @@ export interface SupaAuthTwilioConfig {
 export interface SupaAuthConfig {
   /** App name, used in default email templates. */
   appName?: string;
+  /**
+   * Which OTP methods to enable. Defaults to both `["email", "phone"]`.
+   * Set to `["email"]` for an email-only app so no dormant phone provider
+   * is registered.
+   */
+  methods?: Array<"email" | "phone">;
   /** Resend email OTP configuration. */
   resend?: SupaAuthResendConfig;
   /** Twilio phone OTP configuration. */
@@ -237,8 +243,14 @@ function createPhoneOtp(config: SupaAuthConfig) {
  * Returns the same exports as `convexAuth()`: auth, signIn, signOut, store, isAuthenticated.
  */
 export function createSupaAuth(config: SupaAuthConfig = {}) {
+  const methods = config.methods ?? ["email", "phone"];
+  const providers = [
+    ...(methods.includes("email") ? [createEmailOtp(config)] : []),
+    ...(methods.includes("phone") ? [createPhoneOtp(config)] : []),
+  ];
+
   return convexAuth({
-    providers: [createEmailOtp(config), createPhoneOtp(config)],
+    providers,
     callbacks: {
       async createOrUpdateUser(ctx, { existingUserId, type, profile }) {
         // Returning user — auth account already exists

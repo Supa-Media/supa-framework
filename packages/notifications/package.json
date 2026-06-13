@@ -1,6 +1,6 @@
 {
-  "name": "@supa/notifications",
-  "version": "0.1.0",
+  "name": "@supa-media/notifications",
+  "version": "0.2.0",
   "description": "Push notification infrastructure for Supa apps — provider, hooks, and handlers for Expo + Convex",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -41,12 +41,12 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "expo-constants": ">=17.0.0",
-    "expo-device": ">=7.0.0",
-    "expo-notifications": ">=0.29.0",
-    "expo-router": ">=4.0.0",
-    "react": ">=18.0.0",
-    "react-native": ">=0.76.0"
+    "expo-constants": ">=18.0.0",
+    "expo-device": ">=8.0.0",
+    "expo-notifications": ">=0.32.0",
+    "expo-router": ">=6.0.0",
+    "react": ">=19.0.0",
+    "react-native": ">=0.81.0"
   },
   "peerDependenciesMeta": {
     "expo-notifications": {
@@ -58,6 +58,24 @@
     "expo-constants": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "typescript": "~5.9.2",
+    "@types/react": "~19.1.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "expo-constants": "~18.0.12",
+    "expo-device": "~8.0.10",
+    "expo-notifications": "~0.32.16",
+    "expo-router": "~6.0.14"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Supa-Media/supa-framework.git",
+    "directory": "packages/notifications"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "license": "MIT"
 }

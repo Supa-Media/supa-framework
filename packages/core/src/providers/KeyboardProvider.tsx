@@ -57,7 +57,7 @@ export interface KeyboardProviderProps {
  *
  * @example
  * ```tsx
- * import { KeyboardProvider } from '@supa/core/providers';
+ * import { KeyboardProvider } from '@supa-media/core/providers';
  * import { SafeAreaProvider } from 'react-native-safe-area-context';
  *
  * <SafeAreaProvider>

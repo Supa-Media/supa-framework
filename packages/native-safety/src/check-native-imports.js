@@ -13,9 +13,9 @@
  * 4. Fails CI if violations are found
  *
  * Usage:
- *   npx @supa/native-safety check-native-imports --config native-deps.json --src apps/mobile
- *   npx @supa/native-safety check-native-imports --config native-deps.json --src apps/mobile --allowlist features/chat/utils/fileTypes.ts,components/ui/SafeLinearGradient.tsx
- *   npx @supa/native-safety check-native-imports --config native-deps.json --src apps/mobile --check-package-json
+ *   npx @supa-media/native-safety check-native-imports --config native-deps.json --src apps/mobile
+ *   npx @supa-media/native-safety check-native-imports --config native-deps.json --src apps/mobile --allowlist features/chat/utils/fileTypes.ts,components/ui/SafeLinearGradient.tsx
+ *   npx @supa-media/native-safety check-native-imports --config native-deps.json --src apps/mobile --check-package-json
  */
 
 const fs = require("fs");

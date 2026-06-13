@@ -106,7 +106,7 @@ function buildSharedPackageResolver(workspaceRoot, sharedPackages) {
         if (resolved) return { type: "sourceFile", filePath: resolved };
       } catch (error) {
         console.warn(
-          `[@supa/metro] Failed to resolve ${moduleName} from ${pkg}:`,
+          `[@supa-media/metro] Failed to resolve ${moduleName} from ${pkg}:`,
           error.message
         );
       }
@@ -170,7 +170,7 @@ function createMetroConfig(options) {
       config = getSentryExpoConfig(projectRoot);
     } catch (e) {
       console.warn(
-        "[@supa/metro] @sentry/react-native not found, falling back to @expo/metro-config"
+        "[@supa-media/metro] @sentry/react-native not found, falling back to @expo/metro-config"
       );
       const { getDefaultConfig } = require("expo/metro-config");
       config = getDefaultConfig(projectRoot);
@@ -255,7 +255,7 @@ function createMetroConfig(options) {
       config = wrapNativeWind(config, { input: "./global.css" });
     } catch (e) {
       console.warn(
-        "[@supa/metro] nativewind not found, skipping NativeWind wrapping"
+        "[@supa-media/metro] nativewind not found, skipping NativeWind wrapping"
       );
     }
   }

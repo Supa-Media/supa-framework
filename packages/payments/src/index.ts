@@ -1,5 +1,5 @@
 /**
- * @supa/payments — Stripe payment integration for Supa apps.
+ * @supa-media/payments — Stripe payment integration for Supa apps.
  *
  * Provides hooks, components, and configuration for managing
  * subscriptions, products, and checkout with Stripe + Convex.
@@ -7,7 +7,7 @@
  * @example
  * ```tsx
  * // Configure Stripe keys at app initialization
- * import { configureStripe } from "@supa/payments/config";
+ * import { configureStripe } from "@supa-media/payments/config";
  *
  * configureStripe({
  *   development: { publishableKey: "pk_test_..." },
@@ -16,8 +16,8 @@
  * });
  *
  * // Use subscription status in components
- * import { useSubscription } from "@supa/payments/hooks";
- * import { PaywallGate, SubscriptionStatusCard } from "@supa/payments/components";
+ * import { useSubscription } from "@supa-media/payments/hooks";
+ * import { PaywallGate, SubscriptionStatusCard } from "@supa-media/payments/components";
  *
  * function App() {
  *   const data = useQuery(api.billing.getSubscriptionStatus, { communityId });

@@ -1,6 +1,6 @@
 {
-  "name": "@supa/claude",
-  "version": "0.1.0",
+  "name": "@supa-media/claude",
+  "version": "0.2.0",
   "description": "Claude Code configuration templates for Supa apps",
   "type": "module",
   "bin": {
@@ -17,5 +17,13 @@
     "agent",
     "configuration"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Supa-Media/supa-framework.git",
+    "directory": "packages/claude"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "license": "MIT"
 }

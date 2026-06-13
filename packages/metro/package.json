@@ -1,6 +1,6 @@
 {
-  "name": "@supa/metro",
-  "version": "0.1.0",
+  "name": "@supa-media/metro",
+  "version": "0.2.0",
   "description": "Metro bundler config factory for pnpm monorepos with Expo",
   "main": "src/index.js",
   "types": "src/index.d.ts",
@@ -15,6 +15,14 @@
     "@sentry/react-native": {
       "optional": true
     }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Supa-Media/supa-framework.git",
+    "directory": "packages/metro"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "license": "MIT"
 }

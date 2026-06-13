@@ -1,6 +1,6 @@
 {
-  "name": "@supa/linter",
-  "version": "0.1.0",
+  "name": "@supa-media/linter",
+  "version": "0.2.0",
   "description": "ESLint rules that enforce Supa framework conventions",
   "main": "src/index.js",
   "exports": {
@@ -18,5 +18,13 @@
     "eslintplugin",
     "supa"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Supa-Media/supa-framework.git",
+    "directory": "packages/linter"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "license": "MIT"
 }

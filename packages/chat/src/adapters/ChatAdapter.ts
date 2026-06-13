@@ -2,7 +2,7 @@
  * ChatAdapter — Backend-agnostic interface for chat operations
  *
  * Implement this interface to connect any real-time backend (Convex, Firebase,
- * Supabase, custom WebSocket server, etc.) to the @supa/chat UI layer.
+ * Supabase, custom WebSocket server, etc.) to the @supa-media/chat UI layer.
  *
  * The adapter is responsible for:
  * - Fetching paginated messages for a channel

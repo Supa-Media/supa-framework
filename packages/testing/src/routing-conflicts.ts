@@ -232,8 +232,14 @@ export function detectRoutingConflicts(appDir: string): RoutingConflictResult {
   const conflicts: RouteConflict[] = [];
 
   for (const [url, files] of urlToFiles) {
-    const actual = files.filter((f) => !isRedirectFile(f) && !isReexportFile(f));
+    // Re-exports are intentional duplicates (a route deliberately surfaced in
+    // another group), so they're excluded. Redirect-only files are NOT excluded:
+    // a redirect that shares a URL with a real route SHADOWS it at runtime — the
+    // exact, hard-to-spot bug where e.g. `app/index.tsx` (a <Redirect>) collides
+    // with `app/(app)/(tabs)/index.tsx` and hides the real screen.
+    const actual = files.filter((f) => !isReexportFile(f));
     if (actual.length <= 1) continue;
+    const involvesRedirect = actual.some((f) => isRedirectFile(f));
 
     // Compare each pair
     for (let i = 0; i < actual.length; i++) {
@@ -255,6 +261,12 @@ export function detectRoutingConflicts(appDir: string): RoutingConflictResult {
                 `Multiple routes resolve to "${url}". ` +
                 `In Expo Router, route groups (parentheses) don't affect the URL. ` +
                 `Files: ${relFiles.join(", ")}. ` +
+                (involvesRedirect
+                  ? `One of these is a <Redirect> file — it will SHADOW the real ` +
+                    `screen at this URL (the redirect renders instead). Move the ` +
+                    `redirect logic into a layout guard, or give the screen a ` +
+                    `unique path. `
+                  : "") +
                 `Fix: rename one route to a unique URL path, or consolidate into a single route.`,
             });
           }
@@ -335,7 +347,7 @@ export function detectRoutingConflicts(appDir: string): RoutingConflictResult {
  *
  * @example
  * ```ts
- * import { testRoutingConflicts } from '@supa/testing';
+ * import { testRoutingConflicts } from '@supa-media/testing';
  * test('no routing conflicts', () => testRoutingConflicts('/path/to/app'));
  * ```
  */

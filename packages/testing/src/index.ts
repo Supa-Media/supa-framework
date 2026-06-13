@@ -1,5 +1,5 @@
 /**
- * @supa/testing — Reusable test suites that catch common Expo/React Native gotchas.
+ * @supa-media/testing — Reusable test suites that catch common Expo/React Native gotchas.
  *
  * Provides both programmatic APIs (for custom integration) and Jest/Vitest-compatible
  * test factories (for drop-in usage in test files).
@@ -7,7 +7,7 @@
  * @example
  * ```ts
  * // Quick setup — drop into any test file:
- * import { createSupaTests } from '@supa/testing';
+ * import { createSupaTests } from '@supa-media/testing';
  *
  * const { routingConflicts, webBundleSafety, reactResolution } = createSupaTests({
  *   appDir: 'apps/mobile/app',
@@ -102,7 +102,7 @@ export interface SupaTests {
  *
  * @example
  * ```ts
- * import { createSupaTests } from '@supa/testing';
+ * import { createSupaTests } from '@supa-media/testing';
  *
  * const tests = createSupaTests({
  *   appDir: 'apps/mobile/app',
@@ -160,7 +160,7 @@ export interface RunAllResult {
  *
  * @example
  * ```ts
- * import { runAllSupaTests } from '@supa/testing';
+ * import { runAllSupaTests } from '@supa-media/testing';
  *
  * const result = runAllSupaTests({
  *   appDir: 'apps/mobile/app',

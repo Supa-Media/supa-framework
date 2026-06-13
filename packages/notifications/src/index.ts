@@ -1,10 +1,10 @@
 /**
- * @supa/notifications — Push notification infrastructure for Supa apps.
+ * @supa-media/notifications — Push notification infrastructure for Supa apps.
  *
  * @example
  * ```tsx
- * import { NotificationProvider } from "@supa/notifications";
- * import { useNotifications, useNotificationPermission, usePushToken } from "@supa/notifications/hooks";
+ * import { NotificationProvider } from "@supa-media/notifications";
+ * import { useNotifications, useNotificationPermission, usePushToken } from "@supa-media/notifications/hooks";
  *
  * // In your root layout:
  * <NotificationProvider

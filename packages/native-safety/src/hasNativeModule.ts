@@ -11,7 +11,7 @@
  *
  * @example
  * ```ts
- * import { hasNativeModule } from '@supa/native-safety';
+ * import { hasNativeModule } from '@supa-media/native-safety';
  *
  * export function isLinearGradientSupported(): boolean {
  *   if (!hasNativeModule('ExpoLinearGradient')) return false;

@@ -59,7 +59,7 @@ export interface NetworkProviderProps {
  *
  * @example
  * ```tsx
- * import { NetworkProvider } from '@supa/core/providers';
+ * import { NetworkProvider } from '@supa-media/core/providers';
  *
  * <NetworkProvider>
  *   <App />
