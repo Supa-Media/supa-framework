@@ -18,6 +18,7 @@
     "@supa/core": "^0.2.0",
 {{EXTRA_MOBILE_DEPS}}
     "@{{APP_SLUG}}/shared": "workspace:*",
+    "@{{APP_SLUG}}/convex": "workspace:*",
     "@convex-dev/auth": "^0.0.90",
     "convex": "^1.31.3",
     "expo": "~54.0.23",
@@ -36,6 +37,8 @@
   },
   "devDependencies": {
     "@supa/linter": "^0.2.0",
+    "@supa/metro": "^0.2.0",
+    "@types/node": "^22.0.0",
     "@types/react": "~19.1.0",
     "eslint": "^8.57.0",
     "typescript": "~5.9.2"
