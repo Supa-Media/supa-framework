@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, type ReactNode } from "react";
-import { Platform } from "react-native";
+import { Platform, View, Text } from "react-native";
 import { ConvexReactClient } from "convex/react";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import type { TokenStorage } from "@convex-dev/auth/react";
@@ -62,6 +62,46 @@ function getClient(url: string): ConvexReactClient {
 }
 
 /**
+ * Dependency-free full-screen config error. Rendered (instead of throwing) in
+ * production builds so a missing build-time env var surfaces as a readable
+ * message rather than an opaque expo-updates crash.
+ */
+function ConfigErrorScreen({ message }: { message: string }) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: "#ffffff",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 28,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 20,
+          fontWeight: "700",
+          color: "#b91c1c",
+          marginBottom: 12,
+        }}
+      >
+        Configuration error
+      </Text>
+      <Text
+        style={{
+          fontSize: 15,
+          color: "#374151",
+          textAlign: "center",
+          lineHeight: 22,
+        }}
+      >
+        {message}
+      </Text>
+    </View>
+  );
+}
+
+/**
  * Wraps the app with Convex authentication context.
  *
  * Handles:
@@ -92,10 +132,22 @@ export function SupaConvexProvider({
   const convexUrl = url ?? process.env.EXPO_PUBLIC_CONVEX_URL;
 
   if (!convexUrl) {
-    throw new Error(
-      "Missing Convex URL. Either pass the `url` prop to <SupaConvexProvider> " +
-        "or set the EXPO_PUBLIC_CONVEX_URL environment variable.",
-    );
+    // `EXPO_PUBLIC_*` vars are inlined at BUILD/EXPORT time, so the #1 cause is
+    // forgetting to set EXPO_PUBLIC_CONVEX_URL for `eas build` AND `eas update`
+    // (not just locally / on the web deploy).
+    const message =
+      "Missing Convex URL.\n\n" +
+      "Pass `url` to <SupaConvexProvider>, or set EXPO_PUBLIC_CONVEX_URL.\n\n" +
+      "Note: EXPO_PUBLIC_* vars are baked in at build/export time — they must be " +
+      "present for `eas build` AND `eas update`, not only in local dev.";
+    // Loud in development (red-box). In production we render a visible diagnostic
+    // instead of throwing, because an unhandled throw at startup is swallowed by
+    // expo-updates' ErrorRecovery into an opaque native crash (SIGABRT).
+    if (typeof __DEV__ !== "undefined" && __DEV__) {
+      throw new Error(message.replace(/\n+/g, " "));
+    }
+    console.error("[SupaConvexProvider] " + message.replace(/\n+/g, " "));
+    return <ConfigErrorScreen message={message} />;
   }
 
   const client = getClient(convexUrl);

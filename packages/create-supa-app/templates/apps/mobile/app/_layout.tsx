@@ -1,6 +1,7 @@
 import { Slot } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SupaConvexProvider } from "@supa-media/core/providers";
 {{PROVIDER_IMPORTS}}
 
@@ -17,13 +18,15 @@ import { SupaConvexProvider } from "@supa-media/core/providers";
  */
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <SupaConvexProvider url={process.env.EXPO_PUBLIC_CONVEX_URL}>
+    <KeyboardProvider>
+      <SafeAreaProvider>
+        <SupaConvexProvider url={process.env.EXPO_PUBLIC_CONVEX_URL}>
 {{PROVIDER_OPEN}}
-        <StatusBar style="auto" />
-        <Slot />
+          <StatusBar style="auto" />
+          <Slot />
 {{PROVIDER_CLOSE}}
-      </SupaConvexProvider>
-    </SafeAreaProvider>
+        </SupaConvexProvider>
+      </SafeAreaProvider>
+    </KeyboardProvider>
   );
 }

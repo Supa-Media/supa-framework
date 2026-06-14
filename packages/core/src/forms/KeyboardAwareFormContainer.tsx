@@ -1,35 +1,30 @@
 /**
  * KeyboardAwareFormContainer - Ensures form inputs are never hidden behind the keyboard.
  *
- * Platform behavior:
- * - iOS: Uses `KeyboardAvoidingView` with `behavior="padding"` to push content up.
- * - Android: Uses `behavior="height"` since `adjustResize` sometimes doesn't cover
- *   all cases (e.g., fullscreen modals, nested ScrollViews).
- *
- * Handles nested ScrollViews gracefully by wrapping content in a ScrollView
- * that adjusts its content inset.
+ * Built on `react-native-keyboard-controller` (the robust, cross-platform
+ * keyboard library) rather than React Native's finicky `KeyboardAvoidingView`:
+ * the focused input is smoothly scrolled above the keyboard on both iOS and
+ * Android. Requires `<KeyboardProvider>` mounted at the app root (the scaffold
+ * does this in app/_layout.tsx).
  */
 import React, { type ReactNode } from "react";
+import { StyleSheet, type ViewStyle, type StyleProp } from "react-native";
 import {
+  KeyboardAwareScrollView,
   KeyboardAvoidingView,
-  ScrollView,
-  Platform,
-  StyleSheet,
-  type ViewStyle,
-  type StyleProp,
-} from "react-native";
+} from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export interface KeyboardAwareFormContainerProps {
   children: ReactNode;
   /**
-   * Extra offset to add above the keyboard (e.g., for a sticky bottom button).
-   * @default 0
+   * Extra space kept between the focused input and the top of the keyboard.
+   * @default 24
    */
   keyboardVerticalOffset?: number;
   /**
-   * Whether to wrap children in a ScrollView. Set to `false` if your
-   * content already includes a ScrollView.
+   * Whether to wrap children in a scroll view. Set to `false` if your content
+   * already includes its own ScrollView/FlatList.
    * @default true
    */
   scrollable?: boolean;
@@ -64,7 +59,7 @@ export interface KeyboardAwareFormContainerProps {
  */
 export function KeyboardAwareFormContainer({
   children,
-  keyboardVerticalOffset = 0,
+  keyboardVerticalOffset = 24,
   scrollable = true,
   style,
   contentContainerStyle,
@@ -72,40 +67,33 @@ export function KeyboardAwareFormContainer({
 }: KeyboardAwareFormContainerProps) {
   const insets = useSafeAreaInsets();
 
-  // iOS: "padding" pushes content up smoothly.
-  // Android: "height" resizes the view, which works better with adjustResize.
-  const behavior = Platform.OS === "ios" ? "padding" : "height";
+  // Caller owns its own scroll view — just avoid the keyboard, don't add a scroll.
+  if (!scrollable) {
+    return (
+      <KeyboardAvoidingView
+        style={[styles.container, style]}
+        behavior="padding"
+        keyboardVerticalOffset={keyboardVerticalOffset}
+      >
+        {children}
+      </KeyboardAvoidingView>
+    );
+  }
 
-  // On iOS, add the safe area top as offset so the view doesn't over-shift
-  // when presented inside a navigation stack.
-  const defaultOffset = Platform.OS === "ios" ? insets.top : 0;
-  const totalOffset = defaultOffset + keyboardVerticalOffset;
-
-  const content = scrollable ? (
-    <ScrollView
+  return (
+    <KeyboardAwareScrollView
+      style={[styles.container, style]}
+      bottomOffset={keyboardVerticalOffset}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
       contentContainerStyle={[
         styles.scrollContent,
         safeAreaBottom && { paddingBottom: insets.bottom + 16 },
         contentContainerStyle,
       ]}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-      bounces={Platform.OS === "ios"}
     >
       {children}
-    </ScrollView>
-  ) : (
-    children
-  );
-
-  return (
-    <KeyboardAvoidingView
-      style={[styles.container, style]}
-      behavior={behavior}
-      keyboardVerticalOffset={totalOffset}
-    >
-      {content}
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 }
 
