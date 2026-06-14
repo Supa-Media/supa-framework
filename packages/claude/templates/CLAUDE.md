@@ -229,6 +229,14 @@ If you're asked to do X and realize Y and Z also need fixing:
 - See `/docs/architecture/` for Architecture Decision Records (ADRs)
 - Each feature folder may have an `ARCHITECTURE.md` explaining its structure
 
+### Publishing / Shipping
+
+- To publish this app (Convex + web + iOS/TestFlight + OTA), follow the Supa
+  framework's **`docs/PUBLISHING.md`** guide:
+  https://github.com/Supa-Media/supa-framework/blob/main/docs/PUBLISHING.md
+- The secrets model it relies on is documented in `docs/SECRETS.md`
+  (1Password → GitHub → server env).
+
 ### Keep Docs Updated
 
 - **Update documentation when implementing features** - don't leave stale docs
