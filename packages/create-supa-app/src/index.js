@@ -528,6 +528,25 @@ async function main() {
     // ── Copy and process templates ──
     copyTemplateDir(TEMPLATES_DIR, projectDir, vars, conditionals);
 
+    // ── Install Claude Code configuration ──
+    // Seeds CLAUDE.md and .claude/ (settings, hooks, and commands such as
+    // /review-cycle) via @supa-media/claude — the same tool the app re-runs
+    // later via `pnpm claude:sync`. Loaded dynamically and wrapped so that even
+    // a module-resolution failure can never abort an otherwise-successful
+    // scaffold; the app can still sync post-install.
+    let claudeInstalled = false;
+    try {
+      const { sync: syncClaudeConfig } = await import("@supa-media/claude");
+      syncClaudeConfig(projectDir, {
+        force: true,
+        config: { appName, appDisplayName: appName },
+      });
+      claudeInstalled = true;
+    } catch (err) {
+      console.warn(`  ! Skipped Claude config install (${err.message}).`);
+      console.warn("    Run `pnpm claude:sync` after `pnpm install` to add it.");
+    }
+
     // ── Print results ──
     console.log(`\u2713 Created ${appSlug}/`);
     console.log("");
@@ -558,6 +577,9 @@ async function main() {
       console.log(`  \u2713 Multi-tenant (${tenantName})`);
     }
     console.log(`  \u2713 ${strictness.charAt(0).toUpperCase() + strictness.slice(1)} deployment strictness`);
+    console.log(
+      `  ${claudeInstalled ? "\u2713" : "\u2717"} Claude Code config (CLAUDE.md + /review-cycle and other commands)${claudeInstalled ? "" : " \u2014 run 'pnpm claude:sync'"}`
+    );
     console.log("");
   } catch (err) {
     if (err.code === "ERR_USE_AFTER_CLOSE") {

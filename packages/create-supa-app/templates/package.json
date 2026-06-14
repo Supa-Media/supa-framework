@@ -9,9 +9,11 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "setup:secrets": "op inject -i .env.example -o .env.local"
+    "setup:secrets": "op inject -i .env.example -o .env.local",
+    "claude:sync": "supa-claude sync"
   },
   "devDependencies": {
+    "@supa-media/claude": "^0.2.0",
     "convex": "^1.31.3",
     "turbo": "^2.0.0",
     "typescript": "~5.9.2"

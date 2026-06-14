@@ -3,8 +3,12 @@
   "version": "0.2.0",
   "description": "Claude Code configuration templates for Supa apps",
   "type": "module",
+  "main": "src/sync.js",
+  "exports": {
+    ".": "./src/sync.js"
+  },
   "bin": {
-    "supa-claude": "src/sync.js"
+    "supa-claude": "src/cli.js"
   },
   "files": [
     "src",

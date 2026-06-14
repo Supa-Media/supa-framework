@@ -38,3 +38,6 @@ Thumbs.db
 
 # Sentry
 .sentryclirc
+
+# Claude Code — keep config (CLAUDE.md, .claude/), ignore local run logs
+.claude/logs/

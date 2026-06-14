@@ -1,19 +1,24 @@
-#!/usr/bin/env node
-
 /**
- * @supa-media/claude sync
+ * @supa-media/claude sync (library)
  *
  * Syncs Claude Code configuration templates into a Supa app's .claude/ directory
  * and generates CLAUDE.md from the template with app-specific values.
  *
- * Usage:
- *   npx @supa-media/claude sync
- *   npx @supa-media/claude sync --force   # overwrite existing files without prompting
- *   npx @supa-media/claude sync --dry-run # show what would be changed without writing
+ * This module is consumed two ways:
+ *   - the `supa-claude` CLI (src/cli.js), for syncing an existing app, and
+ *   - `create-supa-app`, which imports `sync()` to seed config into a new app.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from "fs";
-import { join, dirname, relative, resolve } from "path";
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  chmodSync,
+} from "fs";
+import { join, dirname, relative } from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -127,8 +132,10 @@ function getAllFiles(dir, baseDir = dir) {
 // --- Main sync logic ---
 
 function sync(projectRoot, options = {}) {
-  const { force = false, dryRun = false } = options;
-  const config = loadSupaConfig(projectRoot);
+  const { force = false, dryRun = false, config: configOverride } = options;
+  // Callers that already know the app's identity (e.g. create-supa-app) can pass
+  // `config` directly; otherwise fall back to parsing supa.config.ts/package.json.
+  const config = configOverride ?? loadSupaConfig(projectRoot);
   const claudeDir = join(projectRoot, ".claude");
   const commandsDir = join(claudeDir, "commands");
 
@@ -204,6 +211,45 @@ function sync(projectRoot, options = {}) {
     results.skipped.push(".claude/hooks.json (exists)");
   }
 
+  // --- 3b. Sync hook scripts ---
+  // hooks.json references scripts under .claude/hooks/ (e.g. ralph-logger.sh).
+  // Without these the configured Stop hook would fail, so copy them alongside
+  // hooks.json and mark shell scripts executable.
+  const hookScriptsDir = join(TEMPLATES_DIR, "hooks");
+  if (existsSync(hookScriptsDir)) {
+    const hooksOutDir = join(claudeDir, "hooks");
+    ensureDir(hooksOutDir);
+
+    for (const relPath of getAllFiles(hookScriptsDir)) {
+      const content = readFileSync(join(hookScriptsDir, relPath), "utf-8");
+      const destPath = join(hooksOutDir, relPath);
+      const isShellScript = relPath.endsWith(".sh");
+      ensureDir(dirname(destPath));
+
+      const writeScript = () => {
+        if (dryRun) return;
+        writeFileSync(destPath, content);
+        if (isShellScript) chmodSync(destPath, 0o755);
+      };
+
+      if (!existsSync(destPath)) {
+        writeScript();
+        results.created.push(`.claude/hooks/${relPath}`);
+      } else if (force) {
+        if (!filesAreEqual(destPath, content)) {
+          writeScript();
+          results.updated.push(`.claude/hooks/${relPath}`);
+        } else {
+          results.unchanged.push(`.claude/hooks/${relPath}`);
+        }
+      } else if (filesAreEqual(destPath, content)) {
+        results.unchanged.push(`.claude/hooks/${relPath}`);
+      } else {
+        results.skipped.push(`.claude/hooks/${relPath} (exists, use --force to overwrite)`);
+      }
+    }
+  }
+
   // --- 4. Sync command templates ---
   ensureDir(commandsDir);
   const commandTemplatesDir = join(TEMPLATES_DIR, "commands");
@@ -270,50 +316,4 @@ function sync(projectRoot, options = {}) {
   return results;
 }
 
-// --- CLI ---
-
-function main() {
-  const args = process.argv.slice(2);
-  const command = args.find((a) => !a.startsWith("--")) || "sync";
-  const force = args.includes("--force");
-  const dryRun = args.includes("--dry-run");
-
-  if (command === "help" || args.includes("--help") || args.includes("-h")) {
-    console.log(`
-  @supa-media/claude - Claude Code configuration for Supa apps
-
-  Usage:
-    npx @supa-media/claude sync              Sync templates into .claude/ and generate CLAUDE.md
-    npx @supa-media/claude sync --force      Overwrite existing files
-    npx @supa-media/claude sync --dry-run    Preview changes without writing files
-    npx @supa-media/claude help              Show this help message
-
-  Configuration:
-    The sync command reads app-specific values from supa.config.ts (or .js/.mjs)
-    in your project root. Supported fields:
-
-      appName       - Used in CLAUDE.md template (e.g., project naming)
-      displayName   - Human-readable app name
-      githubOwner   - GitHub org/user for GraphQL queries in review-cycle
-      githubRepo    - GitHub repo name for GraphQL queries in review-cycle
-
-    If no config file is found, values are read from package.json.
-`);
-    process.exit(0);
-  }
-
-  if (command !== "sync") {
-    console.error(`  Unknown command: ${command}\n  Run 'npx @supa-media/claude help' for usage.`);
-    process.exit(1);
-  }
-
-  const projectRoot = findProjectRoot(process.cwd());
-  if (!projectRoot) {
-    console.error("  Could not find project root (no package.json found).");
-    process.exit(1);
-  }
-
-  sync(projectRoot, { force, dryRun });
-}
-
-main();
+export { sync, loadSupaConfig, applyTemplateVars, findProjectRoot };

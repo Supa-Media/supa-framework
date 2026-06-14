@@ -7,6 +7,9 @@
   },
   "type": "module",
   "license": "MIT",
+  "dependencies": {
+    "@supa-media/claude": "workspace:^"
+  },
   "engines": {
     "node": ">=22"
   },
