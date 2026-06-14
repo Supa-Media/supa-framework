@@ -66,3 +66,22 @@ Bootstrap exception: the **`OP_SERVICE_ACCOUNT_TOKEN`** itself lives only in Git
 service-account token to the **one app vault** it needs, and prefer a
 **read-only** token for syncing; use a separate read/write token only for editing
 the vault.
+
+## Build-time public vars (`EXPO_PUBLIC_*`) — the crash trap
+
+`EXPO_PUBLIC_*` vars (e.g. `EXPO_PUBLIC_CONVEX_URL`) are **not read at runtime** —
+Expo **inlines them into the JS bundle at build/export time**. So they must be
+present in **every place that produces a bundle**:
+
+- `eas build` (native binary) — set as an **EAS environment variable** (or in the
+  build profile `env`), per environment.
+- `eas update` (OTA bundle) — the **OTA workflow** must set them too, or it ships
+  a bundle with `undefined` that crashes installed apps **on the same
+  runtimeVersion** (an OTA can break a working native build).
+- `expo export` for web — set in the web-deploy workflow.
+
+If `EXPO_PUBLIC_CONVEX_URL` is missing, `<SupaConvexProvider>` renders a visible
+"Configuration error" screen in production (and red-boxes in dev) instead of an
+opaque native crash — but the right fix is to set the var in all three places.
+The scaffolded `deploy-mobile-update.yml` / web-deploy workflows already wire it;
+keep it wired when you customize them.
