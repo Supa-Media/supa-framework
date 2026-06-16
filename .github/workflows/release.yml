@@ -1,8 +1,8 @@
-# Publishes @supa-media/* packages to GitHub Packages (private npm registry).
+# Publishes @supa-media/* packages to the public npm registry (npmjs.org).
 #
 # On push to main, builds every dist-shipping package and runs
 # `changeset publish`. Per-package `publishConfig.registry` points each
-# @supa-media/* package at https://npm.pkg.github.com, and the GITHUB_TOKEN
+# @supa-media/* package at https://registry.npmjs.org, and the NPM_TOKEN secret
 # (via NODE_AUTH_TOKEN + registry-url) authorizes the publish.
 #
 # Run manually via the Actions tab (workflow_dispatch) or automatically on
@@ -22,7 +22,6 @@ concurrency:
 
 permissions:
   contents: write
-  packages: write
   pull-requests: write
 
 jobs:
@@ -45,7 +44,7 @@ jobs:
         with:
           node-version: "22"
           cache: pnpm
-          registry-url: "https://npm.pkg.github.com"
+          registry-url: "https://registry.npmjs.org"
           scope: "@supa-media"
 
       - name: Install dependencies
@@ -63,4 +62,4 @@ jobs:
           title: "chore: release packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
