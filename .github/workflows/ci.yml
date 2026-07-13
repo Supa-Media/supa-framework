@@ -8,6 +8,18 @@ name: CI
 on:
   workflow_call:
     inputs:
+      # Identifying inputs passed by consumer callers (e.g. events-os). Accepted for
+      # caller compatibility; a caller that passes a `with:` key this workflow does not
+      # declare causes a startup_failure (0 jobs), so these must stay declared even
+      # though the jobs below don't consume them directly.
+      app-slug:
+        description: "Consumer app identifier (e.g. \"events-os\"). Informational."
+        type: string
+        default: ""
+      strictness:
+        description: "CI strictness profile the caller requests (e.g. \"standard\"). Informational."
+        type: string
+        default: "standard"
       node-version:
         description: "Node.js version"
         type: string
