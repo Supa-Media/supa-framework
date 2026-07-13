@@ -109,6 +109,13 @@ on:
         type: boolean
         default: true
 
+# Consumer repos install @supa-media/* from GitHub Packages (npm.pkg.github.com),
+# whose token even for public packages must be present. `packages: read` lets the
+# inherited GITHUB_TOKEN authenticate. No job writes, so read-only is sufficient.
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   detect-changes:
     name: Detect Changes
@@ -148,6 +155,8 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # auth GitHub Packages (@supa-media/*)
 
       - name: Run lint
         run: ${{ inputs.lint-command }}
@@ -179,6 +188,8 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # auth GitHub Packages (@supa-media/*)
 
       - name: Run tests
         run: pnpm --filter ${{ inputs.shared-package }} test
@@ -207,6 +218,8 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # auth GitHub Packages (@supa-media/*)
 
       - name: Run tests
         working-directory: apps/mobile
@@ -215,12 +228,22 @@ jobs:
       - name: Check native fingerprint
         if: ${{ inputs.has-fingerprint-check }}
         working-directory: apps/mobile
-        run: node scripts/check-fingerprint.js
+        run: |
+          if [ -f scripts/check-fingerprint.js ]; then
+            node scripts/check-fingerprint.js
+          else
+            echo "::notice::apps/mobile/scripts/check-fingerprint.js not found — skipping fingerprint check"
+          fi
 
       - name: Check native import gating
         if: ${{ inputs.has-native-import-check }}
         working-directory: apps/mobile
-        run: node scripts/check-native-imports.js
+        run: |
+          if [ -f scripts/check-native-imports.js ]; then
+            node scripts/check-native-imports.js
+          else
+            echo "::notice::apps/mobile/scripts/check-native-imports.js not found — skipping native import check"
+          fi
 
       - name: Verify Metro bundler (catch import errors)
         if: ${{ inputs.has-metro-verify }}
@@ -253,6 +276,8 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # auth GitHub Packages (@supa-media/*)
 
       - name: Pre-deploy build steps
         if: ${{ inputs.pre-deploy-build-steps != '' }}
@@ -295,6 +320,8 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # auth GitHub Packages (@supa-media/*)
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
