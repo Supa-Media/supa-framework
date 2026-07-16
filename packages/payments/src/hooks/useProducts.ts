@@ -7,7 +7,7 @@
  */
 
 import { useMemo } from "react";
-import type { Product, Price, UseProductsResult } from "../types";
+import type { Product, Price, UseProductsResult } from "../types/index.js";
 
 /**
  * Raw product data shape from a Convex query.

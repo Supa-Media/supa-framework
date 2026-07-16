@@ -1,4 +1,4 @@
-import type { SupaConfig } from "./types";
+import type { SupaConfig } from "./types.js";
 
 /**
  * Type-safe configuration helper for `supa.config.ts`.

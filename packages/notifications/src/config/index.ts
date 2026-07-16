@@ -2,7 +2,7 @@
  * Notification configuration — Android channels and default categories.
  */
 
-import type { AndroidNotificationChannel } from "../types";
+import type { AndroidNotificationChannel } from "../types/index.js";
 
 // =============================================================================
 // Android Notification Channels

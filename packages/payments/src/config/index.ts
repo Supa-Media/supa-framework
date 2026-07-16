@@ -5,7 +5,7 @@
  * Stripe keys for development, staging, and production.
  */
 
-import type { StripeConfig, StripeEnvironment, StripeConfigMap } from "../types";
+import type { StripeConfig, StripeEnvironment, StripeConfigMap } from "../types/index.js";
 
 // =============================================================================
 // Config Store

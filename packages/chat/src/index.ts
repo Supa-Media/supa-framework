@@ -9,7 +9,7 @@
  */
 
 // Components
-export { MessageList, MessageInput } from "./components";
+export { MessageList, MessageInput } from "./components/index.js";
 export type {
   MessageListProps,
   MessageListTheme,
@@ -17,10 +17,10 @@ export type {
   MessageInputProps,
   MessageInputTheme,
   ReplyTo,
-} from "./components";
+} from "./components/index.js";
 
 // Hooks
-export { useMessages, useSendMessage, useChannels, useUnreadCount } from "./hooks";
+export { useMessages, useSendMessage, useChannels, useUnreadCount } from "./hooks/index.js";
 
 // Stores
 export {
@@ -31,11 +31,11 @@ export {
   useInboxCache,
   createInboxCache,
   useOfflineQueue,
-} from "./stores";
+} from "./stores/index.js";
 
 // Adapters
-export { ConvexChatAdapter } from "./adapters";
-export type { ChatAdapter } from "./adapters";
+export { ConvexChatAdapter } from "./adapters/index.js";
+export type { ChatAdapter } from "./adapters/index.js";
 
 // Types
 export type {
@@ -50,5 +50,5 @@ export type {
   PaginatedMessagesResult,
   UseMessagesResult,
   UseSendMessageResult,
-} from "./types";
-export { DEFAULT_CHAT_CONFIG } from "./types";
+} from "./types/index.js";
+export { DEFAULT_CHAT_CONFIG } from "./types/index.js";

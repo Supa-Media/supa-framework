@@ -22,8 +22,8 @@
 
 import { View, Text, Pressable, ActivityIndicator, StyleSheet } from "react-native";
 import type { ReactElement } from "react";
-import type { Subscription, SubscriptionStatus } from "../types";
-import { useSubscription } from "../hooks/useSubscription";
+import type { Subscription, SubscriptionStatus } from "../types/index.js";
+import { useSubscription } from "../hooks/useSubscription.js";
 
 // =============================================================================
 // Status Display

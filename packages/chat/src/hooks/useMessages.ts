@@ -16,9 +16,9 @@
  */
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { useMessageCache } from "../stores/messageCache";
-import type { ChatAdapter } from "../adapters/ChatAdapter";
-import type { Message, PaginatedMessagesResult, UseMessagesResult } from "../types";
+import { useMessageCache } from "../stores/messageCache.js";
+import type { ChatAdapter } from "../adapters/ChatAdapter.js";
+import type { Message, PaginatedMessagesResult, UseMessagesResult } from "../types/index.js";
 
 /**
  * Subscribe to messages for a channel with pagination.

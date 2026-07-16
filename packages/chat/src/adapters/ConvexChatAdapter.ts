@@ -13,13 +13,13 @@
  * (useMessages, useChannels) uses useQuery directly for reactivity.
  */
 
-import type { ChatAdapter } from "./ChatAdapter";
+import type { ChatAdapter } from "./ChatAdapter.js";
 import type {
   Message,
   Channel,
   PaginatedMessagesResult,
   SendMessageOptions,
-} from "../types";
+} from "../types/index.js";
 
 interface ConvexChatAdapterConfig {
   /**

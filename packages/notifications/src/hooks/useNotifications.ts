@@ -3,12 +3,12 @@
  */
 
 import { useContext } from "react";
-import { NotificationContext } from "../providers/NotificationContext";
+import { NotificationContext } from "../providers/NotificationContext.js";
 import type {
   UseNotificationsResult,
   UseNotificationPermissionResult,
   UsePushTokenResult,
-} from "../types";
+} from "../types/index.js";
 
 /**
  * Access the most recent notification and readiness state.

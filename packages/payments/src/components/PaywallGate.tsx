@@ -19,8 +19,8 @@
  */
 
 import type { ReactNode, ReactElement } from "react";
-import type { SubscriptionStatus } from "../types";
-import { useSubscription } from "../hooks/useSubscription";
+import type { SubscriptionStatus } from "../types/index.js";
+import { useSubscription } from "../hooks/useSubscription.js";
 
 const DEFAULT_ALLOWED_STATUSES: SubscriptionStatus[] = ["active", "trialing"];
 

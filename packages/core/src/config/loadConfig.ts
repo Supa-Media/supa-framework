@@ -1,4 +1,4 @@
-import type { SupaConfig } from "./types";
+import type { SupaConfig } from "./types.js";
 
 /**
  * Loads the Supa configuration from `supa.config.ts` at the project root.

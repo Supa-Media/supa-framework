@@ -1,5 +1,5 @@
-export { defineConfig } from "./defineConfig";
-export { loadConfig } from "./loadConfig";
+export { defineConfig } from "./defineConfig.js";
+export { loadConfig } from "./loadConfig.js";
 export type {
   SupaConfig,
   AuthConfig,
@@ -13,4 +13,4 @@ export type {
   DevConfig,
   SharedConfig,
   ConvexConfig,
-} from "./types";
+} from "./types.js";

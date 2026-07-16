@@ -5,5 +5,5 @@
  * backend. Implement this interface to plug in any real-time data source.
  */
 
-export { type ChatAdapter } from "./ChatAdapter";
-export { ConvexChatAdapter } from "./ConvexChatAdapter";
+export { type ChatAdapter } from "./ChatAdapter.js";
+export { ConvexChatAdapter } from "./ConvexChatAdapter.js";

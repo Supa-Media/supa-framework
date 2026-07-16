@@ -1,4 +1,4 @@
 export {
   KeyboardAwareFormContainer,
   type KeyboardAwareFormContainerProps,
-} from "./KeyboardAwareFormContainer";
+} from "./KeyboardAwareFormContainer.js";

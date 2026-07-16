@@ -38,7 +38,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && node --test \"__tests__/*.test.js\""
   },
   "peerDependencies": {
     "expo-constants": ">=18.0.0",

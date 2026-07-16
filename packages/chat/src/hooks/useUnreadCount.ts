@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from "react";
-import type { ChatAdapter } from "../adapters/ChatAdapter";
+import type { ChatAdapter } from "../adapters/ChatAdapter.js";
 
 interface UseUnreadCountResult {
   unreadCount: number;

@@ -12,12 +12,12 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { ChatAdapter } from "../adapters/ChatAdapter";
+import type { ChatAdapter } from "../adapters/ChatAdapter.js";
 import type {
   OptimisticMessage,
   SendMessageOptions,
   UseSendMessageResult,
-} from "../types";
+} from "../types/index.js";
 
 /**
  * Send messages with optimistic updates.

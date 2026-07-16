@@ -1,2 +1,2 @@
-export { SupaModal, type SupaModalProps } from "./SupaModal";
-export { SupaTabBar, type SupaTabBarProps } from "./SupaTabBar";
+export { SupaModal, type SupaModalProps } from "./SupaModal.js";
+export { SupaTabBar, type SupaTabBarProps } from "./SupaTabBar.js";
