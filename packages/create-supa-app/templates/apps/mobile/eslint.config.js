@@ -1,7 +1,7 @@
-import supaConfig from "@supa-media/linter";
+import supaPreset from "@supa-media/linter/preset";
 
 export default [
-  ...supaConfig,
+  ...supaPreset,
   {
     ignores: ["metro.config.js", "babel.config.js"],
   },

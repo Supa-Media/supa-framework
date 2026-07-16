@@ -10,6 +10,9 @@
   "files": [
     "src"
   ],
+  "scripts": {
+    "test": "node --test"
+  },
   "peerDependencies": {
     "eslint": ">=8.0.0"
   },
