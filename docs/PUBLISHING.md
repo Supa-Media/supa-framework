@@ -34,7 +34,11 @@ scaffold to TestFlight on it, and every gotcha below cost real debugging. Read t
 ## 1. Scaffold and run locally
 
 ```bash
-npx create-supa-app my-app
+# Clone the framework and run the scaffolder locally
+git clone https://github.com/Supa-Media/supa-framework.git
+cd supa-framework
+pnpm install
+node packages/create-supa-app/src/index.js my-app
 cd my-app
 pnpm install
 npx convex dev          # creates your personal Convex dev deployment, writes EXPO_PUBLIC_CONVEX_URL

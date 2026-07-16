@@ -9,7 +9,7 @@ Togather and Fount Studios are two production Expo + Convex apps built on nearly
 **Non-goals**: Supa is not a design system. It does not dictate colors, fonts, layouts, or component aesthetics. Apps own their entire visual layer.
 
 **Company**: Supa Media
-**Repo**: `github.com/lilseyi/supa-framework` (public)
+**Repo**: `github.com/Supa-Media/supa-framework`
 
 ---
 
@@ -41,24 +41,24 @@ Togather and Fount Studios are two production Expo + Convex apps built on nearly
 - Platform-specific file conventions (.web.ts, .native.ts)
 
 ### Layer 4: Feature Modules (opt-in during setup)
-- **`@supa/notifications`** — Push notifications with Firebase/APNs config, deep linking, rich notifications (images, actions), token management, permission flows
-- **`@supa/chat`** — Real-time messaging with pagination, virtual scrolling, offline caching, and pluggable data sources
-- **`@supa/payments`** — Stripe integration with staging/production key separation, subscription management, webhook handling
+- **`@supa-media/notifications`** — Push notifications with Firebase/APNs config, deep linking, rich notifications (images, actions), token management, permission flows
+- **`@supa-media/chat`** — Real-time messaging with pagination, virtual scrolling, offline caching, and pluggable data sources
+- **`@supa-media/payments`** — Stripe integration with staging/production key separation, subscription management, webhook handling
 - *(Future: maps, file uploads, etc.)*
 
 ### Layer 5: Release & Update Management
 - Configurable deployment strictness (from "push-to-prod" to "branch → staging → promote")
 - Semver with clear breaking/minor/patch classification
-- Bulk update story (one `pnpm update @supa/*` across 10 apps)
+- Bulk update story (one `pnpm update @supa-media/*` across 10 apps)
 
 ---
 
 ## Package Architecture
 
 ```
-supa-framework/                         (public monorepo)
+supa-framework/                         (monorepo)
 ├── packages/
-│   ├── core/                           @supa/core
+│   ├── core/                           @supa-media/core
 │   │   ├── providers/                  ConvexProvider, OTAProvider, ErrorBoundary,
 │   │   │                               KeyboardProvider, NetworkProvider, SafeAreaProvider
 │   │   ├── hooks/                      useAuth, useOTAStatus, useNetworkStatus,
@@ -69,7 +69,7 @@ supa-framework/                         (public monorepo)
 │   │   │                               keyboard avoidance utilities
 │   │   └── config/                     defineConfig, config reader
 │   │
-│   ├── chat/                           @supa/chat
+│   ├── chat/                           @supa-media/chat
 │   │   ├── components/                 MessageList (inverted FlatList + pagination),
 │   │   │                               MessageInput (keyboard-aware), MessageBubble
 │   │   ├── hooks/                      useMessages (pagination + live subscription),
@@ -79,7 +79,7 @@ supa-framework/                         (public monorepo)
 │   │   ├── adapters/                   ConvexChatAdapter (default), ChatAdapter interface
 │   │   └── types/                      Message, Channel, ChatConfig
 │   │
-│   ├── notifications/                  @supa/notifications
+│   ├── notifications/                  @supa-media/notifications
 │   │   ├── providers/                  NotificationProvider (permission flow,
 │   │   │                               token registration, deep link routing)
 │   │   ├── config/                     Firebase setup, APNs config, channel defs
@@ -90,7 +90,7 @@ supa-framework/                         (public monorepo)
 │   │   └── handlers/                   Background handler, tap handler,
 │   │                                   deep link resolver
 │   │
-│   ├── payments/                       @supa/payments
+│   ├── payments/                       @supa-media/payments
 │   │   ├── config/                     Stripe key management (staging vs prod),
 │   │   │                               product/price definitions
 │   │   ├── hooks/                      useSubscription, usePaymentSheet,
@@ -99,28 +99,28 @@ supa-framework/                         (public monorepo)
 │   │   │                               subscription state queries
 │   │   └── components/                 PaywallGate, SubscriptionStatus
 │   │
-│   ├── convex/                         @supa/convex
+│   ├── convex/                         @supa-media/convex
 │   │   ├── auth/                       OTP auth setup (Twilio + Resend),
 │   │   │                               requireAuth, getOptionalAuth helpers
 │   │   ├── schema/                     Base tables (users, tenants, auth),
 │   │   │                               multi-tenancy helpers
 │   │   ├── chat/                       Chat schema tables, message queries/mutations
-│   │   │                               (consumed by @supa/chat's ConvexChatAdapter)
+│   │   │                               (consumed by @supa-media/chat's ConvexChatAdapter)
 │   │   ├── notifications/              Push token storage, notification queue,
 │   │   │                               send helpers (Expo Push API)
 │   │   ├── payments/                   Stripe webhook handler, subscription tables,
 │   │   │                               customer management
 │   │   └── lib/                        Rate limiting, validation, scheduling utils
 │   │
-│   ├── metro/                          @supa/metro
+│   ├── metro/                          @supa-media/metro
 │   │   └── createMetroConfig()         pnpm monorepo support, shared package resolution
 │   │
-│   ├── native-safety/                  @supa/native-safety
+│   ├── native-safety/                  @supa-media/native-safety
 │   │   ├── check-fingerprint           Native change detection
 │   │   ├── check-native-imports        Static import gating enforcement
 │   │   └── hasNativeModule()           Runtime capability detection
 │   │
-│   ├── linter/                         @supa/linter
+│   ├── linter/                         @supa-media/linter
 │   │   ├── rules/                      ESLint rules for Supa conventions
 │   │   │   ├── no-ungated-native       Enforces native dep gating
 │   │   │   ├── route-naming            Expo Router path conventions
@@ -128,21 +128,21 @@ supa-framework/                         (public monorepo)
 │   │   │   └── keyboard-in-forms       Forms must use KeyboardAware wrapper
 │   │   └── preset.js                   Shareable ESLint config
 │   │
-│   ├── testing/                        @supa/testing
+│   ├── testing/                        @supa-media/testing
 │   │   ├── routing-conflicts           Detect routes resolving to same URL
 │   │   ├── web-bundle-safety           Validate .web counterparts exist
 │   │   ├── react-resolution            Ensure correct React version in monorepo
 │   │   └── native-import-check         CI-time static analysis
 │   │
-│   ├── dev/                            @supa/dev
+│   ├── dev/                            @supa-media/dev
 │   │   └── dev orchestrator            Convex + Expo together, flags, port mgmt
 │   │
-│   ├── scripts/                        @supa/scripts
+│   ├── scripts/                        @supa-media/scripts
 │   │   ├── sync-secrets-to-convex      Env var syncing from 1Password
 │   │   ├── generate-ota-version        RUNTIME.MMDDYY.HHMM versioning
 │   │   └── setup-secrets               Interactive secret setup from 1Password
 │   │
-│   └── create-supa-app/                create-supa-app (CLI)
+│   └── create-supa-app/                create-supa-app (private scaffolder)
 │       ├── templates/                  Scaffolded file templates
 │       └── prompts/                    Interactive setup questions
 │
@@ -165,7 +165,7 @@ supa-framework/                         (public monorepo)
 
 ## Opinionated Conventions (Enforced)
 
-Supa is opinionated about how you structure your app. These are enforced via `@supa/linter` rules and `@supa/testing` test suites.
+Supa is opinionated about how you structure your app. These are enforced via `@supa-media/linter` rules and `@supa-media/testing` test suites.
 
 ### File Structure
 ```
@@ -176,7 +176,7 @@ my-app/
         (auth)/               # Auth screens
         (app)/                # Authenticated app
           (tabs)/             # Tab navigation
-        _layout.tsx           # Root layout (thin — imports from @supa/core)
+        _layout.tsx           # Root layout (thin — imports from @supa-media/core)
       features/               # Feature modules (all business logic lives here)
         my-feature/
           components/         # Feature-specific components
@@ -217,13 +217,13 @@ my-app/
 
 ---
 
-## `@supa/chat` — Chat Module (Deep Dive)
+## `@supa-media/chat` — Chat Module (Deep Dive)
 
 The chat module is the first feature module. It provides production-grade messaging that apps can plug into with their own data sources.
 
 ### Architecture
 ```
-Consumer App                    @supa/chat                     @supa/convex
+Consumer App                    @supa-media/chat               @supa-media/convex
      │                              │                              │
      │  <ChatProvider               │                              │
      │    adapter={ConvexChatAdapter}│                              │
@@ -246,8 +246,8 @@ Consumer App                    @supa/chat                     @supa/convex
 
 ### Pluggable Data Sources
 ```typescript
-// Default: Convex adapter (works out of the box with @supa/convex chat schema)
-import { ConvexChatAdapter } from '@supa/chat/adapters';
+// Default: Convex adapter (works out of the box with @supa-media/convex chat schema)
+import { ConvexChatAdapter } from '@supa-media/chat/adapters';
 
 // Custom: implement the ChatAdapter interface for any backend
 interface ChatAdapter {
@@ -274,7 +274,7 @@ interface ChatAdapter {
 
 ---
 
-## `@supa/notifications` — Push Notifications (Core Module)
+## `@supa-media/notifications` — Push Notifications (Core Module)
 
 Notifications are one of the hardest things to get right in mobile apps. Firebase/APNs config, permission flows, token management, deep linking, background handling — all of this is boilerplate that every app needs. Supa makes it work out of the box.
 
@@ -287,7 +287,7 @@ Notifications are one of the hardest things to get right in mobile apps. Firebas
 - Notification channels/categories defined in config
 - All tokens (Firebase, APNs, Expo Push) managed in `supa.config.ts` and 1Password
 
-**Runtime (`@supa/notifications` package):**
+**Runtime (`@supa-media/notifications` package):**
 - `NotificationProvider` — wraps app, handles:
   - Permission request flow (asks at right time, handles denial gracefully)
   - Push token registration with Convex backend
@@ -299,7 +299,7 @@ Notifications are one of the hardest things to get right in mobile apps. Firebas
 - `useNotificationPermission()` — permission status + request function
 - `usePushToken()` — current push token
 
-**Backend (`@supa/convex/notifications`):**
+**Backend (`@supa-media/convex/notifications`):**
 - `pushTokens` table — stores device tokens per user
 - `notificationQueue` table — outbound notification queue
 - `sendNotification(ctx, { userId, title, body, image?, deepLink?, data? })` — helper
@@ -330,7 +330,7 @@ interface NotificationPayload {
 
 ---
 
-## `@supa/payments` — Stripe Integration
+## `@supa-media/payments` — Stripe Integration
 
 Payments scaffolding with proper staging/production key separation.
 
@@ -341,14 +341,14 @@ Payments scaffolding with proper staging/production key separation.
 - Webhook endpoint in Convex HTTP handler
 - Stripe webhook signing secret per environment
 
-**Runtime (`@supa/payments` package):**
+**Runtime (`@supa-media/payments` package):**
 - `useSubscription()` — current user's subscription status
 - `usePaymentSheet()` — Stripe payment sheet integration
 - `useProducts()` — available products/prices
 - `PaywallGate` — component that conditionally renders based on subscription
 - `SubscriptionStatus` — display component for current plan
 
-**Backend (`@supa/convex/payments`):**
+**Backend (`@supa-media/convex/payments`):**
 - `customers` table — Stripe customer mapping
 - `subscriptions` table — subscription state
 - Webhook handler (checkout.session.completed, invoice.paid, subscription.updated/deleted)
@@ -390,7 +390,7 @@ Wraps any form page. Ensures:
 
 ```tsx
 // Consumer usage — no keyboard headaches
-import { KeyboardAwareFormContainer } from '@supa/core/forms';
+import { KeyboardAwareFormContainer } from '@supa-media/core/forms';
 
 function MyFormScreen() {
   return (
@@ -413,7 +413,7 @@ In the root layout, provides keyboard state to the entire app:
 Uses `react-native-keyboard-controller` (core native dep) for accurate keyboard tracking.
 
 ### Chat Input Integration
-`@supa/chat`'s `MessageInput` uses `KeyboardProvider` internally — the input bar rises with the keyboard, content above scrolls up, no overlap ever.
+`@supa-media/chat`'s `MessageInput` uses `KeyboardProvider` internally — the input bar rises with the keyboard, content above scrolls up, no overlap ever.
 
 ---
 
@@ -437,7 +437,7 @@ During `create-supa-app`, the developer is asked: "Is this a multi-tenant app?"
 ### Scaffolded Schema (multi-tenant mode)
 ```typescript
 // apps/convex/schema.ts (generated)
-import { supaAuthTables, supaTenantTables } from '@supa/convex/schema';
+import { supaAuthTables, supaTenantTables } from '@supa-media/convex/schema';
 
 export default defineSchema({
   ...supaAuthTables,      // users, authAccounts, authSessions, etc.
@@ -458,7 +458,7 @@ Scaffolded by default. Consumer customizes which tabs and their icons/labels.
 
 ```tsx
 // Generated (app)/(tabs)/_layout.tsx — consumer edits this
-import { SupaTabBar } from '@supa/core/navigation';
+import { SupaTabBar } from '@supa-media/core/navigation';
 
 export default function TabLayout() {
   return (
@@ -578,8 +578,8 @@ Supa follows the same update model as Next.js, React, and Expo — consumer-driv
 
 When you push a fix to `supa-framework`:
 
-1. **Changesets** publishes new `@supa/*` package versions to npm with a changelog
-2. Consumers update when they're ready: `pnpm update @supa/*`
+1. **Changesets** publishes new `@supa-media/*` package versions to GitHub Packages with a changelog
+2. Consumers update when they're ready: `pnpm update @supa-media/*`
 3. CI runs — if tests pass, it's safe to deploy
 4. Deploy via the app's normal pipeline (OTA or native build)
 
@@ -596,20 +596,20 @@ No automated PRs, no forced updates. The framework publishes; consumers pull.
 ### Breaking Change Policy
 - Major versions ship with a **migration guide** and optional **codemod**:
   ```bash
-  npx @supa/codemods v2-auth-migration
+  npx @supa-media/codemods v2-auth-migration
   ```
 - Previous major version gets security patches for 6 months
 - Breaking changes are batched (no frequent majors)
 
 ### Changelog & Visibility
-Each `@supa/*` package has its own `CHANGELOG.md`. The framework repo also maintains a unified changelog showing what changed across all packages in each release.
+Each `@supa-media/*` package has its own `CHANGELOG.md`. The framework repo also maintains a unified changelog showing what changed across all packages in each release.
 
 ---
 
 ## Configuration: `supa.config.ts`
 
 ```typescript
-import { defineConfig } from '@supa/core/config';
+import { defineConfig } from '@supa-media/core/config';
 
 export default defineConfig({
   // App identity
@@ -648,9 +648,9 @@ export default defineConfig({
 
   // Feature modules
   features: {
-    notifications: true,  // @supa/notifications + push token tables + Expo Push
-    chat: true,           // @supa/chat + message/channel tables
-    payments: true,       // @supa/payments + Stripe integration
+    notifications: true,  // @supa-media/notifications + push token tables + Expo Push
+    chat: true,           // @supa-media/chat + message/channel tables
+    payments: true,       // @supa-media/payments + Stripe integration
   },
 
   // Build
@@ -719,7 +719,7 @@ name: CI
 on: [push, pull_request]
 jobs:
   ci:
-    uses: lilseyi/supa-framework/.github/workflows/ci.yml@v1
+    uses: Supa-Media/supa-framework/.github/workflows/ci.yml@v1
     with:
       node-version: "22"
       shared-package: "@myapp/shared"
@@ -740,12 +740,12 @@ The reusable workflows handle:
 ## Update Flow
 
 ### Framework JS update → consumer OTA
-1. Fix pushed to `supa-framework` → changesets publishes `@supa/chat@1.2.1`
-2. Consumer: `pnpm update @supa/*` → lockfile updates
+1. Fix pushed to `supa-framework` → changesets publishes `@supa-media/chat@1.2.1`
+2. Consumer: `pnpm update @supa-media/*` → lockfile updates
 3. Push to main → CI fingerprint passes → OTA published → users get update in background
 
 ### Framework native dep update
-1. `@supa/core` adds new native dep → consumer fingerprint check fails
+1. `@supa-media/core` adds new native dep → consumer fingerprint check fails
 2. CI blocks OTA → triggers native build workflow
 3. Consumer submits to stores → subsequent JS changes are OTA again
 
@@ -758,7 +758,11 @@ The reusable workflows handle:
 ## `create-supa-app` — The 2-Minute Setup
 
 ```bash
-npx create-supa-app my-app
+# Clone the framework and run the scaffolder locally
+git clone https://github.com/Supa-Media/supa-framework.git
+cd supa-framework
+pnpm install
+node packages/create-supa-app/src/index.js my-app
 ```
 
 ### Interactive Prompts
@@ -819,7 +823,7 @@ All secrets are stored as 1Password references in the config. The setup script v
 - `apps/convex/http.ts` with Stripe webhook endpoint (if payments enabled)
 - `apps/mobile/app/_layout.tsx` composing Supa provider stack (NotificationProvider, etc.)
 - `apps/mobile/app/(tabs)/_layout.tsx` with placeholder tabs
-- `apps/mobile/metro.config.js` (one-liner calling `@supa/metro`)
+- `apps/mobile/metro.config.js` (one-liner calling `@supa-media/metro`)
 - `apps/mobile/app.config.js` with push notification config, deep linking
 - `.github/workflows/` with reusable workflow wrappers (strictness-aware)
 - `native-deps.json` with defaults
@@ -847,25 +851,25 @@ Focus: Build the best possible framework for new apps. Migration of Togather/Fou
 ### Phase 1: Core + Backend (Week 1-3)
 
 **Infrastructure packages:**
-1. `@supa/core` — Providers (Convex, OTA, ErrorBoundary, Keyboard, Network, SafeArea), navigation helpers (Modal, BottomSheet), form utilities (KeyboardAwareFormContainer)
-2. `@supa/convex` — OTP auth (Twilio + Resend), auth helpers, base schema (users, tenants), multi-tenancy utilities
-3. `@supa/metro` — `createMetroConfig()` factory
-4. `@supa/native-safety` — fingerprint + import checking + `hasNativeModule()`
-5. `@supa/dev` — dev script orchestrator
-6. `@supa/scripts` — secret sync, OTA versioning, setup-secrets
+1. `@supa-media/core` — Providers (Convex, OTA, ErrorBoundary, Keyboard, Network, SafeArea), navigation helpers (Modal, BottomSheet), form utilities (KeyboardAwareFormContainer)
+2. `@supa-media/convex` — OTP auth (Twilio + Resend), auth helpers, base schema (users, tenants), multi-tenancy utilities
+3. `@supa-media/metro` — `createMetroConfig()` factory
+4. `@supa-media/native-safety` — fingerprint + import checking + `hasNativeModule()`
+5. `@supa-media/dev` — dev script orchestrator
+6. `@supa-media/scripts` — secret sync, OTA versioning, setup-secrets
 
 **Enforcement packages:**
-7. `@supa/linter` — ESLint rules (native gating, route naming, platform files, keyboard-in-forms)
-8. `@supa/testing` — Routing conflict detection, web bundle safety, React resolution
+7. `@supa-media/linter` — ESLint rules (native gating, route naming, platform files, keyboard-in-forms)
+8. `@supa-media/testing` — Routing conflict detection, web bundle safety, React resolution
 
 ### Phase 2: Notifications + Payments (Week 3-4)
 
-9. `@supa/notifications` — NotificationProvider, push token management, Expo Push API integration, deep link routing, Convex backend (token storage, notification queue, send helpers)
-10. `@supa/payments` — Stripe integration with staging/prod keys, webhook handler, subscription management, PaywallGate component
+9. `@supa-media/notifications` — NotificationProvider, push token management, Expo Push API integration, deep link routing, Convex backend (token storage, notification queue, send helpers)
+10. `@supa-media/payments` — Stripe integration with staging/prod keys, webhook handler, subscription management, PaywallGate component
 
 ### Phase 3: Chat Module (Week 4-5)
 
-11. `@supa/chat` — MessageList (inverted FlatList + cursor pagination), MessageInput (keyboard-aware), offline caching (Zustand + AsyncStorage), ConvexChatAdapter, chat schema tables
+11. `@supa-media/chat` — MessageList (inverted FlatList + cursor pagination), MessageInput (keyboard-aware), offline caching (Zustand + AsyncStorage), ConvexChatAdapter, chat schema tables
 
 ### Phase 4: CI/CD + Scaffolder (Week 5-6)
 
@@ -889,16 +893,16 @@ Migrate Fount Studios first (simpler), then Togather. This is not time-boxed —
 | Decision | Rationale |
 |----------|-----------|
 | **OTP only for auth** | Both apps use phone/email OTP. Keep it simple. Other auth can be added later. |
-| **npm packages, not templates** | Templates go stale. `pnpm update @supa/*` propagates improvements. |
+| **npm packages, not templates** | Templates go stale. `pnpm update @supa-media/*` propagates improvements. |
 | **Chat as a separate module** | Not every app needs chat. But those that do shouldn't rebuild pagination, offline caching, and keyboard handling from scratch. |
 | **ESLint rules for conventions** | File structure and patterns are enforced at lint time, not just documented. Catches violations before CI. |
 | **Test suites for Expo gotchas** | Routing conflicts, web bundle safety, React resolution — these catch real production bugs. Ship them as reusable test packages. |
 | **1Password required** | Both apps use it. Opinionated choice eliminates secret management bikeshedding. |
 | **Multi-tenancy is a scaffold-time choice** | Adding it later is painful (schema migration, query changes). Decide upfront. |
-| **Keyboard handling at framework level** | Every Expo app hits this. Solving it once in `@supa/core` prevents the #1 form UX complaint. |
+| **Keyboard handling at framework level** | Every Expo app hits this. Solving it once in `@supa-media/core` prevents the #1 form UX complaint. |
 | **Notifications as core module** | Every real app needs push notifications. Firebase/APNs setup is painful and error-prone. Do it once. |
 | **Configurable deploy strictness** | Side projects and production SaaS have different needs. Don't force ceremony on prototypes. |
-| **Consumer-driven updates (Next.js model)** | Consumers update on their own schedule via `pnpm update @supa/*`. Changelogs + codemods for breaking changes. No automated PRs — scales to any number of consumers. |
+| **Consumer-driven updates (Next.js model)** | Consumers update on their own schedule via `pnpm update @supa-media/*`. Changelogs + codemods for breaking changes. No automated PRs — scales to any number of consumers. |
 
 ---
 
@@ -919,7 +923,7 @@ If `landing` is configured, the scaffolder generates an `apps/web/` Vite + React
 
 ---
 
-## `@supa/claude` — Claude Code Config
+## `@supa-media/claude` — Claude Code Config
 
 Framework-specific Claude Code configuration, scaffolded into every consumer app's `.claude/` directory.
 
@@ -947,9 +951,9 @@ Framework-specific Claude Code configuration, scaffolded into every consumer app
 - Supa-specific patterns (native gating, keyboard handling, etc.)
 
 ### Update Flow
-When `@supa/claude` is updated, consumer apps get updated templates. The scaffolder can re-generate `.claude/` config:
+When `@supa-media/claude` is updated, consumer apps get updated templates. The scaffolder can re-generate `.claude/` config:
 ```bash
-npx @supa/claude sync    # updates commands, skills, hooks to latest
+npx @supa-media/claude sync    # updates commands, skills, hooks to latest
 ```
 
 ---
@@ -963,7 +967,7 @@ npx @supa/claude sync    # updates commands, skills, hooks to latest
 ## Verification Plan
 
 After each phase, verify:
-1. `npx create-supa-app test-app` → scaffolds correctly with all selected features
+1. `node packages/create-supa-app/src/index.js test-app` → scaffolds correctly with all selected features
 2. `pnpm install && pnpm setup:secrets && pnpm dev` → app runs in under 2 minutes
 3. Auth flow works (phone OTP + email OTP)
 4. Push notifications register token, receive test notification, deep link resolves
@@ -975,4 +979,4 @@ After each phase, verify:
 10. Native change detected when adding a gated dep
 11. Multi-tenancy works (if enabled) — tenant creation, switching, data isolation
 12. Deploy strictness levels work — relaxed auto-deploys, standard requires promotion, strict requires canary
-13. `pnpm update @supa/*` in consumer app → CI passes → OTA deploys (framework update flow)
+13. `pnpm update @supa-media/*` in consumer app → CI passes → OTA deploys (framework update flow)
