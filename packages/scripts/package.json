@@ -10,6 +10,7 @@
     "supa-bump-version": "./src/bump-version.js"
   },
   "scripts": {
+    "test": "node --test",
     "sync-secrets": "./src/sync-secrets-to-convex.sh",
     "sync-1password-to-github": "./src/sync-1password-to-github.sh",
     "setup-secrets": "./src/setup-secrets.sh",

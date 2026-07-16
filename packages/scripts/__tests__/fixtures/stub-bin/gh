@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Stub GitHub CLI for sync-1password-to-github.test.js. Implements just
+# enough of `gh` for the script under test: `auth status` (auth check),
+# `repo view` (repo detection), `secret set` and `secret delete`. Every
+# set/delete call is logged to $STUB_STATE_DIR/gh-calls.log so tests can
+# assert exactly which GitHub writes/deletes happened (and, critically,
+# which did NOT).
+
+set -euo pipefail
+
+STATE="${STUB_STATE_DIR:?STUB_STATE_DIR must be set for the gh stub}"
+
+if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+  exit 0
+fi
+
+if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
+  echo "stub-org/stub-repo"
+  exit 0
+fi
+
+if [ "$1" = "secret" ] && [ "$2" = "set" ]; then
+  key="$3"
+  shift 3
+  env=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --env) env="$2"; shift 2 ;;
+      --repo) shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  value="$(cat)"
+  echo "set $key $env $value" >>"$STATE/gh-calls.log"
+  exit 0
+fi
+
+if [ "$1" = "secret" ] && [ "$2" = "delete" ]; then
+  key="$3"
+  shift 3
+  env=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --env) env="$2"; shift 2 ;;
+      --repo) shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  echo "delete $key $env" >>"$STATE/gh-calls.log"
+  exit 0
+fi
+
+echo "gh stub: unhandled invocation: $*" >&2
+exit 1

@@ -21,6 +21,8 @@
 # Environment:
 #   OP_VAULT                 - (optional) 1Password vault name. Overridden by --vault flag.
 #   SUPA_SECRETS_ALLOWLIST   - (optional) Path to the allowlist JSON file. Overridden by --allowlist flag.
+#   SUPA_RETRY_MAX_ATTEMPTS  - (optional) Retry attempts for op read / gh secret set. Default 3.
+#   SUPA_RETRY_BACKOFF_SECONDS - (optional) Backoff base (seconds) between retries. Default 3.
 #
 # Allowlist file (JSON):
 #   {
@@ -42,6 +44,17 @@
 #   - aliases:   copies another key's already-resolved value under a second
 #                GitHub secret name (e.g. two env vars that should carry the
 #                same underlying secret). Pruned when the source is absent.
+#
+# Two-phase, all-or-nothing execution:
+#   Phase 1 (read) reads and classifies EVERY allowlisted secret across every
+#   targeted environment before making a single GitHub API call. A secret is
+#   only ever pruned when 1Password gives a definitive "this item/field does
+#   not exist" answer — any other read failure (auth, rate limit, network,
+#   an unreachable vault, ...) aborts the whole run with zero writes/deletes,
+#   because `op read` exits 1 identically for "doesn't exist" and "couldn't
+#   check", and guessing wrong on that distinction means silently deleting a
+#   real production secret. Phase 2 (apply) only runs if phase 1 came back
+#   completely clean; it sets values first, then prunes.
 
 set -euo pipefail
 
@@ -89,7 +102,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h|--help)
-      sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,53p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -129,6 +142,11 @@ else
   exit 1
 fi
 
+# Retry tuning (shared by op read and gh secret set retries below). Only
+# meant to be overridden by tests — production runs use the defaults.
+RETRY_MAX_ATTEMPTS="${SUPA_RETRY_MAX_ATTEMPTS:-3}"
+RETRY_BACKOFF_SECONDS="${SUPA_RETRY_BACKOFF_SECONDS:-3}"
+
 # ---------------------------------------------------------------------------
 # Verify prerequisites
 # ---------------------------------------------------------------------------
@@ -162,8 +180,17 @@ if [ -z "$REPO" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Load the allowlist (no jq dependency — parse with node, same trick used by
-# supa-sync-secrets and supa-setup-secrets in this package).
+# Load + validate the allowlist (no jq dependency — parse with node, same
+# trick used by supa-sync-secrets and supa-setup-secrets in this package).
+#
+# Validates both JSON syntax AND shape before anything else runs. A
+# syntactically-valid-but-wrong-shape file (e.g. "required" as a bare string
+# instead of an array) would otherwise throw inside json_list's/json_map's
+# `.forEach` — but that throw happens inside `< <(...)` process substitution,
+# where `set -e` does NOT propagate to the parent shell, so the `while read`
+# loop below would just silently see zero lines and required-secret
+# enforcement would vanish for the whole run with exit 0. Catching the shape
+# mismatch here, before it ever reaches json_list/json_map, avoids that trap.
 # ---------------------------------------------------------------------------
 json_list() {
   # $1: top-level array field name (required | optional)
@@ -182,8 +209,42 @@ json_map() {
   " "$ALLOWLIST" "$1"
 }
 
-if ! node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$ALLOWLIST" >/dev/null 2>&1; then
-  echo "Error: allowlist file is not valid JSON: $ALLOWLIST" >&2
+if ! node -e '
+  const fs = require("fs");
+  const path = process.argv[1];
+  let cfg;
+  try {
+    cfg = JSON.parse(fs.readFileSync(path, "utf8"));
+  } catch (e) {
+    console.error("Error: allowlist file is not valid JSON: " + path);
+    console.error("  " + e.message);
+    process.exit(1);
+  }
+  if (typeof cfg !== "object" || cfg === null || Array.isArray(cfg)) {
+    console.error("Error: allowlist file must contain a JSON object: " + path);
+    process.exit(1);
+  }
+  const isStringArray = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
+  const isStringMap = (v) =>
+    typeof v === "object" && v !== null && !Array.isArray(v) &&
+    Object.values(v).every((x) => typeof x === "string");
+  const errors = [];
+  for (const field of ["required", "optional"]) {
+    if (field in cfg && !isStringArray(cfg[field])) {
+      errors.push(`"${field}" must be an array of strings`);
+    }
+  }
+  for (const field of ["alwaysSet", "aliases"]) {
+    if (field in cfg && !isStringMap(cfg[field])) {
+      errors.push(`"${field}" must be an object mapping string keys to string values`);
+    }
+  }
+  if (errors.length > 0) {
+    console.error("Error: allowlist file has an invalid shape: " + path);
+    for (const e of errors) console.error("  - " + e);
+    process.exit(1);
+  }
+' "$ALLOWLIST"; then
   exit 1
 fi
 
@@ -215,6 +276,58 @@ if [ ${#REQUIRED_SECRETS[@]} -eq 0 ] && [ ${#OPTIONAL_SECRETS[@]} -eq 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# op read, with retry + failure classification.
+# ---------------------------------------------------------------------------
+# Sets globals: OP_READ_STATUS (found|missing|error), OP_READ_VALUE, OP_READ_ERROR
+#
+# `op read` exits 1 uniformly for every failure mode — a genuinely missing
+# item/field, a mistyped or unreachable vault, an expired/rate-limited
+# service-account token, a network blip — there is no structured exit code
+# to key off, only a free-text `[ERROR] ...` line on stderr. Treating "read
+# failed" as "secret doesn't exist" is exactly the bug this rewrite fixes:
+# a transient failure would otherwise look identical to an intentional
+# 1Password deletion and trigger `gh secret delete` on a real secret.
+#
+# So: retry with backoff first (mirrors gh_secret_set_retry below). Only
+# classify as "missing" (prune-eligible) when op's stderr matches its own
+# specific not-found phrasing (verified against 1Password CLI 2.32.1:
+# `"<item>" isn't an item in the "<vault>" vault` for a missing item,
+# `does not have a field '<field>'` for a missing field on an item that does
+# exist). Everything else — including an unreachable/misnamed vault, which
+# is a config problem, not a per-secret absence — is "error" after retries
+# are exhausted, and the caller must abort rather than prune on it.
+op_read_retry() {
+  local ref="$1"
+  local attempt=1
+  local output
+  while true; do
+    if output=$(op read "$ref" 2>&1); then
+      OP_READ_STATUS="found"
+      OP_READ_VALUE="$output"
+      OP_READ_ERROR=""
+      return 0
+    fi
+    case "$output" in
+      *"isn't an item in"*|*"does not have a field"*)
+        OP_READ_STATUS="missing"
+        OP_READ_VALUE=""
+        OP_READ_ERROR="$output"
+        return 0
+        ;;
+    esac
+    if [ "$attempt" -ge "$RETRY_MAX_ATTEMPTS" ]; then
+      OP_READ_STATUS="error"
+      OP_READ_VALUE=""
+      OP_READ_ERROR="$output"
+      return 0
+    fi
+    echo "  (op read failed, retry $attempt/$((RETRY_MAX_ATTEMPTS - 1)) in $((attempt * RETRY_BACKOFF_SECONDS))s: $ref)" >&2
+    sleep $((attempt * RETRY_BACKOFF_SECONDS))
+    attempt=$((attempt + 1))
+  done
+}
+
+# ---------------------------------------------------------------------------
 # Set a GitHub environment secret, retrying transient failures.
 # ---------------------------------------------------------------------------
 # `gh secret set` occasionally fails on a transient GitHub API 502 while
@@ -225,16 +338,16 @@ fi
 gh_secret_set_retry() {
   local key="$1" env="$2" value
   value="$(cat)"
-  local attempt=1 max=3
+  local attempt=1
   while true; do
     if printf '%s' "$value" | gh secret set "$key" --env "$env" --repo "$REPO" >/dev/null; then
       return 0
     fi
-    if [ "$attempt" -ge "$max" ]; then
+    if [ "$attempt" -ge "$RETRY_MAX_ATTEMPTS" ]; then
       return 1
     fi
-    echo "  (transient failure — retry $attempt/$((max - 1)) in $((attempt * 3))s)"
-    sleep $((attempt * 3))
+    echo "  (transient failure — retry $attempt/$((RETRY_MAX_ATTEMPTS - 1)) in $((attempt * RETRY_BACKOFF_SECONDS))s)"
+    sleep $((attempt * RETRY_BACKOFF_SECONDS))
     attempt=$((attempt + 1))
   done
 }
@@ -256,7 +369,8 @@ set_secret() {
 
 # Deletes a secret from the GitHub environment. Idempotent: missing secrets
 # don't count as failures. Used to prune stale optional/alias secrets that
-# were removed from 1Password so a deploy never reads a silently-stale value.
+# were confirmed removed from 1Password so a deploy never reads a
+# silently-stale value.
 delete_secret() {
   local key="$1" env="$2"
   if [ "$DRY_RUN" = true ]; then
@@ -273,127 +387,226 @@ delete_secret() {
 }
 
 # ---------------------------------------------------------------------------
-# Sync function
+# Phase 1: read + classify every allowlisted secret, for every targeted
+# environment. No GitHub writes happen in this phase. Populates the PLAN_*
+# arrays (what phase 2 will do) plus MISSING_REQUIRED / READ_ERRORS (either
+# of which blocks phase 2 entirely).
+#
+# Deliberately does NOT short-circuit on the first error: seeing every
+# affected secret up front (not just the first one hit) is what makes the
+# abort summary actually useful for diagnosing "is this really a systemic
+# 1Password outage, or one flaky read" before re-running.
 # ---------------------------------------------------------------------------
-sync_environment() {
-  local env="$1"
-  local synced=0
-  local skipped=0
-  local failed=0
-  local missing_required=0
+PLAN_ACTION=()
+PLAN_ENV=()
+PLAN_KEY=()
+PLAN_VALUE=()
+MISSING_REQUIRED=()
+READ_ERRORS=()
 
-  echo ""
-  echo "========================================"
-  echo "  Syncing secrets"
-  echo "  1Password: op://$VAULT/*/$env"
-  echo "  GitHub:    $REPO (environment: $env)"
-  if [ "$DRY_RUN" = true ]; then
-    echo "  Mode:      DRY RUN"
-  fi
-  echo "========================================"
-  echo ""
+plan_add() {
+  PLAN_ACTION+=("$1")
+  PLAN_ENV+=("$2")
+  PLAN_KEY+=("$3")
+  PLAN_VALUE+=("${4:-}")
+}
 
-  echo "Required secrets:"
-  for key in "${REQUIRED_SECRETS[@]}"; do
-    local value
-    value=$(op read "op://$VAULT/$key/$env" 2>/dev/null || true)
-    if [ -z "$value" ]; then
-      echo "  MISSING $key (op://$VAULT/$key/$env)"
-      missing_required=$((missing_required + 1))
-      continue
+build_plan() {
+  local env key i target source default
+  for env in "${ENVIRONMENTS[@]}"; do
+    echo ""
+    echo "========================================"
+    echo "  Reading secrets — phase 1/2, no changes yet"
+    echo "  1Password: op://$VAULT/*/$env"
+    echo "  GitHub:    $REPO (environment: $env)"
+    echo "========================================"
+
+    echo ""
+    echo "Required:"
+    # Guarded by a length check (not a bare `for key in "${ARR[@]}"`):
+    # bash 3.2 — still `/bin/bash` on macOS — treats expanding an EMPTY
+    # array under `set -u` as an unbound-variable error, not zero
+    # iterations. required/optional are independently optional in the
+    # allowlist (only "at least one of them is non-empty" is enforced
+    # above), so either can legitimately be empty here.
+    if [ ${#REQUIRED_SECRETS[@]} -gt 0 ]; then
+      for key in "${REQUIRED_SECRETS[@]}"; do
+        op_read_retry "op://$VAULT/$key/$env"
+        case "$OP_READ_STATUS" in
+          found)
+            echo "  FOUND   $key"
+            plan_add set "$env" "$key" "$OP_READ_VALUE"
+            ;;
+          missing)
+            echo "  MISSING $key (required)"
+            MISSING_REQUIRED+=("$env: $key")
+            ;;
+          error)
+            echo "  ERROR   $key: $OP_READ_ERROR"
+            READ_ERRORS+=("$env: $key: $OP_READ_ERROR")
+            ;;
+        esac
+      done
     fi
-    if set_secret "$key" "$value" "$env"; then
-      synced=$((synced + 1))
-    else
-      failed=$((failed + 1))
+
+    echo ""
+    echo "Optional:"
+    if [ ${#OPTIONAL_SECRETS[@]} -gt 0 ]; then
+      for key in "${OPTIONAL_SECRETS[@]}"; do
+        op_read_retry "op://$VAULT/$key/$env"
+        case "$OP_READ_STATUS" in
+          found)
+            echo "  FOUND   $key"
+            plan_add set "$env" "$key" "$OP_READ_VALUE"
+            ;;
+          missing)
+            echo "  ABSENT  $key (will prune from GitHub if present)"
+            plan_add delete "$env" "$key"
+            ;;
+          error)
+            echo "  ERROR   $key: $OP_READ_ERROR"
+            READ_ERRORS+=("$env: $key: $OP_READ_ERROR")
+            ;;
+        esac
+      done
+    fi
+
+    if [ ${#ALWAYS_SET_KEYS[@]} -gt 0 ]; then
+      echo ""
+      echo "Always-set switches:"
+      for i in "${!ALWAYS_SET_KEYS[@]}"; do
+        key="${ALWAYS_SET_KEYS[$i]}"
+        default="${ALWAYS_SET_DEFAULTS[$i]}"
+        op_read_retry "op://$VAULT/$key/$env"
+        case "$OP_READ_STATUS" in
+          found)
+            echo "  FOUND   $key"
+            plan_add set "$env" "$key" "$OP_READ_VALUE"
+            ;;
+          missing)
+            echo "  DEFAULT $key -> $default"
+            plan_add set "$env" "$key" "$default"
+            ;;
+          error)
+            echo "  ERROR   $key: $OP_READ_ERROR"
+            READ_ERRORS+=("$env: $key: $OP_READ_ERROR")
+            ;;
+        esac
+      done
+    fi
+
+    if [ ${#ALIAS_TARGETS[@]} -gt 0 ]; then
+      echo ""
+      echo "Aliases:"
+      for i in "${!ALIAS_TARGETS[@]}"; do
+        target="${ALIAS_TARGETS[$i]}"
+        source="${ALIAS_SOURCES[$i]}"
+        op_read_retry "op://$VAULT/$source/$env"
+        case "$OP_READ_STATUS" in
+          found)
+            echo "  FOUND   $target (alias for $source)"
+            plan_add set "$env" "$target" "$OP_READ_VALUE"
+            ;;
+          missing)
+            echo "  ABSENT  $target (alias for $source, will prune if present)"
+            plan_add delete "$env" "$target"
+            ;;
+          error)
+            echo "  ERROR   $target (alias for $source): $OP_READ_ERROR"
+            READ_ERRORS+=("$env: $target (alias for $source): $OP_READ_ERROR")
+            ;;
+        esac
+      done
     fi
   done
-
-  echo ""
-  echo "Optional secrets:"
-  for key in "${OPTIONAL_SECRETS[@]}"; do
-    local value
-    value=$(op read "op://$VAULT/$key/$env" 2>/dev/null || true)
-    if [ -z "$value" ]; then
-      # 1Password is the source of truth: a missing optional item means it
-      # should not exist in GitHub either, so prune any stale copy.
-      delete_secret "$key" "$env"
-      skipped=$((skipped + 1))
-      continue
-    fi
-    if set_secret "$key" "$value" "$env"; then
-      synced=$((synced + 1))
-    else
-      failed=$((failed + 1))
-    fi
-  done
-
-  if [ ${#ALWAYS_SET_KEYS[@]} -gt 0 ]; then
-    echo ""
-    echo "Always-set switches:"
-    local i
-    for i in "${!ALWAYS_SET_KEYS[@]}"; do
-      local key="${ALWAYS_SET_KEYS[$i]}"
-      local default="${ALWAYS_SET_DEFAULTS[$i]}"
-      local value
-      value=$(op read "op://$VAULT/$key/$env" 2>/dev/null || true)
-      value="${value:-$default}"
-      if set_secret "$key" "$value" "$env"; then
-        synced=$((synced + 1))
-      else
-        failed=$((failed + 1))
-      fi
-    done
-  fi
-
-  if [ ${#ALIAS_TARGETS[@]} -gt 0 ]; then
-    echo ""
-    echo "Aliases:"
-    local i
-    for i in "${!ALIAS_TARGETS[@]}"; do
-      local target="${ALIAS_TARGETS[$i]}"
-      local source="${ALIAS_SOURCES[$i]}"
-      local value
-      value=$(op read "op://$VAULT/$source/$env" 2>/dev/null || true)
-      if [ -z "$value" ]; then
-        delete_secret "$target" "$env"
-        skipped=$((skipped + 1))
-        continue
-      fi
-      echo "  $target (alias for $source)"
-      if set_secret "$target" "$value" "$env"; then
-        synced=$((synced + 1))
-      else
-        failed=$((failed + 1))
-      fi
-    done
-  fi
-
-  echo ""
-  echo "========================================"
-  echo "  $env sync complete"
-  echo "  Synced:  $synced"
-  echo "  Skipped: $skipped"
-  echo "  Failed:  $failed"
-  if [ "$missing_required" -gt 0 ]; then
-    echo "  Missing required: $missing_required"
-  fi
-  echo "========================================"
-
-  if [ "$failed" -gt 0 ] || [ "$missing_required" -gt 0 ]; then
-    return 1
-  fi
 }
 
 # ---------------------------------------------------------------------------
-# Run sync for each environment
+# Phase 2: apply the plan built in phase 1 — sets first, then prunes. Only
+# ever called once phase 1 confirmed zero missing-required and zero read
+# errors across every targeted environment.
 # ---------------------------------------------------------------------------
-EXIT_CODE=0
+apply_plan() {
+  local env i overall_failed=0
+  for env in "${ENVIRONMENTS[@]}"; do
+    local synced=0 pruned=0 failed=0
+    echo ""
+    echo "========================================"
+    echo "  Applying changes — phase 2/2"
+    echo "  GitHub: $REPO (environment: $env)"
+    if [ "$DRY_RUN" = true ]; then
+      echo "  Mode:   DRY RUN"
+    fi
+    echo "========================================"
 
-for ENV in "${ENVIRONMENTS[@]}"; do
-  if ! sync_environment "$ENV"; then
-    EXIT_CODE=1
+    echo ""
+    echo "Setting secrets:"
+    for i in "${!PLAN_ACTION[@]}"; do
+      [ "${PLAN_ENV[$i]}" = "$env" ] || continue
+      [ "${PLAN_ACTION[$i]}" = "set" ] || continue
+      if set_secret "${PLAN_KEY[$i]}" "${PLAN_VALUE[$i]}" "$env"; then
+        synced=$((synced + 1))
+      else
+        failed=$((failed + 1))
+      fi
+    done
+
+    echo ""
+    echo "Pruning stale secrets:"
+    for i in "${!PLAN_ACTION[@]}"; do
+      [ "${PLAN_ENV[$i]}" = "$env" ] || continue
+      [ "${PLAN_ACTION[$i]}" = "delete" ] || continue
+      delete_secret "${PLAN_KEY[$i]}" "$env"
+      pruned=$((pruned + 1))
+    done
+
+    echo ""
+    echo "========================================"
+    echo "  $env sync complete"
+    echo "  Synced: $synced"
+    echo "  Pruned: $pruned"
+    echo "  Failed: $failed"
+    echo "========================================"
+
+    if [ "$failed" -gt 0 ]; then
+      overall_failed=1
+    fi
+  done
+  return $overall_failed
+}
+
+# ---------------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------------
+build_plan
+
+if [ ${#MISSING_REQUIRED[@]} -gt 0 ] || [ ${#READ_ERRORS[@]} -gt 0 ]; then
+  echo ""
+  echo "========================================"
+  echo "  ABORTED — no GitHub secrets were changed"
+  echo "========================================"
+  if [ ${#MISSING_REQUIRED[@]} -gt 0 ]; then
+    echo ""
+    echo "Missing required secrets:"
+    for entry in "${MISSING_REQUIRED[@]}"; do
+      echo "  - $entry"
+    done
   fi
-done
+  if [ ${#READ_ERRORS[@]} -gt 0 ]; then
+    echo ""
+    echo "1Password read errors — could not confirm these are actually absent," \
+      "so refusing to prune them or write anything else this run:"
+    for entry in "${READ_ERRORS[@]}"; do
+      echo "  - $entry"
+    done
+  fi
+  echo ""
+  echo "Fix the above (1Password item/vault/auth) and re-run. Nothing was set or deleted in GitHub." >&2
+  exit 1
+fi
 
-exit $EXIT_CODE
+if apply_plan; then
+  exit 0
+else
+  exit 1
+fi
