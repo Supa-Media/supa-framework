@@ -23,7 +23,7 @@ const plugin = {
 
 // Recommended config (legacy format for .eslintrc)
 plugin.configs.recommended = {
-  plugins: ["@supa"],
+  plugins: ["@supa-media"],
   rules: {
     "@supa-media/no-ungated-native-import": "error",
     "@supa-media/route-file-no-logic": "warn",

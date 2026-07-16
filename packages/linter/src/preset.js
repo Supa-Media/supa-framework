@@ -13,7 +13,7 @@ const supaPlugin = require("./index");
 module.exports = [
   {
     plugins: {
-      "@supa": supaPlugin,
+      "@supa-media": supaPlugin,
     },
     rules: {
       "@supa-media/no-ungated-native-import": "error",
