@@ -193,7 +193,7 @@ If you're asked to do X and realize Y and Z also need fixing:
 - Add detection functions for native module availability
 - Create safe wrapper components that fall back gracefully
 - Classify all native deps in `apps/mobile/native-deps.json` as `core` or `gated`
-- CI enforces this via `@supa/native-safety` — static imports of gated deps fail
+- CI enforces this via `@supa-media/native-safety` — static imports of gated deps fail
 
 ### Prefer Framework Features Over Custom Solutions
 
@@ -333,15 +333,15 @@ Example workflow:
 
 ### Supa Framework Packages
 
-- **`@supa/core`** - Core configuration and utilities
-- **`@supa/convex`** - Convex backend helpers and patterns
-- **`@supa/native-safety`** - Native dependency gating for OTA safety
-- **`@supa/notifications`** - Push notification infrastructure
-- **`@supa/testing`** - Test utilities and fixtures
-- **`@supa/dev`** - Development server orchestration
-- **`@supa/linter`** - ESLint configuration
-- **`@supa/metro`** - Metro bundler configuration
-- **`@supa/claude`** - Claude Code configuration (this package)
+- **`@supa-media/core`** - Core configuration and utilities
+- **`@supa-media/convex`** - Convex backend helpers and patterns
+- **`@supa-media/native-safety`** - Native dependency gating for OTA safety
+- **`@supa-media/notifications`** - Push notification infrastructure
+- **`@supa-media/testing`** - Test utilities and fixtures
+- **`@supa-media/dev`** - Development server orchestration
+- **`@supa-media/linter`** - ESLint configuration
+- **`@supa-media/metro`** - Metro bundler configuration
+- **`@supa-media/claude`** - Claude Code configuration (this package)
 
 ### Infrastructure
 
