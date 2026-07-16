@@ -9,9 +9,12 @@
  *
  * Uses Node's built-in test runner (`node --test`, Node >=22) — no extra deps.
  * Builds real package.json/pnpm-lock.yaml fixtures on disk in a temp dir, then
- * calls the exported check functions directly (no subprocess spawn needed —
- * the functions only read from the paths passed in and never process.exit
- * except on missing --pkg/--lockfile args, which the CLI layer alone owns).
+ * calls the exported check functions directly for the pure-function tests
+ * below. The exported library functions (checkReactConsistency, loadConfig)
+ * never call process.exit — on a fatal input error (missing
+ * dependencies.react, missing lockfile, unreadable/unparseable --config) they
+ * throw instead. Only the CLI entrypoint (main(), exercised via a real
+ * subprocess spawn further down) catches those and owns exit codes.
  */
 
 const test = require("node:test");
@@ -19,6 +22,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const { spawnSync } = require("node:child_process");
 
 const {
   checkReactConsistency,
@@ -222,4 +226,100 @@ test("loadConfig returns empty defaults when no config path is given", () => {
   const { nativeDepNames, denylistExtra } = loadConfig(null);
   assert.equal(nativeDepNames.size, 0);
   assert.deepEqual(denylistExtra, []);
+});
+
+test("loadConfig throws (does not silently degrade) when --config was explicitly passed but the file does not exist", () => {
+  const missingPath = path.join(tmpRoot, "does-not-exist", "native-deps.json");
+  assert.throws(() => loadConfig(missingPath), /Config file not found/);
+});
+
+test("loadConfig throws when --config was explicitly passed but fails to parse", () => {
+  const dir = path.join(tmpRoot, "bad-config");
+  fs.mkdirSync(dir, { recursive: true });
+  const configPath = path.join(dir, "native-deps.json");
+  fs.writeFileSync(configPath, "{ this is not valid json");
+
+  assert.throws(() => loadConfig(configPath), /Could not parse config/);
+});
+
+test("checkReactConsistency throws (does not process.exit) when dependencies.react is missing — library functions never exit the host process", () => {
+  const dir = path.join(tmpRoot, "no-react-dep");
+  const lockfilePath = writeLockfile(dir, ["packages:", ""].join("\n"));
+  const pkgJson = { dependencies: {} };
+
+  assert.throws(
+    () => silence(() => checkReactConsistency(pkgJson, "fixture/package.json", lockfilePath, new Set())),
+    /Could not read dependencies\.react/
+  );
+});
+
+test("checkReactConsistency throws (does not process.exit) when the lockfile is missing", () => {
+  const pkgJson = { dependencies: { react: "19.1.0" } };
+  const missingLockfile = path.join(tmpRoot, "no-such-dir", "pnpm-lock.yaml");
+
+  assert.throws(
+    () => silence(() => checkReactConsistency(pkgJson, "fixture/package.json", missingLockfile, new Set())),
+    /Lockfile not found/
+  );
+});
+
+// ---------------------------------------------------------------------------
+// CLI entrypoint (main()) — real subprocess spawn, exercising parseArgs +
+// main()'s wiring end-to-end, not just the exported library functions.
+// ---------------------------------------------------------------------------
+
+const CLI_PATH = path.join(__dirname, "..", "src", "check-react-consistency.js");
+
+function writeHealthyFixture(dir) {
+  fs.mkdirSync(dir, { recursive: true });
+  const pkgPath = path.join(dir, "package.json");
+  fs.writeFileSync(
+    pkgPath,
+    JSON.stringify({ dependencies: { react: "19.1.0", "react-native": "0.81.5" } })
+  );
+  const lockfilePath = writeLockfile(
+    dir,
+    [
+      "packages:",
+      "",
+      "  /react@19.1.0:",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+      "  /react-native@0.81.5(react@19.1.0):",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+    ].join("\n")
+  );
+  return { pkgPath, lockfilePath };
+}
+
+test("CLI: bad --config path (explicitly passed, does not exist) exits 1 with a clear error, not a silent green pass", () => {
+  const dir = path.join(tmpRoot, "cli-bad-config");
+  const { pkgPath, lockfilePath } = writeHealthyFixture(dir);
+  const badConfigPath = path.join(dir, "does-not-exist.json");
+
+  const result = spawnSync(
+    process.execPath,
+    [CLI_PATH, "--pkg", pkgPath, "--lockfile", lockfilePath, "--config", badConfigPath],
+    { encoding: "utf-8" }
+  );
+
+  assert.equal(result.status, 1, `expected exit 1, got ${result.status}. stderr: ${result.stderr}`);
+  assert.match(result.stderr, /Config file not found/);
+  // Must NOT print the success banner — that would be the silent-degradation bug.
+  assert.doesNotMatch(result.stdout, /Native React graph OK/);
+});
+
+test("CLI: happy path (no --config) passes both gates and exits 0", () => {
+  const dir = path.join(tmpRoot, "cli-happy");
+  const { pkgPath, lockfilePath } = writeHealthyFixture(dir);
+
+  const result = spawnSync(
+    process.execPath,
+    [CLI_PATH, "--pkg", pkgPath, "--lockfile", lockfilePath],
+    { encoding: "utf-8" }
+  );
+
+  assert.equal(result.status, 0, `expected exit 0, got ${result.status}. stderr: ${result.stderr}`);
+  assert.match(result.stdout, /Native React graph OK/);
 });

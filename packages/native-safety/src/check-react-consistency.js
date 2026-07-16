@@ -94,20 +94,21 @@ function printUsage() {
 Usage: check-react-consistency [options]
 
 Options:
-  --pkg <path>          Path to the app's package.json, whose dependencies.react
-                         is the pinned version (required)
-  --lockfile <path>      Path to the workspace-root pnpm-lock.yaml (required)
-  --config <path>        Path to native-deps.json ({ core, gated } package name
-                          lists) — used to catch scoped native packages the
-                          name-prefix heuristic can't express (e.g.
-                          @react-native-community/datetimepicker,
-                          @gorhom/bottom-sheet). Its optional
-                          "nativeUnsafeDenylist" array extends the default
-                          web-lib denylist (gate #2).
-  --denylist <names>     Comma-separated additional native-unsafe package
-                          names/prefixes (e.g. "react-datepicker,@ant-design/")
-                          to extend the default denylist for gate #2.
-  --help, -h              Show this help message
+  --pkg <path>             Path to the app's package.json, whose dependencies.react
+                            is the pinned version (required)
+  --lockfile <path>        Path to the workspace-root pnpm-lock.yaml (required)
+  --config <path>          Path to native-deps.json ({ core, gated } package name
+                            lists) — used to catch scoped native packages the
+                            name-prefix heuristic can't express (e.g.
+                            @react-native-community/datetimepicker,
+                            @gorhom/bottom-sheet). Its optional
+                            "nativeUnsafeDenylist" array extends the default
+                            web-lib denylist (gate #2). Exits 1 if this path is
+                            explicitly passed but missing or unparseable.
+  --denylist <names>       Comma-separated additional native-unsafe package
+                            names/prefixes (e.g. "react-datepicker,@ant-design/")
+                            to extend the default denylist for gate #2.
+  --help, -h                Show this help message
 
 Examples:
   check-react-consistency --pkg apps/mobile/package.json --lockfile pnpm-lock.yaml
@@ -128,18 +129,35 @@ Examples:
  *
  * Also returns any `nativeUnsafeDenylist` array in the config, which extends
  * the default web-lib denylist (gate #2).
+ *
+ * `configPath === null` means `--config` was never passed — that's
+ * permissive by design (no scoped-package detection, no denylist extension).
+ * But if `configPath` IS given and the file is missing or fails to parse,
+ * that's a user-supplied path that silently can't do its job — throw so the
+ * CLI fails loudly instead of quietly degrading to "no config" while still
+ * printing a green banner.
  */
 function loadConfig(configPath) {
   if (!configPath) return { nativeDepNames: new Set(), denylistExtra: [] };
+
+  let raw;
   try {
-    const nd = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    return {
-      nativeDepNames: new Set([...(nd.core || []), ...(nd.gated || [])]),
-      denylistExtra: nd.nativeUnsafeDenylist || [],
-    };
-  } catch {
-    return { nativeDepNames: new Set(), denylistExtra: [] };
+    raw = fs.readFileSync(configPath, "utf-8");
+  } catch (err) {
+    throw new Error(`Config file not found at ${configPath} (${err.code || err.message})`);
   }
+
+  let nd;
+  try {
+    nd = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Could not parse config at ${configPath}: ${err.message}`);
+  }
+
+  return {
+    nativeDepNames: new Set([...(nd.core || []), ...(nd.gated || [])]),
+    denylistExtra: nd.nativeUnsafeDenylist || [],
+  };
 }
 
 /**
@@ -271,16 +289,15 @@ function checkReactConsistency(pkgJson, pkgLabel, lockfilePath, nativeDepNames) 
   // 1. Determine the pinned React version from the app's package.json.
   const pinned = pkgJson.dependencies && pkgJson.dependencies.react;
   if (!pinned) {
-    console.error(
-      `❌ Could not read dependencies.react from ${pkgLabel}`
-    );
-    process.exit(1);
+    // Library function: throw rather than process.exit — only the CLI
+    // entrypoint (main()) owns exit codes. Message text matches what the CLI
+    // used to print directly so stdout/stderr stay identical.
+    throw new Error(`Could not read dependencies.react from ${pkgLabel}`);
   }
 
   // 2. Read the shared lockfile.
   if (!fs.existsSync(lockfilePath)) {
-    console.error(`❌ Lockfile not found at ${lockfilePath}`);
-    process.exit(1);
+    throw new Error(`Lockfile not found at ${lockfilePath}`);
   }
   const lockLines = fs.readFileSync(lockfilePath, "utf-8").split("\n");
 
@@ -414,11 +431,38 @@ function main() {
   const pkgLabel = path.relative(process.cwd(), pkgPath);
   const pkgJson = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
 
-  const { nativeDepNames, denylistExtra } = loadConfig(configPath);
+  // A --config path that was explicitly passed but is missing/unparseable is
+  // a hard failure: silently falling back to "no config" would quietly
+  // disable scoped-package detection and the denylist extension while still
+  // printing a green banner (the exact class of gap this tool exists to
+  // prevent). loadConfig() throws in that case; a config path that was never
+  // passed (configPath === null) is permissive and never throws.
+  let nativeDepNames, denylistExtra;
+  try {
+    ({ nativeDepNames, denylistExtra } = loadConfig(configPath));
+  } catch (err) {
+    console.error(`❌ ${err.message}`);
+    console.error(
+      "   Pass a valid --config path (native-deps.json), or omit --config entirely"
+    );
+    console.error(
+      "   to skip scoped-package detection and denylist extension."
+    );
+    process.exit(1);
+  }
   const denylist = [...DEFAULT_NATIVE_UNSAFE_DENYLIST, ...denylistExtra, ...args.denylist];
 
   // Run BOTH gates (don't short-circuit — report every failure in one pass).
-  const reactOk = checkReactConsistency(pkgJson, pkgLabel, lockfilePath, nativeDepNames);
+  // checkReactConsistency() throws (rather than process.exit) on a missing
+  // dependencies.react / lockfile — those are fatal input errors, not a gate
+  // result, so catch here and let the CLI alone own the exit code.
+  let reactOk;
+  try {
+    reactOk = checkReactConsistency(pkgJson, pkgLabel, lockfilePath, nativeDepNames);
+  } catch (err) {
+    console.error(`❌ ${err.message}`);
+    process.exit(1);
+  }
   const denylistOk = checkNativeUnsafeDenylist(pkgJson, pkgLabel, denylist);
 
   if (!reactOk || !denylistOk) {
