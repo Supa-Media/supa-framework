@@ -91,6 +91,8 @@ If all verifications pass:
 
    Reviewed and verified changes made during lock-up period.
 
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
    Co-Authored-By: Claude <noreply@anthropic.com>"
    ```
 
@@ -101,11 +103,11 @@ If all verifications pass:
    Batch commit of verified changes from lock-up period.
 
    ## Verification Results
-   - Tests: Passed
-   - Types: No errors
-   - Lint: Clean
+   - Tests: ✅ Passed
+   - Types: ✅ No errors
+   - Lint: ✅ Clean
 
-   Generated with [Claude Code](https://claude.com/claude-code)"
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)"
    ```
 
 5. **Start review cycle:**
@@ -161,15 +163,15 @@ When complete, provide a summary:
 - <file2>: <brief description>
 
 ### Verification Results
-- Tests: Passed (X tests)
-- Types: No errors
-- Lint: Clean
+- Tests: ✅ Passed (X tests)
+- Types: ✅ No errors
+- Lint: ✅ Clean
 
 ### Commits Made
 - <commit hash> - <message>
 
 ### PR Status
-- CI Checks: Passing
+- CI Checks: ✅ Passing
 - Bot Reviews: Pending / Approved
 - Ready to Merge: Yes / No
 

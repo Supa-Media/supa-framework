@@ -20,7 +20,7 @@ Or run a single task cycle manually:
 
 **YOU ARE AN ORCHESTRATOR, NOT A DOER.**
 
-**VIOLATION OF THIS RULE CAUSES CONTEXT EXHAUSTION AND INFINITE LOOPS**
+⚠️ **VIOLATION OF THIS RULE CAUSES CONTEXT EXHAUSTION AND INFINITE LOOPS** ⚠️
 
 Your ONLY jobs are:
 1. Check budget and decide whether to continue
@@ -34,20 +34,20 @@ Your ONLY jobs are:
 
 ### What You MUST NOT Do Directly
 
-- **DO NOT** use the Edit tool - spawn a sub-agent
-- **DO NOT** use the Read tool (except for task files) - spawn a sub-agent
-- **DO NOT** use the Grep/Glob tools - spawn a sub-agent
-- **DO NOT** take screenshots - spawn a sub-agent
-- **DO NOT** interact with simulators or browsers - spawn a sub-agent
-- **DO NOT** write code - spawn a sub-agent
+❌ **DO NOT** use the Edit tool - spawn a sub-agent
+❌ **DO NOT** use the Read tool (except for task files) - spawn a sub-agent
+❌ **DO NOT** use the Grep/Glob tools - spawn a sub-agent
+❌ **DO NOT** take screenshots - spawn a sub-agent
+❌ **DO NOT** interact with simulators or browsers - spawn a sub-agent
+❌ **DO NOT** write code - spawn a sub-agent
 
 ### What You CAN Do Directly
 
-- Read QUEUE.md and task files (to pick tasks)
-- Write to task files (to update attempt logs)
-- Run simple bash commands for budget/status checks
-- Spawn Task sub-agents (with max_turns!)
-- Log progress to auto-worker-progress.log
+✅ Read QUEUE.md and task files (to pick tasks)
+✅ Write to task files (to update attempt logs)
+✅ Run simple bash commands for budget/status checks
+✅ Spawn Task sub-agents (with max_turns!)
+✅ Log progress to auto-worker-progress.log
 
 ---
 
@@ -90,13 +90,13 @@ tail -f .claude/logs/auto-worker-progress.log
 
 **ALL sub-agent Task calls MUST include `max_turns` to prevent infinite hangs.**
 
-**FAILURE TO INCLUDE max_turns WILL CAUSE THE RALPH LOOP TO HANG FOR HOURS**
+⚠️ **FAILURE TO INCLUDE max_turns WILL CAUSE THE RALPH LOOP TO HANG FOR HOURS** ⚠️
 
 | Sub-agent Type | max_turns | Rationale |
 |----------------|-----------|-----------|
 | Task reading/planning | 15 | Quick exploration tasks |
 | Implementation | 50 | Complex coding needs more turns |
-| Testing | 30 | Browser/simulator interaction + screenshots |
+| Testing | 30 | Simulator/browser interaction + screenshots |
 | PR creation | 15 | Straightforward git operations |
 | Smoke test | 20 | Quick verification |
 
@@ -222,7 +222,7 @@ Your job:
    - Acceptance criteria (checkboxes)
    - Files that need to be modified
    - Technical approach
-   - Verification steps (what to test)
+   - Verification steps (how to verify the fix works)
    - Potential pitfalls to avoid (especially based on prior attempts)
 
 Return the plan in markdown format.
@@ -270,8 +270,8 @@ Task tool with subagent_type="general-purpose", max_turns=50:
 2. Create a feature branch: git checkout -b feature/<task-slug>
 3. Implement the feature following the plan
 4. Commit frequently with atomic commits
-5. Run type checks: pnpm typecheck
-6. Run tests: pnpm test
+5. Run type checks and tests to verify the fix
+6. Verify all checks pass locally before returning
 
 ## Commit Format
 git commit -m '<type>: <description>
