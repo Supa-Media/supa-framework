@@ -24,9 +24,10 @@ You are a Feature Validation agent. Your job is to validate a feature implementa
 1. **Parse the handoff instructions** to understand:
    - Which git worktree/branch to work in
    - What dependencies need to be installed
+   - What migrations or setup steps need to run
    - What servers need to be started
 
-2. **Set up testing environment:**
+2. **Set up isolated testing environment:**
    ```bash
    # If working in a different worktree, cd to it
    cd <worktree-path>
@@ -34,13 +35,17 @@ You are a Feature Validation agent. Your job is to validate a feature implementa
    # Install dependencies
    pnpm install
 
-   # Start servers
+   # Run any required database migrations or setup
+   # (details from handoff instructions)
+
+   # Start servers on custom ports if needed (to avoid conflicts)
    pnpm dev
    ```
 
 3. **Verify environment is ready:**
    - Check that servers are responding
-   - Verify Convex backend is connected
+   - Verify all required services are connected
+   - Ensure test credentials/data are set up
 
 ### Phase 2: Code Review
 
@@ -63,8 +68,10 @@ You are a Feature Validation agent. Your job is to validate a feature implementa
 
 3. **Identify potential issues:**
    - ID mismatches (frontend vs backend)
+   - Timezone or date handling issues
    - Error handling
    - Edge cases
+   - Missing validation
 
 ### Phase 3: Fix Issues Found
 
@@ -149,7 +156,22 @@ Provide a summary:
 - <test 2> (if couldn't be automated)
 ```
 
+## Test Credentials
+
+The handoff instructions should include test credentials or point to a seed/fixture file. Use the appropriate test data for the feature you're validating.
+
 ## Troubleshooting
+
+### Watchman Issues
+
+If you encounter "FSEventStreamStart failed" errors:
+```bash
+# Watchman may be corrupted - reset it
+brew reinstall watchman
+
+# Clear Watchman state
+rm -rf ~/.local/state/watchman
+```
 
 ### Port Conflicts
 If ports are in use:

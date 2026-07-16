@@ -426,6 +426,50 @@ If a comment is a false positive or not actionable:
 
 ---
 
+## Phase 4.7: Documentation and Onboarding Sync Check
+
+If your project maintains user-facing documentation (onboarding guides, feature docs, etc.), check whether any PR changes require documentation updates.
+
+### 4.7.1 Get the PR's Changed Files
+
+```bash
+gh pr view <PR_NUMBER> --json files --jq '.files[].path'
+```
+
+### 4.7.2 Identify Documentation Requirements
+
+For your project, determine:
+1. Which documentation files exist (guides, API docs, user manuals, etc.)
+2. Which features or user-facing components they cover
+3. Create a mapping of: "If code change touches X, docs file Y may need updates"
+
+Example mapping:
+- If changed: user authentication paths → Update: Auth guide documentation
+- If changed: API endpoints → Update: API reference documentation
+- If changed: UI labels or workflows → Update: User guide documentation
+
+### 4.7.3 Check for Documentation Updates
+
+For each changed file in the PR:
+
+1. **Inspect the change** — does it alter something user-facing (labels, flows, screens, API contracts)?
+2. **Check if related docs were updated** — are the corresponding documentation files in the PR's changed files list?
+3. **Decide and act:**
+   - **If user-facing change AND docs updated** ✓ Continue normally
+   - **If internal-only change** ✓ No docs needed, continue
+   - **If user-facing change BUT docs NOT updated:**
+     - If the impact is small and contained: update the docs yourself in this branch
+     - If the impact is large/ambiguous: post a PR comment flagging it for the author to decide
+
+### 4.7.4 Comment If Docs Are Missing
+
+If documentation is out of sync:
+```bash
+gh pr comment <PR_NUMBER> --body "📝 Heads up: this PR changes user-facing behavior but doesn't update the related documentation. Please review and update the docs to match the new behavior, or let me know if the change is internal-only."
+```
+
+---
+
 ## Phase 5: Push and Wait for Re-Review
 
 ### 5.1 Pull Before Push (Bot Autofix Safety)
@@ -687,6 +731,7 @@ The issue persists. Please investigate manually.
 - [x] No merge conflicts
 - [x] All PR CI checks passing
 - [x] All review threads resolved
+- [x] Documentation synced or flagged (Phase 4.7)
 - [x] PR merged to main
 - [x] Main branch CI passing
 - [x] Regression tests added (if CI was fixed)
@@ -767,5 +812,6 @@ Report the specific blocker for manual intervention.
 9. **Commit atomically** - One fix per commit when possible
 10. **Push after each batch of fixes** - Let CI and bots re-check
 11. **Cap bot review rounds at 3** - After 3 rounds, resolve Low severity threads without fixing to prevent infinite loops
-12. **Always get a bot review** - If reviews aren't triggered automatically, explicitly request one from `cursor` or another available bot
-13. **Log everything** - Track what was fixed for the report
+12. **Always get a bot review** - If reviews aren't triggered automatically, explicitly request one from available bots
+13. **Keep documentation in sync** - Run the Phase 4.7 docs check every cycle; if a PR changes user-facing behavior, update docs or flag it
+14. **Log everything** - Track what was fixed for the report

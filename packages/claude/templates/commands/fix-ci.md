@@ -40,6 +40,7 @@ You are a CI Fix agent. Your job is to investigate CI/CD failures, understand th
    - Look for TypeScript errors (`error TS`)
    - Look for test failures (`FAIL`, `AssertionError`)
    - Look for build failures (`Build failed`, `exit code 1`)
+   - Look for Docker build failures (`#XX ERROR`, `failed to build`)
 
 4. **Document the failure:**
    ```markdown
@@ -62,7 +63,7 @@ You are a CI Fix agent. Your job is to investigate CI/CD failures, understand th
 2. **Trace the dependency chain:**
    - If it's a module not found error, check package.json dependencies
    - If it's a type error, trace the type definitions
-   - If it's a build error, check build configuration (tsconfig, turbo.json, etc.)
+   - If it's a build error, check build configuration (Dockerfile, tsconfig, turbo.json, etc.)
 
 3. **Identify when the issue was introduced:**
    ```bash
@@ -96,6 +97,7 @@ You are a CI Fix agent. Your job is to investigate CI/CD failures, understand th
 3. **Verify the fix locally:**
    ```bash
    # Run the same checks that failed in CI
+   # Use package filters if applicable (e.g., pnpm --filter=<package> for monorepos)
    pnpm build
    pnpm typecheck
    pnpm test
@@ -104,6 +106,20 @@ You are a CI Fix agent. Your job is to investigate CI/CD failures, understand th
 ### Phase 4: Add Regression Tests
 
 **This is critical.** For every CI fix, determine what test could have prevented it:
+
+#### For Missing Dependencies (Docker/Workspace Issues)
+
+If the failure was a missing dependency in Docker or workspace configuration:
+
+```typescript
+// Example: dockerfile.test.ts or workspace.test.ts
+describe('Workspace Configuration', () => {
+  it('should include all required package dependencies', () => {
+    // Read package.json and Dockerfile/config
+    // Verify all workspace:* dependencies are properly included
+  });
+});
+```
 
 #### For Type Errors
 
@@ -141,6 +157,7 @@ describe('Feature', () => {
 
 | Error Type | Test Location |
 |------------|---------------|
+| Docker/workspace dependency issues | `apps/<app>/src/__tests__/dockerfile.test.ts` or `__tests__/workspace.test.ts` |
 | tsconfig issues | `apps/<app>/src/__tests__/tsconfig.test.ts` |
 | Package.json issues | `apps/<app>/src/__tests__/package.test.ts` |
 | Build script issues | `apps/<app>/src/__tests__/build.test.ts` |
@@ -160,6 +177,8 @@ describe('Feature', () => {
 
    Root cause: <brief explanation>
    Prevention: Added <test-name> test to catch this in the future.
+
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
    Co-Authored-By: Claude <noreply@anthropic.com>"
    ```
@@ -188,7 +207,7 @@ describe('Feature', () => {
    - [x] New regression test passes
    - [ ] CI pipeline passes
 
-   Generated with [Claude Code](https://claude.com/claude-code)
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
    EOF
    )" --base main
    ```
@@ -226,7 +245,21 @@ Provide a complete summary:
 
 ## Common CI Failure Patterns
 
-### Pattern 1: TypeScript Configuration Mismatch
+### Pattern 1: Missing Workspace Dependency in Docker
+
+**Symptoms:**
+```
+error TS2307: Cannot find module '@workspace/xxx'
+or in Dockerfile build step:
+failed to copy file/directory or build context
+```
+
+**Fix:**
+1. Check Dockerfile and ensure all workspace packages are copied
+2. Check package.json workspace dependencies are included
+3. Add regression test in `dockerfile.test.ts` or `workspace.test.ts`
+
+### Pattern 2: TypeScript Configuration Mismatch
 
 **Symptoms:**
 ```
@@ -238,7 +271,7 @@ error TS1259: Module can only be default-imported using...
 2. Ensure `esModuleInterop` and `moduleResolution` are correct
 3. Add regression test in `tsconfig.test.ts`
 
-### Pattern 2: Missing Environment Variable
+### Pattern 3: Missing Environment Variable
 
 **Symptoms:**
 ```
@@ -250,7 +283,7 @@ Error: Missing required environment variable: XXX
 2. Add validation in code with helpful error message
 3. Document in README or .env.example
 
-### Pattern 3: Dependency Version Mismatch
+### Pattern 4: Dependency Version Mismatch
 
 **Symptoms:**
 ```
