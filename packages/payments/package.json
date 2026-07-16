@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/payments",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Stripe payment integration for Supa apps — hooks, components, and config for subscriptions and checkout",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
