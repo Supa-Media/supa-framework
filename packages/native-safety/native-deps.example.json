@@ -1,5 +1,5 @@
 {
-  "$comment": "Native dependency classification for OTA safety. Core deps are in the baseline native build and safe for static import. Gated deps require runtime NativeModules check before import.",
+  "$comment": "Native dependency classification for OTA safety. Core deps are in the baseline native build and safe for static import. Gated deps require runtime NativeModules check before import. nativeUnsafeDenylist (optional) extends check-react-consistency's default emotion/MUI/CSS-in-JS denylist with app-specific web-only React libs that pull their own React via autoInstallPeers.",
   "core": [
     "react-native",
     "react-native-gesture-handler",
@@ -22,5 +22,8 @@
     "expo-av",
     "expo-video",
     "expo-audio"
+  ],
+  "nativeUnsafeDenylist": [
+    "antd"
   ]
 }

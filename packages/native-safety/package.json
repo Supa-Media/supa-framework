@@ -6,7 +6,8 @@
   "types": "src/index.d.ts",
   "bin": {
     "check-fingerprint": "src/check-fingerprint.js",
-    "check-native-imports": "src/check-native-imports.js"
+    "check-native-imports": "src/check-native-imports.js",
+    "check-react-consistency": "src/check-react-consistency.js"
   },
   "files": [
     "src",
@@ -14,7 +15,9 @@
   ],
   "scripts": {
     "check-fingerprint": "node src/check-fingerprint.js",
-    "check-native-imports": "node src/check-native-imports.js"
+    "check-native-imports": "node src/check-native-imports.js",
+    "check-react-consistency": "node src/check-react-consistency.js",
+    "test": "node --test"
   },
   "peerDependencies": {
     "@expo/fingerprint": ">=0.6.0"
