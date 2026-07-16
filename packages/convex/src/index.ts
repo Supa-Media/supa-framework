@@ -23,11 +23,12 @@ export type {
 export {
   supaAuthTables,
   supaTenantTables,
+  supaTenantScope,
   supaNotificationTables,
   supaChatTables,
   supaPaymentTables,
 } from "./schema";
-export type { TenantTableConfig } from "./schema";
+export type { TenantTableConfig, SupaTenantScope, TenantScopeConfig } from "./schema";
 
 // Lib
 export {
