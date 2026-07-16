@@ -7,13 +7,17 @@
   "files": [
     "src"
   ],
+  "scripts": {
+    "test": "node --import ./test/register.mjs --test test/*.test.ts"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./auth": "./src/auth/index.ts",
     "./schema": "./src/schema/index.ts",
     "./lib": "./src/lib/index.ts",
     "./notifications": "./src/notifications/index.ts",
-    "./payments": "./src/payments/index.ts"
+    "./payments": "./src/payments/index.ts",
+    "./webhooks": "./src/webhooks/index.ts"
   },
   "peerDependencies": {
     "convex": ">=1.31.0",
