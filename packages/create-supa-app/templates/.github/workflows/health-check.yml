@@ -15,9 +15,10 @@
 name: Production Health Check
 
 on:
-  schedule:
-    # Run every 6 hours
-    - cron: "0 */6 * * *"
+  # Fill in `convex-url` below and uncomment this before enabling the schedule.
+  # schedule:
+  #   # Run every 6 hours
+  #   - cron: "0 */6 * * *"
   workflow_dispatch:
     inputs:
       force_redeploy:

@@ -100,12 +100,20 @@ on:
         description: "Newline-separated optional 1Password secret mappings, forwarded to deploy-convex.yml"
         type: string
         default: ""
+      pre-deploy-build-steps:
+        description: "Newline-separated shell commands to run before deploy, forwarded to deploy-convex.yml (e.g. build shared pkg)"
+        type: string
+        default: ""
       sync-secrets-script:
         description: "Path to the app's sync-secrets-to-convex script, forwarded to deploy-convex.yml"
         type: string
         default: ""
       sync-secrets-args:
         description: "Arguments to the sync-secrets script, forwarded to deploy-convex.yml"
+        type: string
+        default: ""
+      post-deploy-steps:
+        description: "Shell commands to run after successful deployment, forwarded to deploy-convex.yml"
         type: string
         default: ""
     secrets:
@@ -181,11 +189,35 @@ jobs:
           fi
           echo "healthy=$healthy" >> "$GITHUB_OUTPUT"
 
-  redeploy:
-    name: Auto-Redeploy ${{ inputs.app-name }}
+  verify-secrets:
+    name: Verify Required Secrets
     needs: health-check
     if: needs.health-check.outputs.healthy == 'false' || inputs.force-redeploy == true
-    uses: ./.github/workflows/deploy-convex.yml
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # Adapted from fount-studios' original fast-fail secret check. That version
+      # verified a fixed list of app secrets (CONVEX_DEPLOY_KEY, RESEND_API_KEY,
+      # ...); this reusable workflow doesn't know an app's secret names (they're
+      # forwarded via `secrets: inherit` and loaded generically by
+      # deploy-convex.yml), so it can only fast-fail on the secrets it actually
+      # declares in `on.workflow_call.secrets` above.
+      - name: Verify required secrets are present
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.secret-provider }}" == "onepassword" && -z "${OP_SERVICE_ACCOUNT_TOKEN}" ]]; then
+            echo "ERROR: secret-provider is 'onepassword' but OP_SERVICE_ACCOUNT_TOKEN is empty."
+            echo "Set the OP_SERVICE_ACCOUNT_TOKEN secret (via secrets: inherit at your call site) before this workflow can redeploy."
+            exit 1
+          fi
+
+  redeploy:
+    name: Auto-Redeploy ${{ inputs.app-name }}
+    needs: [health-check, verify-secrets]
+    if: needs.health-check.outputs.healthy == 'false' || inputs.force-redeploy == true
+    uses: Supa-Media/supa-framework/.github/workflows/deploy-convex.yml@main
     with:
       environment: ${{ inputs.environment }}
       node-version: ${{ inputs.node-version }}
@@ -194,8 +226,10 @@ jobs:
       op-vault-prefix: ${{ inputs.op-vault-prefix }}
       op-required-secrets: ${{ inputs.op-required-secrets }}
       op-optional-secrets: ${{ inputs.op-optional-secrets }}
+      pre-deploy-build-steps: ${{ inputs.pre-deploy-build-steps }}
       sync-secrets-script: ${{ inputs.sync-secrets-script }}
       sync-secrets-args: ${{ inputs.sync-secrets-args }}
+      post-deploy-steps: ${{ inputs.post-deploy-steps }}
     secrets: inherit
 
   verify-redeploy:
