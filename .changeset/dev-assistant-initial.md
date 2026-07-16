@@ -1,10 +1,17 @@
 ---
-"@supa-media/dev-assistant": minor
+"@supa-media/dev-assistant": major
 ---
 
-Add `@supa-media/dev-assistant`: an "app improves itself" control plane for
-Convex apps — an AI-driven contribution pipeline (spec → build → review → fix →
-merge → deploy) extracted from Togather's `devAssistant` module (ADR-029).
+First stable release of `@supa-media/dev-assistant`: an "app improves itself"
+control plane for Convex apps — an AI-driven contribution pipeline (spec →
+build → review → fix → merge → deploy) extracted from Togather's
+`devAssistant` module (ADR-029).
+
+Package version starts at `0.0.0` (unpublished) with a `major` changeset, so
+this bump lands the first release at exactly `1.0.0` — same convention used
+for the framework's original v1.0.0 cut (#12): a `minor` bump on an
+already-`1.0.0` `package.json` would have skipped straight to `1.1.0` on
+first publish.
 
 - `createDevAssistant(config)` factory (mirrors `createSupaAuth`) returning the
   Convex queries/mutations/actions and an HTTP route registrar for

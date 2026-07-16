@@ -9,6 +9,7 @@
  * `CONVEX_SITE_URL`).
  */
 
+import { ConvexError } from "convex/values";
 import type { RepoConfig } from "./pipeline/github";
 import type { AutoMergeSeverity } from "./pipeline/severity";
 import { DEFAULT_AUTO_MERGE_MAX_SEVERITY } from "./pipeline/severity";
@@ -101,9 +102,12 @@ export interface DevAssistantConfig {
 
   /**
    * Validate an attachment path submitted from the dashboard (throws to reject).
-   * Togather requires an "r2:" storage prefix so a caller can't stash an
-   * arbitrary external URL (a tracking-beacon / SSRF surface). Defaults to
-   * allowing "r2:" paths and http(s) URLs.
+   * SAFE BY DEFAULT: rejects anything that isn't an "r2:" storage path, so a
+   * caller can't stash an arbitrary external URL that would later be rendered
+   * to other maintainers or fetched by the spec routine (a tracking-beacon /
+   * SSRF surface) — matching Togather's `assertR2Paths`. Accepting arbitrary
+   * http(s) URLs is opt-in only: pass your own function here (e.g. one that
+   * allows `r2:` paths AND http(s) URLs) if your storage/upload flow needs it.
    */
   assertValidAttachment?: (url: string) => void;
 
@@ -171,7 +175,11 @@ const DEFAULT_REPO: Pick<
   stagingDeployWorkflowNames: [],
   productionDeployWorkflowName: "Deploy to Production",
   productionDeployWorkflowFile: "deploy-to-production.yml",
-  productionDeployInputs: { update_mode: "silent" },
+  // `confirm: "deploy"` matches the literal string Togather's production
+  // workflow gate expects (apps/convex/functions/devAssistant/actions.ts) —
+  // a consumer whose workflow has the same confirm gate needs it present by
+  // default, or the in-app "Ship to production" dispatch silently no-ops.
+  productionDeployInputs: { confirm: "deploy", update_mode: "silent" },
 };
 
 /** Default media resolver: pass http(s) URLs through, drop everything else. */
@@ -179,10 +187,18 @@ function defaultResolveMediaUrl(url: string): string | undefined {
   return /^https?:\/\//.test(url) ? url : undefined;
 }
 
-/** Default attachment validator: allow "r2:" storage paths and http(s) URLs. */
+/**
+ * Default attachment validator: require an "r2:" storage prefix, matching
+ * Togather's `assertR2Paths` (`apps/convex/functions/devAssistant/
+ * contributions.ts`). Rejecting anything else — including arbitrary http(s)
+ * URLs — is deliberate: an unvalidated external URL would later be rendered
+ * to other maintainers or fetched by the spec routine, a tracking-beacon /
+ * SSRF surface. Pass a custom `assertValidAttachment` to opt into allowing
+ * http(s) URLs too.
+ */
 function defaultAssertValidAttachment(url: string): void {
-  if (!url.startsWith("r2:") && !/^https?:\/\//.test(url)) {
-    throw new Error("Attachments must be uploaded images");
+  if (!url.startsWith("r2:")) {
+    throw new ConvexError("Attachments must be uploaded images");
   }
 }
 

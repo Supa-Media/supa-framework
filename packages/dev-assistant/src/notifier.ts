@@ -11,9 +11,16 @@
  * decides HOW to notify (push, chat message, e-mail, nothing). The default
  * notifier is a no-op, so a minimal consumer gets a silent-but-correct pipeline.
  *
- * Togather's migration re-implements its exact behavior inside `notify`: push
- * for dashboard items (`bug.source !== "chat"`), and for chat items post the bot
- * message keyed by `chatStatusUpdate`'s `sourceKey`.
+ * Togather's migration must re-implement its exact behavior inside `notify`:
+ * production Togather gates the push on `!updated.channelId` (dashboard items
+ * have no chat channel — that's the actual predicate, NOT `bug.source !==
+ * "chat"`; the two can diverge for edge rows) and, for chat-originated items
+ * (`channelId` present), posts the bot message keyed by `chatStatusUpdate`'s
+ * `sourceKey`, plus an `@mention` of the originator specifically on
+ * `READY_TO_MERGE` (`apps/convex/functions/devAssistant/actions.ts`,
+ * `handleRoutineCallback`). Reproduce both halves — the push gate AND the
+ * READY_TO_MERGE mention — or a migrated consumer will double-push or drop
+ * the merge-ready ping for chat-originated rows.
  */
 
 import type { BugStatus } from "./pipeline/statusMachine";

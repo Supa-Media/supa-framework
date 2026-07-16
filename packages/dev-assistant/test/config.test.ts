@@ -63,11 +63,30 @@ test("resolveConfig lowercases a custom signature header (Togather back-compat)"
   assert.equal(r.signatureHeader, "x-togather-signature");
 });
 
-test("default attachment validator allows r2:/http(s), rejects arbitrary URLs", () => {
+test("default attachment validator allows only r2: paths (safe by default, matches Togather's assertR2Paths)", () => {
   const r = resolveConfig(base);
   assert.doesNotThrow(() => r.assertValidAttachment("r2:chat/abc.png"));
-  assert.doesNotThrow(() => r.assertValidAttachment("https://cdn.example/x.png"));
+  // Arbitrary http(s) URLs are a tracking-beacon / SSRF surface and must be
+  // rejected by default — accepting them is opt-in via a custom
+  // `assertValidAttachment` override only.
+  assert.throws(() => r.assertValidAttachment("https://cdn.example/x.png"));
   assert.throws(() => r.assertValidAttachment("ftp://evil/x"));
+});
+
+test("default attachment validator throws ConvexError (not a plain Error)", () => {
+  const r = resolveConfig(base);
+  assert.throws(() => r.assertValidAttachment("https://evil.example/x"), (err: any) => {
+    assert.equal(err.constructor.name, "ConvexError");
+    return true;
+  });
+});
+
+test("default productionDeployInputs includes confirm: \"deploy\" (matches the workflow's safety gate)", () => {
+  const r = resolveConfig(base);
+  assert.deepEqual(r.repo.productionDeployInputs, {
+    confirm: "deploy",
+    update_mode: "silent",
+  });
 });
 
 test("default media resolver passes http(s) through and drops the rest", () => {

@@ -44,6 +44,7 @@ export function makeHttpRegistrar(
           return new Response("Callback not configured", { status: 500 });
         }
         if (!(await verifyCallbackSignature(body, signature, secret))) {
+          console.error("[DevAssistant] Invalid callback signature");
           return new Response("Invalid signature", { status: 401 });
         }
 
@@ -178,9 +179,11 @@ export function makeHttpRegistrar(
         }
         const secret = process.env.DEV_ASSISTANT_CALLBACK_SECRET;
         if (!secret) {
+          console.error("[DevAssistant] DEV_ASSISTANT_CALLBACK_SECRET not configured");
           return new Response("Upload not configured", { status: 500 });
         }
         if (!(await verifyCallbackSignature(body, signature, secret))) {
+          console.error("[DevAssistant] Invalid upload signature");
           return new Response("Invalid signature", { status: 401 });
         }
         if (!cfg.uploadImage) {
@@ -252,6 +255,7 @@ export function makeHttpRegistrar(
           process.env.GH_WEBHOOK_SECRET ??
           process.env.DEV_ASSISTANT_CALLBACK_SECRET;
         if (!secret) {
+          console.error("[GithubWebhook] GH_WEBHOOK_SECRET not configured");
           return new Response("GitHub webhook not configured", { status: 503 });
         }
         const signature = request.headers.get("x-hub-signature-256");
@@ -259,6 +263,7 @@ export function makeHttpRegistrar(
           return new Response("Missing x-hub-signature-256 header", { status: 401 });
         }
         if (!(await verifyGithubSignature(body, signature, secret))) {
+          console.error("[GithubWebhook] Invalid signature");
           return new Response("Invalid signature", { status: 401 });
         }
 

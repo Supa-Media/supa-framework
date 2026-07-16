@@ -34,6 +34,7 @@ Everything else generalizes. You provide:
 | **Notifier** — push/chat side effects | `notifier.notify(ctx, event)` | push for dashboard items, chat bot message for chat items |
 | **Media resolve** | `resolveMediaUrl(url)` | R2 path → public URL |
 | **Attachment guard** | `assertValidAttachment(url)` | require `r2:` prefix |
+| ↳ *default (unset)* | rejects anything that isn't an `r2:` path — same as Togather; **not** opt-out, only opt-in-to-more (pass your own function to also allow http(s) URLs) | — |
 | **Image upload** (`/upload` route) | `uploadImage(ctx, args)` | store to R2 |
 | **Repo / GitHub** | `repo: { owner, name, … }` | `togathernyc/togather` |
 | **HMAC header** | `signatureHeader` (default `x-supa-signature`) | `x-togather-signature` |
@@ -88,7 +89,18 @@ export const devAssistant = createDevAssistant({
 
 The consumer **must** re-export at exactly `${functionsPath}/{bugs,actions,
 contributions,maintainers}` (the package builds internal function references from
-`functionsPath`):
+`functionsPath`).
+
+> **⚠️ This is the single biggest operational footgun of this package.**
+> `functionsPath` is a bare string, not a typed reference into your generated
+> `_generated/api` — `makeFunctionReference` does no existence check. A wrong
+> `functionsPath`, or a re-export renamed/dropped later, passes `tsc` and
+> `convex deploy` cleanly and then fails **silently at runtime**: every
+> scheduled call this package makes internally (`READY_FOR_IMPL →
+> dispatchBug`, `CODE_REVIEW → dispatchReview`, the callback applier, the
+> auto-merge action, …) throws `"Could not find function"` — visible only in
+> the Convex log, never surfaced to a user. **Run the smoke test in step 8
+> after wiring this up, and again after any refactor of these files.**
 
 ```ts
 // convex/functions/devAssistant/bugs.ts
@@ -128,11 +140,26 @@ import { devAssistant } from "./functions/devAssistant/_instance";
 devAssistant.registerRoutes(http); // /dev-assistant/callback, /upload, /github/webhook
 ```
 
-### 5. Reconcile cron (`convex/crons.ts`, optional Phase-3 backstop)
+### 5. Reconcile cron (`convex/crons.ts`, REQUIRED backstop — not optional)
+
+`reconcileMergedPrs` is the **only** path that reflects (a) a maintainer
+merging the PR by hand on GitHub, (b) a merge of an item above its auto-merge
+severity cap, or (c) any merge when webhook delivery is missing or
+mis-secreted. Skip this step and any of those three strands the row at
+`READY_TO_MERGE` forever, and staging-deploy observation never correlates (no
+`mergeCommitSha`). Use the exported helper — it builds the same
+`functionsPath`-derived reference as the rest of the package, so it can't
+drift from step 3's wiring:
 
 ```ts
-crons.interval("reconcile dev PRs", { minutes: 15 },
-  internal.functions.devAssistant.actions.reconcileMergedPrs, {});
+// convex/crons.ts
+import { cronJobs } from "convex/server";
+import { registerDevAssistantCrons } from "@supa-media/dev-assistant";
+import { devAssistant } from "./functions/devAssistant/_instance";
+
+const crons = cronJobs();
+registerDevAssistantCrons(crons, devAssistant.config); // every 15 min, matching Togather
+export default crons;
 ```
 
 ### 6. Env vars (identical names to Togather)
@@ -148,6 +175,35 @@ crons.interval("reconcile dev PRs", { minutes: 15 },
 Paste `templates/ROUTINE-PROMPT.md` (after substituting the `{{PLACEHOLDER}}`s)
 into your Claude account's Routine configuration. See that file for the
 three-Routine vs. single-Routine setup and the least-privilege credential split.
+
+### 8. Smoke test (strongly recommended)
+
+Two checks catch the two ways this integration silently breaks — run both
+after first wiring it up, and again after touching `functionsPath` or the
+re-exports in step 3:
+
+**a) `functionsPath` resolves** — a one-line `node:test`/`vitest` assertion
+against your generated `internal` API, using the package's `assertMounted`:
+
+```ts
+// convex/functions/devAssistant/_instance.test.ts
+import { test } from "node:test";
+import { assertMounted } from "@supa-media/dev-assistant";
+import { internal } from "../../_generated/api";
+
+test("dev-assistant functionsPath resolves against the generated API", () => {
+  assertMounted(internal, "functions/devAssistant");
+});
+```
+
+`validateMount(internal, functionsPath)` returns the list of missing
+`module:function` paths instead of throwing, if you'd rather assert on that.
+
+**b) The pipeline actually dispatches** — submit one contribution end-to-end
+(`contributions.submit` → wait for the row to reach `IN_PROGRESS`) against a
+real deployment with `CLAUDE_ROUTINES_*` configured. `assertMounted` only
+proves the wiring *resolves*; it can't catch a misconfigured trigger URL/token
+or a Routine that never calls back.
 
 ## Status machine
 

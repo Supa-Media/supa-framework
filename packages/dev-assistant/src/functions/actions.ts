@@ -158,6 +158,7 @@ export function makeActionsFunctions(
 
       const { triggerUrl, token } = routineTrigger("implement");
       if (!triggerUrl || !token) {
+        console.error("[DevAssistant] CLAUDE_ROUTINES_* env not configured");
         await ctx.runMutation(refs.bugs.recordDispatchError, {
           bugId: args.bugId,
           error: "Routine trigger env not configured",
@@ -203,6 +204,7 @@ export function makeActionsFunctions(
               typeof issue.html_url === "string" ? issue.html_url : undefined,
           });
         } catch (error) {
+          console.error("[DevAssistant] GitHub issue mirroring failed:", error);
           await ctx.runMutation(refs.bugs.recordDispatchError, {
             bugId: args.bugId,
             error: `GitHub issue mirroring failed (non-fatal): ${String(error)}`,
@@ -301,6 +303,7 @@ export function makeActionsFunctions(
 
       const { triggerUrl, token } = routineTrigger("spec");
       if (!triggerUrl || !token) {
+        console.error("[DevAssistant] CLAUDE_ROUTINES_* env not configured");
         await ctx.runMutation(refs.bugs.recordDispatchError, {
           bugId: args.bugId,
           error: "Routine trigger env not configured",
@@ -327,7 +330,8 @@ export function makeActionsFunctions(
         'level ("low" = single-screen UI/copy only; "medium" = one feature\'s ' +
         'logic on one side of the stack, nothing shared; "high" = shared ' +
         "components, frontend + backend together, schema/auth/notifications/" +
-        "offline). Also triage the request: aiTitle (short imperative headline); " +
+        "offline). Also triage the request: aiTitle (short imperative headline, " +
+        'e.g. "Fix crash when tapping Save"); ' +
         `area (one of: ${areaList}); scope ("buildable" | "split" | ` +
         '"design_needed") — requests too large for one pipeline run must NOT be ' +
         'specced as-is: for "split", the spec body should explain why and ' +
@@ -335,12 +339,15 @@ export function makeActionsFunctions(
         "`splitSlices` array (one entry per slice) where each entry is { title, " +
         "prompt }: `title` is the slice's short name and `prompt` is a " +
         "self-contained instruction a maintainer can paste straight into a fresh " +
-        "dev session to build THAT slice alone; for \"design_needed\", the spec " +
-        "body should explain what architectural decisions a maintainer must make " +
-        "first; and verifyOnStaging (boolean — true for anything interactive, " +
-        "false for pure copy/color). Report back by POSTing the signed callback " +
-        'with { bugId, routineRunId, status: "IN_REVIEW", spec, riskLevel, ' +
-        "aiTitle, area, scope, splitSlices?, verifyOnStaging }.";
+        "dev session to build THAT slice alone (state the slice's goal, the " +
+        "files/areas involved, the done-when checklist, and that it is one " +
+        "slice of a larger split so the other slices are out of scope); for " +
+        '"design_needed", the spec body should explain what architectural ' +
+        "decisions a maintainer must make first; and verifyOnStaging (boolean — " +
+        "true for anything interactive, false for pure copy/color). Report back " +
+        'by POSTing the signed callback with { bugId, routineRunId, status: ' +
+        '"IN_REVIEW", spec, riskLevel, aiTitle, area, scope, splitSlices?, ' +
+        "verifyOnStaging }.";
       const instructions = args.revision
         ? "REVISION ROUND: this contribution already has a spec draft — the " +
           "payload's `spec` field carries its CURRENT full text (the thread " +
@@ -407,6 +414,10 @@ export function makeActionsFunctions(
       const bug = await ctx.runQuery(refs.bugs.getBug, { bugId: args.bugId });
       if (!bug) return;
       if (!bug.prUrl) {
+        console.error(
+          "[DevAssistant] dispatchReview skipped: bug has no prUrl",
+          args.bugId,
+        );
         await ctx.runMutation(refs.bugs.recordDispatchError, {
           bugId: args.bugId,
           error: "Review dispatch skipped: bug has no prUrl",
@@ -415,6 +426,7 @@ export function makeActionsFunctions(
       }
       const { triggerUrl, token } = routineTrigger("review");
       if (!triggerUrl || !token) {
+        console.error("[DevAssistant] CLAUDE_ROUTINES_* env not configured");
         await ctx.runMutation(refs.bugs.recordDispatchError, {
           bugId: args.bugId,
           error: "Routine trigger env not configured",
@@ -482,6 +494,10 @@ export function makeActionsFunctions(
       const bug = await ctx.runQuery(refs.bugs.getBug, { bugId: args.bugId });
       if (!bug) return;
       if (!bug.prUrl) {
+        console.error(
+          "[DevAssistant] dispatchFix skipped: bug has no prUrl",
+          args.bugId,
+        );
         await ctx.runMutation(refs.bugs.recordDispatchError, {
           bugId: args.bugId,
           error: "Fix dispatch skipped: bug has no prUrl",
@@ -490,6 +506,7 @@ export function makeActionsFunctions(
       }
       const { triggerUrl, token } = routineTrigger("implement");
       if (!triggerUrl || !token) {
+        console.error("[DevAssistant] CLAUDE_ROUTINES_* env not configured");
         await ctx.runMutation(refs.bugs.recordDispatchError, {
           bugId: args.bugId,
           error: "Routine trigger env not configured",
@@ -548,7 +565,12 @@ export function makeActionsFunctions(
   const attemptAutoMerge = internalActionGeneric({
     args: { bugId: v.id("devBugs") },
     handler: async (ctx: any, args: any): Promise<void> => {
-      if (process.env.AUTO_MERGE_ENABLED !== "true") return;
+      if (process.env.AUTO_MERGE_ENABLED !== "true") {
+        console.log(
+          '[DevAssistant] Auto-merge skipped: AUTO_MERGE_ENABLED is not "true"',
+        );
+        return;
+      }
 
       const bug = await ctx.runQuery(refs.bugs.getBug, { bugId: args.bugId });
       if (!bug) return;
@@ -558,15 +580,23 @@ export function makeActionsFunctions(
         bug.reviewVerdict !== "approved" ||
         !bug.prUrl
       ) {
+        console.log("[DevAssistant] Auto-merge gates not met for bug", args.bugId);
         return;
       }
 
       const cap = await ctx.runQuery(refs.maintainers.getAutoMergeCapForUser, {
         userId: bug.originatorUserId,
       });
-      if (!isWithinAutoMergeCap(bug.riskLevel, cap)) return;
+      if (!isWithinAutoMergeCap(bug.riskLevel, cap)) {
+        console.log("[DevAssistant] Auto-merge blocked by severity cap", args.bugId, {
+          riskLevel: bug.riskLevel,
+          cap,
+        });
+        return;
+      }
 
       const blocked = async (reason: string): Promise<void> => {
+        console.error("[DevAssistant] Auto-merge blocked:", reason, args.bugId);
         await ctx.runMutation(refs.bugs.addSystemThreadMessage, {
           bugId: args.bugId,
           body: `Auto-merge blocked: ${reason} — needs a maintainer`,
@@ -617,6 +647,7 @@ export function makeActionsFunctions(
       if (!bug) return;
 
       const failed = async (reason: string): Promise<void> => {
+        console.error("[DevAssistant] In-app merge failed:", reason, args.bugId);
         await ctx.runMutation(refs.bugs.recordMergeFromAppFailure, {
           bugId: args.bugId,
           reason,
@@ -650,6 +681,15 @@ export function makeActionsFunctions(
           await applyGithubConfirmedMerge(ctx, bug, await readMergeCommitSha(res));
           return;
         }
+
+        // Log the raw GitHub reason for the breadcrumb, then diagnose *why* the
+        // merge was blocked from the PR's mergeability rather than surfacing
+        // the raw failure to the maintainer.
+        console.error(
+          "[DevAssistant] In-app merge PUT failed:",
+          await githubErrorDetail(res, "GitHub merge"),
+          args.bugId,
+        );
 
         const status = await fetchPrMerged(cfg.repo, prNumber, mirrorToken);
         if (status?.merged) {
@@ -706,6 +746,11 @@ export function makeActionsFunctions(
       if (bug.status === "MERGED") return;
 
       const failed = async (reason: string): Promise<void> => {
+        console.error(
+          "[DevAssistant] In-app merge recovery failed:",
+          reason,
+          args.bugId,
+        );
         await ctx.runMutation(refs.bugs.recordMergeFromAppFailure, {
           bugId: args.bugId,
           reason,
@@ -784,6 +829,13 @@ export function makeActionsFunctions(
     args: { bugId: v.id("devBugs") },
     handler: async (ctx: any, args: any): Promise<void> => {
       const outcome = async (ok: boolean, detail?: string): Promise<void> => {
+        if (!ok) {
+          console.error(
+            "[DevAssistant] Production deploy dispatch failed:",
+            detail,
+            args.bugId,
+          );
+        }
         await ctx.runMutation(refs.bugs.recordProductionDeployOutcome, {
           bugId: args.bugId,
           ok,

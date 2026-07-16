@@ -12,6 +12,14 @@ export { createDevAssistant } from "./functions";
 export type { DevAssistantInstance } from "./functions";
 
 export {
+  registerDevAssistantCrons,
+  RECONCILE_CRON_NAME,
+  RECONCILE_CRON_SCHEDULE,
+} from "./functions/crons";
+
+export { validateMount, assertMounted } from "./functions/validateMount";
+
+export {
   resolveConfig,
   validateConfig,
   DEFAULT_SIGNATURE_HEADER,

@@ -9,6 +9,22 @@ import {
   type BugStatus,
 } from "../src/pipeline/statusMachine";
 
+test("status machine: ALLOWED_TRANSITIONS matches the full expected map exactly", () => {
+  // A representative forward/backward pair test can't catch a silently ADDED
+  // forward edge (e.g. an extra DRAFT -> READY_FOR_IMPL skip) — only a full
+  // snapshot of the map locks that down.
+  assert.deepEqual(ALLOWED_TRANSITIONS, {
+    DRAFT: ["IN_REVIEW", "REJECTED"],
+    IN_REVIEW: ["READY_FOR_IMPL", "REJECTED"],
+    READY_FOR_IMPL: ["IN_PROGRESS", "REJECTED"],
+    IN_PROGRESS: ["CODE_REVIEW", "REJECTED"],
+    CODE_REVIEW: ["READY_TO_MERGE", "MERGED", "REJECTED"],
+    READY_TO_MERGE: ["MERGED", "REJECTED"],
+    MERGED: ["READY_FOR_IMPL"],
+    REJECTED: [],
+  });
+});
+
 test("status machine: forward transitions are allowed", () => {
   assert.equal(canTransition("DRAFT", "IN_REVIEW"), true);
   assert.equal(canTransition("IN_REVIEW", "READY_FOR_IMPL"), true);
