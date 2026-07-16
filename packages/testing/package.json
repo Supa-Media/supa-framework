@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/testing",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Reusable test suites that catch common Expo/React Native gotchas — routing conflicts, web bundle safety, React resolution, native import gating",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

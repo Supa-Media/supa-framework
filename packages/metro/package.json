@@ -1,10 +1,12 @@
 {
   "name": "@supa-media/metro",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Metro bundler config factory for pnpm monorepos with Expo",
   "main": "src/index.js",
   "types": "src/index.d.ts",
-  "files": ["src"],
+  "files": [
+    "src"
+  ],
   "peerDependencies": {
     "@expo/metro-config": "*"
   },
