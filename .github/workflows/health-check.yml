@@ -1,0 +1,240 @@
+# Reusable production health-check workflow.
+#
+# Periodically calls one or more Convex query functions on a deployment; if
+# any of them fail (unreachable, "Could not find public function", or a
+# server error), it auto-redeploys via the framework's `deploy-convex.yml`
+# reusable workflow and then re-checks the same functions to confirm the
+# redeploy actually fixed things.
+#
+# This guards against the "white screen" failure mode where a deployment's
+# functions get wiped or lost between deploys.
+#
+# `workflow_call` workflows cannot declare their own `schedule:` trigger — the
+# consumer owns a thin caller workflow that has the cron and calls this one.
+# Copy the example below into your app repo as
+# `.github/workflows/health-check.yml`:
+#
+#   name: Production Health Check
+#
+#   on:
+#     schedule:
+#       # Run every 6 hours
+#       - cron: "0 */6 * * *"
+#     workflow_dispatch:
+#       inputs:
+#         force_redeploy:
+#           description: "Force redeploy even if health check passes"
+#           required: false
+#           default: false
+#           type: boolean
+#
+#   jobs:
+#     health-check:
+#       uses: Supa-Media/supa-framework/.github/workflows/health-check.yml@main
+#       with:
+#         app-name: "My App"
+#         convex-url: "https://my-deployment.convex.cloud"
+#         health-check-functions: |
+#           functions/studios/queries:listPublic
+#         environment: production
+#         sync-secrets-script: scripts/sync-secrets-to-convex.sh
+#         force-redeploy: ${{ github.event.inputs.force_redeploy == 'true' }}
+#       secrets: inherit
+#
+# The redeploy job delegates to this repo's own `deploy-convex.yml` reusable
+# workflow rather than re-declaring every app's secret names here (a fixed
+# list of named `workflow_call` secrets can't generalize across apps with
+# different integrations). Pass through whichever `deploy-convex.yml` inputs
+# your app needs (secret-provider, op-*-secrets, sync-secrets-script, etc.)
+# and use `secrets: inherit` at your call site so they reach it.
+
+name: Production Health Check
+
+on:
+  workflow_call:
+    inputs:
+      app-name:
+        description: "Human-readable app name, used in log and step-summary messages"
+        type: string
+        required: true
+      convex-url:
+        description: "Base URL of the Convex deployment to query (e.g. https://foo.convex.cloud)"
+        type: string
+        required: true
+      health-check-functions:
+        description: >-
+          Newline-separated list of Convex query function paths to check
+          (e.g. "functions/studios/queries:listPublic"). Each is called with
+          empty args ({}) against convex-url. At least one is required.
+        type: string
+        required: true
+      environment:
+        description: "GitHub environment to redeploy to on failure (also selects its secrets)"
+        type: string
+        default: "production"
+      force-redeploy:
+        description: "Force redeploy even if the health check passes (forward your workflow_dispatch input here)"
+        type: boolean
+        default: false
+      node-version:
+        description: "Node.js version, forwarded to deploy-convex.yml"
+        type: string
+        default: "22"
+      pnpm-version:
+        description: "pnpm version, forwarded to deploy-convex.yml (empty string uses the action default)"
+        type: string
+        default: ""
+      secret-provider:
+        description: "Secret provider for the redeploy, forwarded to deploy-convex.yml: 'github-secrets' or 'onepassword'"
+        type: string
+        default: "github-secrets"
+      op-vault-prefix:
+        description: "1Password vault prefix, forwarded to deploy-convex.yml"
+        type: string
+        default: ""
+      op-required-secrets:
+        description: "Newline-separated 1Password secret mappings, forwarded to deploy-convex.yml"
+        type: string
+        default: ""
+      op-optional-secrets:
+        description: "Newline-separated optional 1Password secret mappings, forwarded to deploy-convex.yml"
+        type: string
+        default: ""
+      sync-secrets-script:
+        description: "Path to the app's sync-secrets-to-convex script, forwarded to deploy-convex.yml"
+        type: string
+        default: ""
+      sync-secrets-args:
+        description: "Arguments to the sync-secrets script, forwarded to deploy-convex.yml"
+        type: string
+        default: ""
+    secrets:
+      OP_SERVICE_ACCOUNT_TOKEN:
+        description: "1Password service account token, forwarded to deploy-convex.yml (required when secret-provider is 'onepassword')"
+        required: false
+      packages-token:
+        description: "Token for installing private @supa-media/* packages, forwarded to deploy-convex.yml"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: health-check-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  health-check:
+    name: Check ${{ inputs.app-name }} Health
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      healthy: ${{ steps.check.outputs.healthy }}
+
+    steps:
+      - name: Check Convex functions are responding
+        id: check
+        env:
+          CONVEX_URL: ${{ inputs.convex-url }}
+          HEALTH_CHECK_FUNCTIONS: ${{ inputs.health-check-functions }}
+        run: |
+          set -euo pipefail
+
+          healthy=true
+
+          while IFS= read -r fn_path; do
+            fn_path="$(echo "$fn_path" | xargs)"
+            [ -z "$fn_path" ] && continue
+
+            RESPONSE=$(curl -s -X POST \
+              -H "Content-Type: application/json" \
+              -d "{\"path\":\"$fn_path\",\"args\":{},\"format\":\"json\"}" \
+              "$CONVEX_URL/api/query" || echo "CURL_FAILED")
+
+            if [[ "$RESPONSE" == "CURL_FAILED" ]]; then
+              echo "Health check failed: Could not connect to Convex ($fn_path)"
+              healthy=false
+              continue
+            fi
+
+            # Check if response contains an error about missing function
+            if echo "$RESPONSE" | grep -q "Could not find public function"; then
+              echo "Health check failed: Function not deployed ($fn_path)"
+              echo "Response: $RESPONSE"
+              healthy=false
+              continue
+            fi
+
+            # Check for other server errors
+            if echo "$RESPONSE" | grep -q '"status":"error"'; then
+              echo "Health check failed: Server error ($fn_path)"
+              echo "Response: $RESPONSE"
+              healthy=false
+              continue
+            fi
+
+            echo "OK: $fn_path"
+          done <<< "$HEALTH_CHECK_FUNCTIONS"
+
+          if [[ "$healthy" == "true" ]]; then
+            echo "Health check passed for ${{ inputs.app-name }}"
+          fi
+          echo "healthy=$healthy" >> "$GITHUB_OUTPUT"
+
+  redeploy:
+    name: Auto-Redeploy ${{ inputs.app-name }}
+    needs: health-check
+    if: needs.health-check.outputs.healthy == 'false' || inputs.force-redeploy == true
+    uses: ./.github/workflows/deploy-convex.yml
+    with:
+      environment: ${{ inputs.environment }}
+      node-version: ${{ inputs.node-version }}
+      pnpm-version: ${{ inputs.pnpm-version }}
+      secret-provider: ${{ inputs.secret-provider }}
+      op-vault-prefix: ${{ inputs.op-vault-prefix }}
+      op-required-secrets: ${{ inputs.op-required-secrets }}
+      op-optional-secrets: ${{ inputs.op-optional-secrets }}
+      sync-secrets-script: ${{ inputs.sync-secrets-script }}
+      sync-secrets-args: ${{ inputs.sync-secrets-args }}
+    secrets: inherit
+
+  verify-redeploy:
+    name: Verify ${{ inputs.app-name }} Deployment
+    needs: redeploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Re-check Convex functions
+        env:
+          CONVEX_URL: ${{ inputs.convex-url }}
+          HEALTH_CHECK_FUNCTIONS: ${{ inputs.health-check-functions }}
+        run: |
+          set -euo pipefail
+          sleep 5
+
+          while IFS= read -r fn_path; do
+            fn_path="$(echo "$fn_path" | xargs)"
+            [ -z "$fn_path" ] && continue
+
+            RESPONSE=$(curl -s -X POST \
+              -H "Content-Type: application/json" \
+              -d "{\"path\":\"$fn_path\",\"args\":{},\"format\":\"json\"}" \
+              "$CONVEX_URL/api/query")
+
+            if echo "$RESPONSE" | grep -q "Could not find public function"; then
+              echo "ERROR: Deployment verification failed for $fn_path!"
+              echo "Response: $RESPONSE"
+              exit 1
+            fi
+
+            echo "Verified: $fn_path"
+          done <<< "$HEALTH_CHECK_FUNCTIONS"
+
+      - name: Deployment summary
+        run: |
+          echo "## Auto-Redeploy Complete for ${{ inputs.app-name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Production health check failed and triggered auto-redeploy." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Commit:** \`${GITHUB_SHA::7}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Triggered by:** Health check failure" >> "$GITHUB_STEP_SUMMARY"
