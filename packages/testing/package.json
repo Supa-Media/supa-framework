@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "test": "tsc && node --test \"__tests__/*.test.js\"",
     "prepublishOnly": "tsc"
   },
   "keywords": [
