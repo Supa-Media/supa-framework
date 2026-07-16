@@ -108,9 +108,13 @@ on:
         description: "Whether lint failures should be non-blocking"
         type: boolean
         default: true
+    secrets:
+      packages-token:
+        description: "Token for installing private @supa-media/* packages from GitHub Packages, for callers whose default GITHUB_TOKEN can't read them (e.g. cross-org). Falls back to the workflow's own token."
+        required: false
 
 # Consumer repos install @supa-media/* from GitHub Packages (npm.pkg.github.com),
-# whose token even for public packages must be present. `packages: read` lets the
+# a PRIVATE registry — a token is always required. `packages: read` lets the
 # inherited GITHUB_TOKEN authenticate. No job writes, so read-only is sufficient.
 permissions:
   contents: read
@@ -156,9 +160,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
         env:
-          # `github.token` (not `secrets.GITHUB_TOKEN`, which is empty inside a
-          # reusable workflow) authenticates pnpm to GitHub Packages (@supa-media/*).
-          GITHUB_TOKEN: ${{ github.token }}
+          # `secrets.packages-token` lets cross-org callers supply a token that can
+          # read this org's packages; otherwise `github.token` (not
+          # `secrets.GITHUB_TOKEN`, which is empty inside a reusable workflow)
+          # authenticates pnpm to GitHub Packages (@supa-media/*, private).
+          GITHUB_TOKEN: ${{ secrets.packages-token || github.token }}
 
       - name: Run lint
         run: ${{ inputs.lint-command }}
@@ -191,9 +197,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
         env:
-          # `github.token` (not `secrets.GITHUB_TOKEN`, which is empty inside a
-          # reusable workflow) authenticates pnpm to GitHub Packages (@supa-media/*).
-          GITHUB_TOKEN: ${{ github.token }}
+          # `secrets.packages-token` lets cross-org callers supply a token that can
+          # read this org's packages; otherwise `github.token` (not
+          # `secrets.GITHUB_TOKEN`, which is empty inside a reusable workflow)
+          # authenticates pnpm to GitHub Packages (@supa-media/*, private).
+          GITHUB_TOKEN: ${{ secrets.packages-token || github.token }}
 
       - name: Run tests
         run: pnpm --filter ${{ inputs.shared-package }} test
@@ -223,9 +231,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
         env:
-          # `github.token` (not `secrets.GITHUB_TOKEN`, which is empty inside a
-          # reusable workflow) authenticates pnpm to GitHub Packages (@supa-media/*).
-          GITHUB_TOKEN: ${{ github.token }}
+          # `secrets.packages-token` lets cross-org callers supply a token that can
+          # read this org's packages; otherwise `github.token` (not
+          # `secrets.GITHUB_TOKEN`, which is empty inside a reusable workflow)
+          # authenticates pnpm to GitHub Packages (@supa-media/*, private).
+          GITHUB_TOKEN: ${{ secrets.packages-token || github.token }}
 
       - name: Run tests
         working-directory: apps/mobile
@@ -283,9 +293,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
         env:
-          # `github.token` (not `secrets.GITHUB_TOKEN`, which is empty inside a
-          # reusable workflow) authenticates pnpm to GitHub Packages (@supa-media/*).
-          GITHUB_TOKEN: ${{ github.token }}
+          # `secrets.packages-token` lets cross-org callers supply a token that can
+          # read this org's packages; otherwise `github.token` (not
+          # `secrets.GITHUB_TOKEN`, which is empty inside a reusable workflow)
+          # authenticates pnpm to GitHub Packages (@supa-media/*, private).
+          GITHUB_TOKEN: ${{ secrets.packages-token || github.token }}
 
       - name: Pre-deploy build steps
         if: ${{ inputs.pre-deploy-build-steps != '' }}
@@ -329,9 +341,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
         env:
-          # `github.token` (not `secrets.GITHUB_TOKEN`, which is empty inside a
-          # reusable workflow) authenticates pnpm to GitHub Packages (@supa-media/*).
-          GITHUB_TOKEN: ${{ github.token }}
+          # `secrets.packages-token` lets cross-org callers supply a token that can
+          # read this org's packages; otherwise `github.token` (not
+          # `secrets.GITHUB_TOKEN`, which is empty inside a reusable workflow)
+          # authenticates pnpm to GitHub Packages (@supa-media/*, private).
+          GITHUB_TOKEN: ${{ secrets.packages-token || github.token }}
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium

@@ -89,6 +89,16 @@ on:
       OP_SERVICE_ACCOUNT_TOKEN:
         description: "1Password service account token"
         required: false
+      packages-token:
+        description: "Token for installing private @supa-media/* packages from GitHub Packages, for callers whose default GITHUB_TOKEN can't read them (e.g. cross-org). Falls back to the workflow's own token."
+        required: false
+
+# Consumer repos install @supa-media/* from GitHub Packages (npm.pkg.github.com),
+# a PRIVATE registry — a token is always required. `packages: read` lets the
+# inherited GITHUB_TOKEN authenticate. No job writes, so read-only is sufficient.
+permissions:
+  contents: read
+  packages: read
 
 jobs:
   deploy:
@@ -137,6 +147,12 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          # `secrets.packages-token` lets cross-org callers supply a token that can
+          # read this org's packages; otherwise `github.token` (not
+          # `secrets.GITHUB_TOKEN`, which is empty inside a reusable workflow)
+          # authenticates pnpm to GitHub Packages (@supa-media/*, private).
+          GITHUB_TOKEN: ${{ secrets.packages-token || github.token }}
 
       # --- EAS Hosting ---
       - name: Setup EAS
