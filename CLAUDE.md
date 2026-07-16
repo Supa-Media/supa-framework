@@ -3,7 +3,7 @@
 Guidelines for AI agents (Claude, Cursor, Copilot, etc.) working on the
 **supa-framework** monorepo (the framework itself — not an app scaffolded from it).
 
-This repo is the source of `@supa/*` packages, the `create-supa-app` scaffolder, and
+This repo is the source of `@supa-media/*` packages, the `create-supa-app` scaffolder, and
 the reusable GitHub workflows. For what each package does and the overall design, see
 [README.md](./README.md) and [docs/DESIGN.md](./docs/DESIGN.md).
 
