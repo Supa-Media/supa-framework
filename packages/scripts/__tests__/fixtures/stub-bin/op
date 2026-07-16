@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Stub 1Password CLI for sync-1password-to-github.test.js. Only implements
+# the two subcommands the script under test actually calls: `account list`
+# (auth check) and `read <op://...>` (secret fetch). Behavior per secret key
+# is controlled via files under $STUB_STATE_DIR, written by the test:
+#
+#   $STUB_STATE_DIR/op-<KEY>.mode  - one of:
+#     ok            - succeed, print the value from op-<KEY>.value (or a
+#                     default placeholder if that file doesn't exist)
+#     missing       - fail with op's real "item not found" phrasing
+#                     (definitive absence — the script should prune/fail
+#                     required, never abort)
+#     missing-field - fail with op's real "field not found on item" phrasing
+#     error         - fail with a generic (not-a-known-not-found) message on
+#                     every call — simulates a persistent transient failure
+#                     (auth/rate-limit/network) that must never be treated
+#                     as "missing"
+#     flaky:N       - fail with the same generic message for the first N
+#                     calls for this key, then succeed — simulates a
+#                     transient failure that clears up within the retry
+#                     budget
+#   (default mode, if no file exists, is "ok")
+#
+# Every `read` call is logged to $STUB_STATE_DIR/op-calls.log as
+# "read <key> <env>" so tests can assert on retry counts / call volume.
+
+set -euo pipefail
+
+STATE="${STUB_STATE_DIR:?STUB_STATE_DIR must be set for the op stub}"
+
+if [ "$1" = "account" ] && [ "$2" = "list" ]; then
+  exit 0
+fi
+
+if [ "$1" = "read" ]; then
+  ref="$2"
+  no_scheme="${ref#op://}"        # VAULT/KEY/ENV
+  vault="${no_scheme%%/*}"
+  after_vault="${no_scheme#*/}"   # KEY/ENV
+  key="${after_vault%%/*}"
+  env="${after_vault#*/}"
+
+  echo "read $key $env" >>"$STATE/op-calls.log"
+
+  mode="ok"
+  if [ -f "$STATE/op-$key.mode" ]; then
+    mode="$(cat "$STATE/op-$key.mode")"
+  fi
+
+  case "$mode" in
+    missing)
+      echo "[ERROR] could not read secret '$ref': \"$key\" isn't an item in the \"$vault\" vault. Specify the item with its UUID, name, or domain." >&2
+      exit 1
+      ;;
+    missing-field)
+      echo "[ERROR] could not read secret '$ref': item '$vault/$key' does not have a field '$env'" >&2
+      exit 1
+      ;;
+    error)
+      echo "[ERROR] could not read secret '$ref': rate limited, please try again later" >&2
+      exit 1
+      ;;
+    flaky:*)
+      fail_until="${mode#flaky:}"
+      countfile="$STATE/op-$key.count"
+      count=0
+      [ -f "$countfile" ] && count="$(cat "$countfile")"
+      count=$((count + 1))
+      echo "$count" >"$countfile"
+      if [ "$count" -le "$fail_until" ]; then
+        echo "[ERROR] could not read secret '$ref': rate limited, please try again later" >&2
+        exit 1
+      fi
+      if [ -f "$STATE/op-$key.value" ]; then
+        cat "$STATE/op-$key.value"
+      else
+        echo "stub-value-$key"
+      fi
+      exit 0
+      ;;
+    ok|*)
+      if [ -f "$STATE/op-$key.value" ]; then
+        cat "$STATE/op-$key.value"
+      else
+        echo "stub-value-$key"
+      fi
+      exit 0
+      ;;
+  esac
+fi
+
+echo "op stub: unhandled invocation: $*" >&2
+exit 1

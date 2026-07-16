@@ -4,12 +4,15 @@
   "description": "CI/deploy helper scripts for Supa apps",
   "bin": {
     "supa-sync-secrets": "./src/sync-secrets-to-convex.sh",
+    "supa-sync-1password-to-github": "./src/sync-1password-to-github.sh",
     "supa-generate-ota-version": "./src/generate-ota-version.js",
     "supa-setup-secrets": "./src/setup-secrets.sh",
     "supa-bump-version": "./src/bump-version.js"
   },
   "scripts": {
+    "test": "node --test",
     "sync-secrets": "./src/sync-secrets-to-convex.sh",
+    "sync-1password-to-github": "./src/sync-1password-to-github.sh",
     "setup-secrets": "./src/setup-secrets.sh",
     "generate-ota-version": "node ./src/generate-ota-version.js",
     "bump-version": "node ./src/bump-version.js"
