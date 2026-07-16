@@ -1,2 +1,2 @@
-export { PaywallGate } from "./PaywallGate";
-export { SubscriptionStatusCard } from "./SubscriptionStatusCard";
+export { PaywallGate } from "./PaywallGate.js";
+export { SubscriptionStatusCard } from "./SubscriptionStatusCard.js";

@@ -1,21 +1,21 @@
-export { SupaConvexProvider, type SupaConvexProviderProps } from "./ConvexProvider";
+export { SupaConvexProvider, type SupaConvexProviderProps } from "./ConvexProvider.js";
 export {
   OTAUpdateProvider,
   useOTAStatus,
   type OTAStatus,
   type OTAUpdateContextType,
   type OTAUpdateProviderProps,
-} from "./OTAUpdateProvider";
-export { ErrorBoundary, type ErrorBoundaryProps } from "./ErrorBoundary";
+} from "./OTAUpdateProvider.js";
+export { ErrorBoundary, type ErrorBoundaryProps } from "./ErrorBoundary.js";
 export {
   KeyboardProvider,
   useKeyboardAware,
   type KeyboardState,
   type KeyboardProviderProps,
-} from "./KeyboardProvider";
+} from "./KeyboardProvider.js";
 export {
   NetworkProvider,
   useNetworkStatus,
   type NetworkStatus,
   type NetworkProviderProps,
-} from "./NetworkProvider";
+} from "./NetworkProvider.js";

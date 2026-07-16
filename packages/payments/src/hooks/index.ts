@@ -1,3 +1,3 @@
-export { useSubscription } from "./useSubscription";
-export { usePaymentSheet } from "./usePaymentSheet";
-export { useProducts } from "./useProducts";
+export { useSubscription } from "./useSubscription.js";
+export { usePaymentSheet } from "./usePaymentSheet.js";
+export { useProducts } from "./useProducts.js";

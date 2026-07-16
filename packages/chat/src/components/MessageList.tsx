@@ -32,7 +32,7 @@ import {
   type ViewStyle,
   type TextStyle,
 } from "react-native";
-import type { Message, OptimisticMessage, UseMessagesResult } from "../types";
+import type { Message, OptimisticMessage, UseMessagesResult } from "../types/index.js";
 
 // ---------------------------------------------------------------------------
 // Types

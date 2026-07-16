@@ -21,21 +21,21 @@
  */
 
 // Provider
-export { NotificationProvider } from "./providers";
-export type { NotificationProviderProps } from "./providers";
+export { NotificationProvider } from "./providers/index.js";
+export type { NotificationProviderProps } from "./providers/index.js";
 
 // Hooks
 export {
   useNotifications,
   useNotificationPermission,
   usePushToken,
-} from "./hooks";
+} from "./hooks/index.js";
 
 // Handlers
-export { registerBackgroundHandler, resolveDeepLink } from "./handlers";
+export { registerBackgroundHandler, resolveDeepLink } from "./handlers/index.js";
 
 // Config
-export { setupAndroidChannels, DEFAULT_ANDROID_CHANNELS } from "./config";
+export { setupAndroidChannels, DEFAULT_ANDROID_CHANNELS } from "./config/index.js";
 
 // Types
 export type {
@@ -48,4 +48,4 @@ export type {
   UseNotificationPermissionResult,
   UsePushTokenResult,
   AndroidNotificationChannel,
-} from "./types";
+} from "./types/index.js";

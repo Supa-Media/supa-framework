@@ -3,7 +3,7 @@
  */
 
 import { createContext } from "react";
-import type { NotificationData, PermissionStatus } from "../types";
+import type { NotificationData, PermissionStatus } from "../types/index.js";
 
 export interface NotificationContextValue {
   pushToken: string | null;

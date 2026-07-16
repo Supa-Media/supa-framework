@@ -13,7 +13,7 @@
  */
 
 import { useState, useCallback } from "react";
-import type { UsePaymentSheetResult } from "../types";
+import type { UsePaymentSheetResult } from "../types/index.js";
 
 /**
  * Hook for presenting the Stripe Payment Sheet on mobile.

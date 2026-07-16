@@ -6,4 +6,4 @@ export {
   useNotifications,
   useNotificationPermission,
   usePushToken,
-} from "./useNotifications";
+} from "./useNotifications.js";

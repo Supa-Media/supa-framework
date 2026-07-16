@@ -14,8 +14,8 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { DEFAULT_CHAT_CONFIG } from "../types";
-import type { ChatConfig, Message } from "../types";
+import { DEFAULT_CHAT_CONFIG } from "../types/index.js";
+import type { ChatConfig, Message } from "../types/index.js";
 
 interface CachedChannel {
   messages: Message[];

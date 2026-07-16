@@ -11,15 +11,15 @@
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { Platform } from "react-native";
-import { NotificationContext } from "./NotificationContext";
+import { NotificationContext } from "./NotificationContext.js";
 import type {
   NotificationProviderConfig,
   NotificationData,
   NotificationTapEvent,
   PermissionStatus,
-} from "../types";
-import { resolveDeepLink } from "../handlers";
-import { setupAndroidChannels } from "../config";
+} from "../types/index.js";
+import { resolveDeepLink } from "../handlers/index.js";
+import { setupAndroidChannels } from "../config/index.js";
 
 // ---------------------------------------------------------------------------
 // Optional native dependencies — imported dynamically so the provider

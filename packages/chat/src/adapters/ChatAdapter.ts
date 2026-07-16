@@ -17,7 +17,7 @@ import type {
   PaginatedMessagesResult,
   SendMessageOptions,
   Attachment,
-} from "../types";
+} from "../types/index.js";
 
 export interface ChatAdapter {
   // ---------------------------------------------------------------------------

@@ -38,16 +38,16 @@ export {
   getStripeConfig,
   getStripeConfigAuto,
   detectEnvironment,
-} from "./config";
+} from "./config/index.js";
 
 // Hooks
-export { useSubscription } from "./hooks/useSubscription";
-export { usePaymentSheet } from "./hooks/usePaymentSheet";
-export { useProducts } from "./hooks/useProducts";
+export { useSubscription } from "./hooks/useSubscription.js";
+export { usePaymentSheet } from "./hooks/usePaymentSheet.js";
+export { useProducts } from "./hooks/useProducts.js";
 
 // Components
-export { PaywallGate } from "./components/PaywallGate";
-export { SubscriptionStatusCard } from "./components/SubscriptionStatusCard";
+export { PaywallGate } from "./components/PaywallGate.js";
+export { SubscriptionStatusCard } from "./components/SubscriptionStatusCard.js";
 
 // Types
 export type {
@@ -66,4 +66,4 @@ export type {
   UseProductsResult,
   PaywallGateProps,
   SubscriptionStatusProps,
-} from "./types";
+} from "./types/index.js";

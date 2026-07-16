@@ -33,7 +33,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "tsc && node --test \"__tests__/*.test.js\""
   },
   "peerDependencies": {
     "react": ">=19.0.0",

@@ -7,9 +7,9 @@
  */
 
 import { useState, useEffect } from "react";
-import { useChannelCache } from "../stores/channelCache";
-import type { ChatAdapter } from "../adapters/ChatAdapter";
-import type { Channel } from "../types";
+import { useChannelCache } from "../stores/channelCache.js";
+import type { ChatAdapter } from "../adapters/ChatAdapter.js";
+import type { Channel } from "../types/index.js";
 
 interface UseChannelsResult {
   channels: Channel[];

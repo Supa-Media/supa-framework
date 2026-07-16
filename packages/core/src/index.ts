@@ -23,7 +23,7 @@ export {
   type DevConfig,
   type SharedConfig,
   type ConvexConfig,
-} from "./config";
+} from "./config/index.js";
 
 // Providers
 export {
@@ -41,10 +41,10 @@ export {
   type KeyboardProviderProps,
   type NetworkStatus,
   type NetworkProviderProps,
-} from "./providers";
+} from "./providers/index.js";
 
 // Hooks
-export { useOTAStatus, useNetworkStatus, useKeyboardAware } from "./hooks";
+export { useOTAStatus, useNetworkStatus, useKeyboardAware } from "./hooks/index.js";
 
 // Navigation
 export {
@@ -52,10 +52,10 @@ export {
   SupaTabBar,
   type SupaModalProps,
   type SupaTabBarProps,
-} from "./navigation";
+} from "./navigation/index.js";
 
 // Forms
 export {
   KeyboardAwareFormContainer,
   type KeyboardAwareFormContainerProps,
-} from "./forms";
+} from "./forms/index.js";

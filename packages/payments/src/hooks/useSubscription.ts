@@ -13,7 +13,7 @@ import type {
   Subscription,
   SubscriptionStatus,
   UseSubscriptionResult,
-} from "../types";
+} from "../types/index.js";
 
 /**
  * Shape of the raw data returned from a Convex subscription query.
