@@ -196,9 +196,17 @@ jobs:
         uses: actions/checkout@v4
 
       # --- GitHub Secrets provider ---
+      # Fully-qualified (not `./...`) because this step runs inside a REUSABLE
+      # workflow: a local `uses: ./...` action reference resolves against the
+      # CALLING job's checkout — the consumer repo — not this repo, so it 404s
+      # for every external caller (see .github/actions/load-secrets/action.yml
+      # and docs/SECRETS.md). Pinned to `@v1`, matching how consumers already
+      # pin the workflow itself; since the action lives in this same repo, a
+      # `v1` advance ships callers the current action version in lockstep with
+      # the current workflow version — no separate action version to track.
       - name: Load secrets (GitHub)
         if: ${{ inputs.secret-provider == 'github-secrets' }}
-        uses: ./.github/actions/load-secrets
+        uses: Supa-Media/supa-framework/.github/actions/load-secrets@v1
         with:
           secrets-json: ${{ toJSON(secrets) }}
 
