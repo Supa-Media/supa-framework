@@ -270,8 +270,8 @@ Task tool with subagent_type="general-purpose", max_turns=50:
 2. Create a feature branch: git checkout -b feature/<task-slug>
 3. Implement the feature following the plan
 4. Commit frequently with atomic commits
-5. Run type checks and tests to verify the fix
-6. Verify all checks pass locally before returning
+5. Run type checks: pnpm typecheck
+6. Run tests: pnpm test
 
 ## Commit Format
 git commit -m '<type>: <description>
