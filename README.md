@@ -31,6 +31,7 @@ Published to **GitHub Packages** (private registry — requires `GITHUB_TOKEN` w
 | [`@supa-media/chat`](packages/chat) | Real-time messaging with pagination, offline caching |
 | [`@supa-media/notifications`](packages/notifications) | Push notifications with deep linking |
 | [`@supa-media/payments`](packages/payments) | Stripe integration with staging/production separation |
+| [`@supa-media/dev-assistant`](packages/dev-assistant) | "App improves itself" AI contribution pipeline (spec → build → review → merge → deploy) |
 | [`@supa-media/metro`](packages/metro) | Metro config factory for pnpm monorepos |
 | [`@supa-media/native-safety`](packages/native-safety) | Native dependency gating for safe OTA updates |
 | [`@supa-media/linter`](packages/linter) | ESLint rules for Supa conventions |
