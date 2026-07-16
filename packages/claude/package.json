@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/claude",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Claude Code configuration templates for Supa apps",
   "type": "module",
   "bin": {
