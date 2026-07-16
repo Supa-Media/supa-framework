@@ -830,7 +830,7 @@ All secrets are stored as 1Password references in the config. The setup script v
 - `.env.example` with 1Password paths for ALL configured services
 - `CLAUDE.md` with framework conventions
 - `.claude/` with Supa-compatible skills and commands
-- `eslint.config.js` extending `@supa/linter`
+- `eslint.config.js` extending `@supa-media/linter/preset`
 - `docs/upgrading.md` template for tracking framework version and upgrade notes
 
 ### Post-Scaffold
