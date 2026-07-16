@@ -80,6 +80,11 @@ export interface CreateSupaTestsConfig {
   providersDir?: string;
   /** Regex patterns identifying native-only imports in providers */
   nativeOnlyPatterns?: RegExp[];
+  /**
+   * Native packages whose keyed React must match the app's React (react-resolution suite).
+   * Default: ["react-native", "expo-modules-core", "react-native-web"].
+   */
+  reactNativePackages?: string[];
 }
 
 export interface SupaTests {
@@ -134,7 +139,10 @@ export function createSupaTests(config: CreateSupaTestsConfig): SupaTests {
         nativeOnlyPatterns: config.nativeOnlyPatterns,
       }),
 
-    reactResolution: () => _testReactResolution(resolvedSrcDir),
+    reactResolution: () =>
+      _testReactResolution(resolvedSrcDir, {
+        nativePackages: config.reactNativePackages,
+      }),
 
     nativeImports: () =>
       _testNativeImports({
