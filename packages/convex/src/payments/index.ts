@@ -9,6 +9,7 @@
  * import { handleStripeWebhook, getSubscriptionStatus } from "@supa-media/convex/payments";
  * ```
  */
+import { timingSafeEqual } from "../webhooks/hmac";
 
 // -- Types --
 
@@ -393,7 +394,9 @@ export async function verifyStripeSignature(
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
-  if (expectedSignature !== v1Signature) {
+  // Constant-time comparison to prevent timing attacks (see
+  // ../webhooks/hmac.ts's timingSafeEqual for the rationale).
+  if (!timingSafeEqual(expectedSignature, v1Signature)) {
     throw new Error("Invalid Stripe webhook signature");
   }
 
