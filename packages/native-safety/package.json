@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/native-safety",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Native dependency gating enforcement for Expo apps — critical for safe OTA updates",
   "main": "src/index.js",
   "types": "src/index.d.ts",

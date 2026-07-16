@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/scripts",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "CI/deploy helper scripts for Supa apps",
   "bin": {
     "supa-sync-secrets": "./src/sync-secrets-to-convex.sh",
