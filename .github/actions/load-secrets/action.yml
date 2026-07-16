@@ -1,0 +1,54 @@
+name: "Load Secrets"
+description: >-
+  Exports a JSON blob of GitHub Actions secrets as environment variables
+  (via $GITHUB_ENV) so subsequent steps in the same job can read them as
+  ${{ env.SOME_KEY }} or as plain shell env vars.
+
+# Why this exists (composite-action constraint):
+#   Composite actions cannot read the workflow's `secrets` context directly —
+#   GitHub only exposes `secrets.*` to the *workflow* YAML, not to steps
+#   inside a local composite action. So every reusable workflow in this repo
+#   that uses the "github-secrets" secret-provider path (deploy-convex.yml,
+#   deploy-web.yml, build-mobile-native.yml, deploy-mobile-update.yml) works
+#   around that by serializing the whole secrets context with `toJSON(secrets)`
+#   in the *calling* workflow step and passing it in as the `secrets-json`
+#   input below. This action's only job is to unpack that JSON and re-export
+#   each entry as a real env var for the rest of the job.
+#
+# Provider context: this action backs the "github-secrets" secret-provider
+# (the default). It assumes the consumer repo has already synced its secrets
+# from 1Password into GitHub Environment secrets (see docs/SECRETS.md) and
+# calls the reusable workflow with `secrets: inherit`, so `toJSON(secrets)`
+# contains everything the job needs (CONVEX_DEPLOY_KEY, EXPO_TOKEN,
+# CLOUDFLARE_API_TOKEN, R2_*, etc.) under the exact key names the rest of the
+# job expects.
+
+inputs:
+  secrets-json:
+    description: "JSON object of all secrets - pass toJSON(secrets) from the calling workflow"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Export secrets to environment
+      shell: bash
+      env:
+        SECRETS_JSON: ${{ inputs.secrets-json }}
+      run: |
+        # Parse the secrets JSON and export each key-value pair to GITHUB_ENV
+        # so later steps can read it as ${{ env.KEY }} or $KEY in `run:` blocks.
+        #
+        # - Skips empty values (an unset optional secret shouldn't clobber a
+        #   default with an empty string).
+        # - Skips the automatic GITHUB_TOKEN entry (case-insensitive) —
+        #   that's the job's own scoped token, not an app secret, and
+        #   overwriting $GITHUB_TOKEN in the environment would break
+        #   subsequent steps/CLIs (gh, actions/checkout, etc.) that rely on it.
+        # - Uses the multiline delimiter syntax so secret values containing
+        #   newlines or special characters (e.g. PEM keys) survive intact.
+        printf '%s' "$SECRETS_JSON" | jq -r '
+          to_entries[]
+          | select(.value != "" and (.key | ascii_downcase) != "github_token")
+          | @text "\(.key)<<__GH_ENV_DELIM__\n\(.value)\n__GH_ENV_DELIM__"
+        ' >> "$GITHUB_ENV"
