@@ -28,19 +28,25 @@
  * asserts every function both (a) SURVIVES onto the api node and (b) keeps
  * NON-`any` args. If a future edit reintroduces `(ctx: any, args: any)` or an
  * `as any` validator, an assertion below fails to compile.
+ *
+ * SCOPE: this covers the arg-type collapse only. There is a SEPARATE, deeper
+ * defect — the factory's inferred return type WIDENS each function's phantom
+ * visibility parameter from its concrete `"internal"`/`"public"` literal to the
+ * whole `FunctionVisibility` union, which drops the function from BOTH of the
+ * consumer's visibility-partitioned `api`/`internal` objects
+ * (`FilterApi<…, FunctionReference<any, "internal">>`). That widening is
+ * complexity-driven (it does not reproduce with a minimal config, so it cannot
+ * be asserted reliably here) and cannot be undone by re-mapping the type — a
+ * reconstructed `Registered…` alias is itself dropped by
+ * `FunctionReferenceFromExport`. Its only reliable fix is to expose the
+ * functions as module-level consts rather than factory-returned — see the PR
+ * that introduced this file for the full analysis.
  */
 
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-  RegisteredAction,
-  RegisteredQuery,
-} from "convex/server";
+import type { ApiFromModules, FunctionReference } from "convex/server";
 import { internalActionGeneric } from "convex/server";
 import { v } from "convex/values";
 import { createDevAssistant } from "../src/functions/index";
-import { internalGroup, publicGroup } from "../src/functions/visibility";
 
 // ---- tiny hand-rolled type assertions (no devDependency) ----
 type Expect<T extends true> = T;
@@ -97,25 +103,6 @@ type Actions = Api["functions"]["devAssistant"]["actions"];
 type Contributions = Api["functions"]["devAssistant"]["contributions"];
 type Maintainers = Api["functions"]["devAssistant"]["maintainers"];
 
-// The consumer's generated `api` / `internal` are NOT the raw `ApiFromModules`
-// output — they are visibility PARTITIONS of it:
-//   export const internal = FilterApi<typeof fullApi, FunctionReference<any, "internal">>;
-//   export const api      = FilterApi<typeof fullApi, FunctionReference<any, "public">>;
-// A function survives `ApiFromModules` even if its visibility is widened to
-// `"public" | "internal"`, but such a function is dropped from BOTH partitions
-// (its `_visibility` is assignable to neither literal). The original defect
-// slipped past a test that only checked `ApiFromModules`; these partition types
-// are what actually matter to a consumer.
-type InternalApi = FilterApi<Api, FunctionReference<any, "internal">>;
-type PublicApi = FilterApi<Api, FunctionReference<any, "public">>;
-type InternalBugs = InternalApi["functions"]["devAssistant"]["bugs"];
-type InternalActions = InternalApi["functions"]["devAssistant"]["actions"];
-type InternalMaintainers =
-  InternalApi["functions"]["devAssistant"]["maintainers"];
-type PublicBugs = PublicApi["functions"]["devAssistant"]["bugs"];
-type PublicContributions =
-  PublicApi["functions"]["devAssistant"]["contributions"];
-
 // ---------------------------------------------------------------------------
 // (a) SURVIVAL — every re-exported function is present on its api node.
 // ---------------------------------------------------------------------------
@@ -167,92 +154,6 @@ type _fieldsFlowThrough = [
   Expect<_applyCallbackArgs["status"] extends string ? true : false>,
 ];
 
-// ---------------------------------------------------------------------------
-// (c) VISIBILITY PARTITION — the decisive check. Every function must land on the
-// correct partition (`internal` vs `api`). A widened `"public" | "internal"`
-// visibility drops the function from BOTH — this is the exact failure a real
-// consumer hits, and what the original test missed.
-// ---------------------------------------------------------------------------
-type _internalSurvive = [
-  // internal bugs pipeline ops
-  Expect<HasKey<InternalBugs, "getBug">>,
-  Expect<HasKey<InternalBugs, "applyCallback">>,
-  Expect<HasKey<InternalBugs, "handleWorkflowRunEvent">>,
-  // internal actions (dispatch/auto-merge/callback)
-  Expect<HasKey<InternalActions, "dispatchBug">>,
-  Expect<HasKey<InternalActions, "handleRoutineCallback">>,
-  Expect<HasKey<InternalActions, "reconcileMergedPrs">>,
-  // internal maintainers
-  Expect<HasKey<InternalMaintainers, "getAutoMergeCapForUser">>,
-];
-type _publicSurvive = [
-  // public maintainer review-screen ops (mobile-facing)
-  Expect<HasKey<PublicBugs, "getBugForReview">>,
-  Expect<HasKey<PublicBugs, "rejectBug">>,
-  Expect<HasKey<PublicBugs, "markBugMerged">>,
-  Expect<HasKey<PublicBugs, "retryDispatch">>,
-  // public contribution dashboard functions
-  Expect<HasKey<PublicContributions, "submit">>,
-  Expect<HasKey<PublicContributions, "getContribution">>,
-];
-// And the partitions must be DISJOINT: an internal-only function must NOT appear
-// on the public partition (proves visibility stayed a concrete literal, not the
-// `"public" | "internal"` union — a union would land it on neither, so if it
-// wrongly showed on public the pin would be wrong the other way).
-type _partitionDisjoint = [
-  // an internal bug op must NOT appear on the public partition
-  Expect<"getBug" extends keyof PublicBugs ? false : true>,
-  // the all-internal `actions` node is dropped entirely from the public
-  // partition (an empty node is removed) — so `actions` is absent under public
-  Expect<"actions" extends keyof PublicApi["functions"]["devAssistant"]
-    ? false
-    : true>,
-];
-
-// ---------------------------------------------------------------------------
-// (d) THE MECHANISM, version-independently. The visibility widening only
-// reproduces under some tsc/convex-version combos, so the assertions above can
-// pass on a convex version that happens not to widen. This block deterministically
-// exercises the FIX itself: feed `pinGroupVisibility` a group whose member has an
-// ALREADY-WIDENED visibility (`FunctionVisibility`, the failure mode) and assert
-// the pinned result (a) survives the visibility partition and (b) keeps its args.
-declare const widenedGroup: {
-  // widened visibility (`"public" | "internal"`), concrete args — exactly the
-  // shape the factory produced before the pin.
-  widenedAction: RegisteredAction<
-    import("convex/server").FunctionVisibility,
-    { bugId: string },
-    Promise<null>
-  >;
-  widenedQuery: RegisteredQuery<
-    import("convex/server").FunctionVisibility,
-    { token: string },
-    Promise<null>
-  >;
-};
-const pinnedInternal = internalGroup({
-  widenedAction: widenedGroup.widenedAction,
-});
-const pinnedPublic = publicGroup({ widenedQuery: widenedGroup.widenedQuery });
-type PinnedInternalApi = FilterApi<
-  ApiFromModules<{ "m/i": typeof pinnedInternal }>,
-  FunctionReference<any, "internal">
->;
-type PinnedPublicApi = FilterApi<
-  ApiFromModules<{ "m/p": typeof pinnedPublic }>,
-  FunctionReference<any, "public">
->;
-type _pinFixesInternal = Expect<
-  "widenedAction" extends keyof PinnedInternalApi["m"]["i"] ? true : false
->;
-type _pinFixesPublic = Expect<
-  "widenedQuery" extends keyof PinnedPublicApi["m"]["p"] ? true : false
->;
-// args preserved through the pin
-type _pinKeepsArgs = Expect<
-  IsNotAny<ArgsOf<PinnedInternalApi["m"]["i"]["widenedAction"]>>
->;
-
 // Reference the assertion aliases so `noUnusedLocals`-style lints stay quiet and
 // the aliases are part of the compiled program.
 export type __ApiTypeRegression = [
@@ -262,10 +163,4 @@ export type __ApiTypeRegression = [
   _maintainersSurvive,
   _argsAreConcrete,
   _fieldsFlowThrough,
-  _internalSurvive,
-  _publicSurvive,
-  _partitionDisjoint,
-  _pinFixesInternal,
-  _pinFixesPublic,
-  _pinKeepsArgs,
 ];

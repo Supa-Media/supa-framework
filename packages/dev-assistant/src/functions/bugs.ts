@@ -22,7 +22,6 @@ import {
 import { v } from "convex/values";
 import type { ResolvedDevAssistantConfig } from "../config";
 import type { DevAssistantRefs } from "./refs";
-import { internalGroup, publicGroup } from "./visibility";
 import { applyStatusTransition, insertThreadMessage } from "./dbHelpers";
 import {
   BUG_STATUSES,
@@ -880,35 +879,27 @@ export function makeBugsFunctions(
     },
   });
 
-  // Pin visibility so these survive onto the consumer's generated
-  // `api`/`internal` (see ./visibility.ts). This group is MIXED: the pipeline DB
-  // ops + webhook handlers are internal; the maintainer review-screen ops
-  // (queryGeneric/mutationGeneric) are public.
   return {
-    ...internalGroup({
-      getThreadHistory,
-      getBug,
-      getBugByRoutineRunId,
-      getOriginatorAttribution,
-      listOpenPrBugs,
-      markDispatched,
-      markSpecDispatched,
-      markReviewDispatched,
-      markFixDispatched,
-      setGithubIssue,
-      recordDispatchError,
-      addSystemThreadMessage,
-      recordProductionDeployOutcome,
-      recordMergeFromAppFailure,
-      applyCallback,
-      handleGithubPrClosed,
-      handleWorkflowRunEvent,
-    }),
-    ...publicGroup({
-      getBugForReview,
-      rejectBug,
-      markBugMerged,
-      retryDispatch,
-    }),
+    getThreadHistory,
+    getBug,
+    getBugByRoutineRunId,
+    getOriginatorAttribution,
+    listOpenPrBugs,
+    markDispatched,
+    markSpecDispatched,
+    markReviewDispatched,
+    markFixDispatched,
+    setGithubIssue,
+    recordDispatchError,
+    addSystemThreadMessage,
+    recordProductionDeployOutcome,
+    recordMergeFromAppFailure,
+    applyCallback,
+    handleGithubPrClosed,
+    handleWorkflowRunEvent,
+    getBugForReview,
+    rejectBug,
+    markBugMerged,
+    retryDispatch,
   };
 }

@@ -10,7 +10,6 @@ import { mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import type { ResolvedDevAssistantConfig } from "../config";
 import type { DevAssistantRefs } from "./refs";
-import { publicGroup } from "./visibility";
 import { applyStatusTransition, insertThreadMessage } from "./dbHelpers";
 import { deriveTitle } from "../pipeline/text";
 
@@ -598,9 +597,7 @@ export function makeContributionsFunctions(
     },
   });
 
-  // Pin visibility so these survive onto the consumer's generated `api` (see
-  // ./visibility.ts). Every contribution function is public (dashboard-facing).
-  return publicGroup({
+  return {
       getGithubUsername,
       setGithubUsername,
       submit,
@@ -617,5 +614,5 @@ export function makeContributionsFunctions(
       myContributions,
       listAll,
       getContribution,
-    });
+    };
 }

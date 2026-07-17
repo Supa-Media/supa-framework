@@ -14,7 +14,6 @@ import { internalActionGeneric } from "convex/server";
 import { v } from "convex/values";
 import type { ResolvedDevAssistantConfig } from "../config";
 import type { DevAssistantRefs } from "./refs";
-import { internalGroup } from "./visibility";
 import {
   bugStatusValidator,
   callbackSourceValidator,
@@ -1014,9 +1013,7 @@ export function makeActionsFunctions(
     },
   });
 
-  // Pin visibility so these survive onto the consumer's generated `internal`
-  // (see ./visibility.ts). Every action in this group is internal.
-  return internalGroup({
+  return {
       dispatchBug,
       dispatchSpec,
       dispatchReview,
@@ -1027,5 +1024,5 @@ export function makeActionsFunctions(
       dispatchProductionDeploy,
       reconcileMergedPrs,
       handleRoutineCallback,
-    });
+    };
 }
