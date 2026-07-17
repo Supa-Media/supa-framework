@@ -1,5 +1,5 @@
 /**
- * Configuration surface for `createDevAssistant`. Only the app-specific parts of
+ * Configuration surface for `setDevAssistantConfig`. Only the app-specific parts of
  * Togather's devAssistant are exposed here — the role gate, the notifier, the
  * media/upload resolvers, the repo/GitHub config, and a few tunables. Env var
  * names are kept identical to Togather where they are already generic
@@ -208,40 +208,40 @@ function defaultAssertValidAttachment(url: string): void {
  */
 export function validateConfig(config: DevAssistantConfig): void {
   if (!config || typeof config !== "object") {
-    throw new Error("createDevAssistant: config is required");
+    throw new Error("setDevAssistantConfig: config is required");
   }
   if (
     typeof config.functionsPath !== "string" ||
     config.functionsPath.length === 0
   ) {
-    throw new Error("createDevAssistant: `functionsPath` is required");
+    throw new Error("setDevAssistantConfig: `functionsPath` is required");
   }
   if (config.functionsPath.endsWith("/")) {
     throw new Error(
-      "createDevAssistant: `functionsPath` must not end with a slash",
+      "setDevAssistantConfig: `functionsPath` must not end with a slash",
     );
   }
   if (typeof config.authenticate !== "function") {
-    throw new Error("createDevAssistant: `authenticate` callback is required");
+    throw new Error("setDevAssistantConfig: `authenticate` callback is required");
   }
   if (typeof config.canUseDevAssistant !== "function") {
     throw new Error(
-      "createDevAssistant: `canUseDevAssistant` callback is required",
+      "setDevAssistantConfig: `canUseDevAssistant` callback is required",
     );
   }
   if (!config.repo || typeof config.repo !== "object") {
-    throw new Error("createDevAssistant: `repo` config is required");
+    throw new Error("setDevAssistantConfig: `repo` config is required");
   }
   if (!config.repo.owner || !config.repo.name) {
     throw new Error(
-      "createDevAssistant: `repo.owner` and `repo.name` are required",
+      "setDevAssistantConfig: `repo.owner` and `repo.name` are required",
     );
   }
   if (
     config.maxFixRounds !== undefined &&
     (!Number.isInteger(config.maxFixRounds) || config.maxFixRounds < 1)
   ) {
-    throw new Error("createDevAssistant: `maxFixRounds` must be a positive integer");
+    throw new Error("setDevAssistantConfig: `maxFixRounds` must be a positive integer");
   }
 }
 
