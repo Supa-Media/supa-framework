@@ -108,7 +108,7 @@ export function assertMounted(internalApi: any, functionsPath: string): void {
   const missing = validateMount(internalApi, functionsPath);
   if (missing.length > 0) {
     throw new Error(
-      `createDevAssistant: functionsPath "${functionsPath}" does not resolve ` +
+      `setDevAssistantConfig: functionsPath "${functionsPath}" does not resolve ` +
         `against the generated Convex API — re-export the missing function(s) ` +
         `at exactly the shown path(s):\n` +
         missing.map((m) => `  - ${m}`).join("\n"),

@@ -1,15 +1,16 @@
 /**
  * HTTP route registrar for the dev-assistant callback / upload / GitHub webhook.
- * Ported from Togather's `apps/convex/http.ts`. The consumer calls the returned
- * `registerRoutes(http)` from their own `http.ts` after building their router.
+ * Ported from Togather's `apps/convex/http.ts`. The consumer calls
+ * `registerRoutes(http)` from their own `http.ts` after building their router
+ * (config is read from the holder — the consumer's config module must have run
+ * first; see `../holder`).
  *
  * The HMAC header name is configurable (`cfg.signatureHeader`, default
  * `x-supa-signature`); Togather keeps `x-togather-signature`.
  */
 
 import { httpActionGeneric, type HttpRouter } from "convex/server";
-import type { ResolvedDevAssistantConfig } from "../config";
-import type { DevAssistantRefs } from "./refs";
+import { getDevAssistantConfig, getDevAssistantRefs } from "../holder";
 import {
   verifyCallbackSignature,
   verifyGithubSignature,
@@ -21,13 +22,12 @@ const CALLBACK_STATUSES = BUG_STATUSES.filter((s) => s !== "DRAFT" && s !== "REA
 const UPLOAD_CONTENT_TYPES = ["image/png", "image/jpeg", "image/webp"];
 const UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
 
-export function makeHttpRegistrar(
-  cfg: ResolvedDevAssistantConfig,
-  refs: DevAssistantRefs,
-) {
+export function registerRoutes(http: HttpRouter): void {
+  const cfg = getDevAssistantConfig();
+  const refs = getDevAssistantRefs();
   const header = cfg.signatureHeader;
 
-  return function registerRoutes(http: HttpRouter): void {
+  {
     // ---- POST /dev-assistant/callback ----
     http.route({
       path: "/dev-assistant/callback",

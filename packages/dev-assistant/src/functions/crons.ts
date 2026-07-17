@@ -21,15 +21,18 @@
  * ```ts
  * import { cronJobs } from "convex/server";
  * import { registerDevAssistantCrons } from "@supa-media/dev-assistant";
- * import { devAssistant } from "./functions/devAssistant/_instance";
+ * // Side-effect import: guarantees setDevAssistantConfig() has run so the
+ * // holder's functionsPath is set before this module registers the cron.
+ * import "./functions/devAssistant/config";
  *
  * const crons = cronJobs();
- * registerDevAssistantCrons(crons, devAssistant.config);
+ * registerDevAssistantCrons(crons);
  * export default crons;
  * ```
  */
 
 import { makeFunctionReference, type Crons } from "convex/server";
+import { getDevAssistantConfig } from "../holder";
 
 /** Cron identifier, matching Togather's production registration. */
 export const RECONCILE_CRON_NAME = "dev-assistant-pr-merge-reconcile";
@@ -37,15 +40,18 @@ export const RECONCILE_CRON_NAME = "dev-assistant-pr-merge-reconcile";
 /** Cron schedule, matching Togather's production cadence (every 15 min). */
 export const RECONCILE_CRON_SCHEDULE = "*/15 * * * *";
 
-export function registerDevAssistantCrons(
-  crons: Crons,
-  cfg: { functionsPath: string },
-): void {
+/**
+ * Register the reconcile-backstop cron. Reads `functionsPath` from the holder —
+ * the consumer's config module (which calls `setDevAssistantConfig`) MUST be
+ * imported for its side effect before this runs (see the usage example above).
+ */
+export function registerDevAssistantCrons(crons: Crons): void {
+  const { functionsPath } = getDevAssistantConfig();
   crons.cron(
     RECONCILE_CRON_NAME,
     RECONCILE_CRON_SCHEDULE,
     makeFunctionReference<"action">(
-      `${cfg.functionsPath}/actions:reconcileMergedPrs`,
+      `${functionsPath}/actions:reconcileMergedPrs`,
     ),
     {},
   );
