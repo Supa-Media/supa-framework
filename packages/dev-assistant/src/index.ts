@@ -8,8 +8,19 @@
  * See `./schema` for the composable tables and `./pipeline` for the pure core.
  */
 
-export { createDevAssistant } from "./functions";
-export type { DevAssistantInstance } from "./functions";
+// Config holder — the mounting contract's entry point. A consumer config module
+// calls `setDevAssistantConfig({...})` once; the function modules read it lazily.
+// (Replaces the removed `createDevAssistant` factory — see `./holder` for why
+// factory-returned Convex functions are dropped from a consumer's api/internal.)
+export {
+  setDevAssistantConfig,
+  getDevAssistantConfig,
+  getDevAssistantRefs,
+} from "./holder";
+
+// HTTP route registrar (`/dev-assistant/callback`, `/upload`, `/github/webhook`).
+// Reads the holder; call from the consumer's `http.ts` after config is set.
+export { registerRoutes } from "./functions/http";
 
 export {
   registerDevAssistantCrons,

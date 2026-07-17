@@ -15,7 +15,11 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
-    "./pipeline": "./src/pipeline/index.ts"
+    "./pipeline": "./src/pipeline/index.ts",
+    "./functions/bugs": "./src/functions/bugs.ts",
+    "./functions/actions": "./src/functions/actions.ts",
+    "./functions/contributions": "./src/functions/contributions.ts",
+    "./functions/maintainers": "./src/functions/maintainers.ts"
   },
   "peerDependencies": {
     "convex": ">=1.31.0"
