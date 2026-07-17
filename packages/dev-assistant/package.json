@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/dev-assistant",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "\"App improves itself\" control plane for Convex apps — an AI-driven contribution pipeline (spec → build → review → merge → deploy) with a signed Routine callback, a monotonic status machine, and policy auto-merge. Ported from Togather's devAssistant (ADR-029).",
   "main": "src/index.ts",
   "types": "src/index.ts",
