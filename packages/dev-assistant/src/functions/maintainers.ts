@@ -20,7 +20,7 @@ export function makeMaintainersFunctions(cfg: ResolvedDevAssistantConfig) {
    */
   const getAutoMergeCapForUser = internalQueryGeneric({
     args: { userId: v.id("users") },
-    handler: async (ctx: any, args: any): Promise<AutoMergeSeverity> => {
+    handler: async (ctx: any, args): Promise<AutoMergeSeverity> => {
       const user = await ctx.db.get(args.userId);
       return (user?.autoMergeMaxSeverity ??
         cfg.defaultAutoMergeMaxSeverity) as AutoMergeSeverity;

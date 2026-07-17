@@ -150,7 +150,7 @@ export function makeActionsFunctions(
 
   const dispatchBug = internalActionGeneric({
     args: { bugId: v.id("devBugs"), forceRedispatch: v.optional(v.boolean()) },
-    handler: async (ctx: any, args: any): Promise<void> => {
+    handler: async (ctx: any, args): Promise<void> => {
       const bug = await ctx.runQuery(refs.bugs.getBug, { bugId: args.bugId });
       if (!bug) return;
 
@@ -297,7 +297,7 @@ export function makeActionsFunctions(
 
   const dispatchSpec = internalActionGeneric({
     args: { bugId: v.id("devBugs"), revision: v.optional(v.boolean()) },
-    handler: async (ctx: any, args: any): Promise<void> => {
+    handler: async (ctx: any, args): Promise<void> => {
       const bug = await ctx.runQuery(refs.bugs.getBug, { bugId: args.bugId });
       if (!bug) return;
 
@@ -410,7 +410,7 @@ export function makeActionsFunctions(
 
   const dispatchReview = internalActionGeneric({
     args: { bugId: v.id("devBugs") },
-    handler: async (ctx: any, args: any): Promise<void> => {
+    handler: async (ctx: any, args): Promise<void> => {
       const bug = await ctx.runQuery(refs.bugs.getBug, { bugId: args.bugId });
       if (!bug) return;
       if (!bug.prUrl) {
@@ -490,7 +490,7 @@ export function makeActionsFunctions(
 
   const dispatchFix = internalActionGeneric({
     args: { bugId: v.id("devBugs") },
-    handler: async (ctx: any, args: any): Promise<void> => {
+    handler: async (ctx: any, args): Promise<void> => {
       const bug = await ctx.runQuery(refs.bugs.getBug, { bugId: args.bugId });
       if (!bug) return;
       if (!bug.prUrl) {
@@ -564,7 +564,7 @@ export function makeActionsFunctions(
 
   const attemptAutoMerge = internalActionGeneric({
     args: { bugId: v.id("devBugs") },
-    handler: async (ctx: any, args: any): Promise<void> => {
+    handler: async (ctx: any, args): Promise<void> => {
       if (process.env.AUTO_MERGE_ENABLED !== "true") {
         console.log(
           '[DevAssistant] Auto-merge skipped: AUTO_MERGE_ENABLED is not "true"',
@@ -642,7 +642,7 @@ export function makeActionsFunctions(
 
   const mergeFromApp = internalActionGeneric({
     args: { bugId: v.id("devBugs") },
-    handler: async (ctx: any, args: any): Promise<void> => {
+    handler: async (ctx: any, args): Promise<void> => {
       const bug = await ctx.runQuery(refs.bugs.getBug, { bugId: args.bugId });
       if (!bug) return;
 
@@ -740,7 +740,7 @@ export function makeActionsFunctions(
 
   const retryMergeAfterUpdate = internalActionGeneric({
     args: { bugId: v.id("devBugs"), attempt: v.number() },
-    handler: async (ctx: any, args: any): Promise<void> => {
+    handler: async (ctx: any, args): Promise<void> => {
       const bug = await ctx.runQuery(refs.bugs.getBug, { bugId: args.bugId });
       if (!bug) return;
       if (bug.status === "MERGED") return;
@@ -827,7 +827,7 @@ export function makeActionsFunctions(
 
   const dispatchProductionDeploy = internalActionGeneric({
     args: { bugId: v.id("devBugs") },
-    handler: async (ctx: any, args: any): Promise<void> => {
+    handler: async (ctx: any, args): Promise<void> => {
       const outcome = async (ok: boolean, detail?: string): Promise<void> => {
         if (!ok) {
           console.error(
@@ -926,7 +926,7 @@ export function makeActionsFunctions(
       reviewVerdict: v.optional(reviewVerdictValidator),
       reviewSummary: v.optional(v.string()),
     },
-    handler: async (ctx: any, args: any): Promise<void> => {
+    handler: async (ctx: any, args): Promise<void> => {
       const bug = await ctx.runQuery(refs.bugs.getBugByRoutineRunId, {
         routineRunId: args.routineRunId,
       });
@@ -1014,15 +1014,15 @@ export function makeActionsFunctions(
   });
 
   return {
-    dispatchBug,
-    dispatchSpec,
-    dispatchReview,
-    dispatchFix,
-    attemptAutoMerge,
-    mergeFromApp,
-    retryMergeAfterUpdate,
-    dispatchProductionDeploy,
-    reconcileMergedPrs,
-    handleRoutineCallback,
-  };
+      dispatchBug,
+      dispatchSpec,
+      dispatchReview,
+      dispatchFix,
+      attemptAutoMerge,
+      mergeFromApp,
+      retryMergeAfterUpdate,
+      dispatchProductionDeploy,
+      reconcileMergedPrs,
+      handleRoutineCallback,
+    };
 }
