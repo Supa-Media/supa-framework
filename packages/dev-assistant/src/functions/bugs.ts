@@ -22,6 +22,7 @@ import {
 import { v } from "convex/values";
 import type { ResolvedDevAssistantConfig } from "../config";
 import type { DevAssistantRefs } from "./refs";
+import { internalGroup, publicGroup } from "./visibility";
 import { applyStatusTransition, insertThreadMessage } from "./dbHelpers";
 import {
   BUG_STATUSES,
@@ -45,21 +46,24 @@ import {
 } from "../pipeline/text";
 
 // ---- Validators (mirror the pipeline enums as Convex validators) ----
+// NOTE: these MUST keep concrete validator types (no `as any`) — the erased
+// type would flow into the functions' `args` and collapse them to
+// `RegisteredMutation<…, any, …>`, which drops the arg types from the
+// consumer's generated `api`/`internal` surface. See the type-level
+// regression test in `test/apiTypes.test-d.ts`.
 export const bugStatusValidator = v.union(
   ...BUG_STATUSES.map((s) => v.literal(s)),
-) as any;
+);
 export const riskLevelValidator = v.union(
   ...RISK_LEVELS.map((s) => v.literal(s)),
-) as any;
-export const scopeValidator = v.union(
-  ...SCOPES.map((s) => v.literal(s)),
-) as any;
+);
+export const scopeValidator = v.union(...SCOPES.map((s) => v.literal(s)));
 export const reviewVerdictValidator = v.union(
   ...REVIEW_VERDICTS.map((s) => v.literal(s)),
-) as any;
+);
 export const callbackSourceValidator = v.union(
   ...CALLBACK_SOURCES.map((s) => v.literal(s)),
-) as any;
+);
 export const splitSlicesValidator = v.array(
   v.object({ title: v.string(), prompt: v.string() }),
 );
@@ -83,7 +87,7 @@ export function makeBugsFunctions(
 
   const getThreadHistory = internalQueryGeneric({
     args: { bugId: v.id("devBugs") },
-    handler: async (ctx: any, args: any): Promise<any[]> => {
+    handler: async (ctx: any, args): Promise<any[]> => {
       const messages = await ctx.db
         .query("devBugMessages")
         .withIndex("by_bug", (q: any) => q.eq("bugId", args.bugId))
@@ -117,12 +121,12 @@ export function makeBugsFunctions(
 
   const getBug = internalQueryGeneric({
     args: { bugId: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => await ctx.db.get(args.bugId),
+    handler: async (ctx: any, args) => await ctx.db.get(args.bugId),
   });
 
   const getBugByRoutineRunId = internalQueryGeneric({
     args: { routineRunId: v.string() },
-    handler: async (ctx: any, args: any) =>
+    handler: async (ctx: any, args) =>
       await ctx.db
         .query("devBugs")
         .withIndex("by_routineRunId", (q: any) =>
@@ -133,7 +137,7 @@ export function makeBugsFunctions(
 
   const getOriginatorAttribution = internalQueryGeneric({
     args: { bugId: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const bug = await ctx.db.get(args.bugId);
       if (!bug) return null;
       const user = await ctx.db.get(bug.originatorUserId);
@@ -168,7 +172,7 @@ export function makeBugsFunctions(
 
   const markDispatched = internalMutationGeneric({
     args: { bugId: v.id("devBugs"), routineRunId: v.string() },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const bug = await ctx.db.get(args.bugId);
       if (!bug) return { alreadyDispatched: true };
       if (bug.status !== "READY_FOR_IMPL") return { alreadyDispatched: true };
@@ -190,7 +194,7 @@ export function makeBugsFunctions(
       routineRunId: v.string(),
       revision: v.optional(v.boolean()),
     },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const bug = await ctx.db.get(args.bugId);
       if (!bug) return { alreadyDispatched: true };
       if (args.revision) {
@@ -212,7 +216,7 @@ export function makeBugsFunctions(
 
   const markReviewDispatched = internalMutationGeneric({
     args: { bugId: v.id("devBugs"), routineRunId: v.string() },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const bug = await ctx.db.get(args.bugId);
       if (!bug) return { alreadyDispatched: true };
       if (bug.status !== "CODE_REVIEW") return { alreadyDispatched: true };
@@ -228,7 +232,7 @@ export function makeBugsFunctions(
 
   const markFixDispatched = internalMutationGeneric({
     args: { bugId: v.id("devBugs"), routineRunId: v.string() },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const bug = await ctx.db.get(args.bugId);
       if (!bug || bug.status !== "CODE_REVIEW") {
         return { alreadyDispatched: true };
@@ -257,7 +261,7 @@ export function makeBugsFunctions(
       githubIssueNumber: v.number(),
       githubIssueUrl: v.optional(v.string()),
     },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       await ctx.db.patch(args.bugId, {
         githubIssueNumber: args.githubIssueNumber,
         githubIssueUrl: args.githubIssueUrl,
@@ -268,7 +272,7 @@ export function makeBugsFunctions(
 
   const recordDispatchError = internalMutationGeneric({
     args: { bugId: v.id("devBugs"), error: v.string() },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       await ctx.db.patch(args.bugId, {
         lastError: args.error,
         updatedAt: Date.now(),
@@ -278,7 +282,7 @@ export function makeBugsFunctions(
 
   const addSystemThreadMessage = internalMutationGeneric({
     args: { bugId: v.id("devBugs"), body: v.string() },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const bug = await ctx.db.get(args.bugId);
       if (!bug) return;
       await insertThreadMessage(ctx, args.bugId, "system", args.body);
@@ -292,7 +296,7 @@ export function makeBugsFunctions(
       ok: v.boolean(),
       detail: v.optional(v.string()),
     },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const bug = await ctx.db.get(args.bugId);
       if (!bug) return;
       if (args.ok) {
@@ -324,7 +328,7 @@ export function makeBugsFunctions(
 
   const recordMergeFromAppFailure = internalMutationGeneric({
     args: { bugId: v.id("devBugs"), reason: v.string() },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const bug = await ctx.db.get(args.bugId);
       if (!bug) return;
       await insertThreadMessage(ctx, args.bugId, "system", args.reason);
@@ -357,7 +361,7 @@ export function makeBugsFunctions(
       reviewVerdict: v.optional(reviewVerdictValidator),
       reviewSummary: v.optional(v.string()),
     },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const bug = await ctx.db.get(args.bugId);
       if (!bug) return null;
 
@@ -570,7 +574,7 @@ export function makeBugsFunctions(
       merged: v.boolean(),
       mergeCommitSha: v.optional(v.string()),
     },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       let bug: any = null;
       const parsedBugId = bugIdFromBranchRef(cfg.repo, args.branchRef);
       if (parsedBugId) {
@@ -674,7 +678,7 @@ export function makeBugsFunctions(
       headBranch: v.optional(v.string()),
       runStartedAt: v.optional(v.number()),
     },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const now = Date.now();
 
       // ---- Production runs: global, correlated by state (not SHA) ----
@@ -819,7 +823,7 @@ export function makeBugsFunctions(
 
   const getBugForReview = queryGeneric({
     args: { token: v.string(), bugId: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       await requireSuperAdmin(ctx, args.token);
       const bug = await ctx.db.get(args.bugId);
       if (!bug) return null;
@@ -835,7 +839,7 @@ export function makeBugsFunctions(
 
   const rejectBug = mutationGeneric({
     args: { token: v.string(), bugId: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       await requireSuperAdmin(ctx, args.token);
       const bug = await ctx.db.get(args.bugId);
       if (!bug) throw new Error("Bug not found");
@@ -850,7 +854,7 @@ export function makeBugsFunctions(
 
   const markBugMerged = mutationGeneric({
     args: { token: v.string(), bugId: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       await requireSuperAdmin(ctx, args.token);
       const bug = await ctx.db.get(args.bugId);
       if (!bug) throw new Error("Bug not found");
@@ -861,7 +865,7 @@ export function makeBugsFunctions(
 
   const retryDispatch = mutationGeneric({
     args: { token: v.string(), bugId: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       await requireSuperAdmin(ctx, args.token);
       const bug = await ctx.db.get(args.bugId);
       if (!bug) throw new Error("Bug not found");
@@ -876,27 +880,35 @@ export function makeBugsFunctions(
     },
   });
 
+  // Pin visibility so these survive onto the consumer's generated
+  // `api`/`internal` (see ./visibility.ts). This group is MIXED: the pipeline DB
+  // ops + webhook handlers are internal; the maintainer review-screen ops
+  // (queryGeneric/mutationGeneric) are public.
   return {
-    getThreadHistory,
-    getBug,
-    getBugByRoutineRunId,
-    getOriginatorAttribution,
-    listOpenPrBugs,
-    markDispatched,
-    markSpecDispatched,
-    markReviewDispatched,
-    markFixDispatched,
-    setGithubIssue,
-    recordDispatchError,
-    addSystemThreadMessage,
-    recordProductionDeployOutcome,
-    recordMergeFromAppFailure,
-    applyCallback,
-    handleGithubPrClosed,
-    handleWorkflowRunEvent,
-    getBugForReview,
-    rejectBug,
-    markBugMerged,
-    retryDispatch,
+    ...internalGroup({
+      getThreadHistory,
+      getBug,
+      getBugByRoutineRunId,
+      getOriginatorAttribution,
+      listOpenPrBugs,
+      markDispatched,
+      markSpecDispatched,
+      markReviewDispatched,
+      markFixDispatched,
+      setGithubIssue,
+      recordDispatchError,
+      addSystemThreadMessage,
+      recordProductionDeployOutcome,
+      recordMergeFromAppFailure,
+      applyCallback,
+      handleGithubPrClosed,
+      handleWorkflowRunEvent,
+    }),
+    ...publicGroup({
+      getBugForReview,
+      rejectBug,
+      markBugMerged,
+      retryDispatch,
+    }),
   };
 }

@@ -10,6 +10,7 @@ import { mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import type { ResolvedDevAssistantConfig } from "../config";
 import type { DevAssistantRefs } from "./refs";
+import { publicGroup } from "./visibility";
 import { applyStatusTransition, insertThreadMessage } from "./dbHelpers";
 import { deriveTitle } from "../pipeline/text";
 
@@ -109,7 +110,7 @@ export function makeContributionsFunctions(
 
   const getGithubUsername = queryGeneric({
     args: { token: v.string() },
-    handler: async (ctx: any, args: any): Promise<string | null> => {
+    handler: async (ctx: any, args): Promise<string | null> => {
       const user = await requireContributor(ctx, args.token);
       return user.githubUsername ?? null;
     },
@@ -117,7 +118,7 @@ export function makeContributionsFunctions(
 
   const setGithubUsername = mutationGeneric({
     args: { token: v.string(), username: v.string() },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const user = await requireContributor(ctx, args.token);
       let username = args.username.trim();
       if (username.startsWith("@")) username = username.slice(1).trim();
@@ -158,7 +159,7 @@ export function makeContributionsFunctions(
       repro: v.optional(v.string()),
       screenshotUrls: v.optional(v.array(v.string())),
     },
-    handler: async (ctx: any, args: any): Promise<string> => {
+    handler: async (ctx: any, args): Promise<string> => {
       const user = await requireContributor(ctx, args.token);
 
       const body = args.body.trim();
@@ -209,7 +210,7 @@ export function makeContributionsFunctions(
 
   const approveSpec = mutationGeneric({
     args: { token: v.string(), id: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const user = await requireContributor(ctx, args.token);
       const bug = await ctx.db.get(args.id);
       if (!bug) throw new Error("Contribution not found");
@@ -240,7 +241,7 @@ export function makeContributionsFunctions(
 
   const startBuild = mutationGeneric({
     args: { token: v.string(), id: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const user = await requireContributor(ctx, args.token);
       const bug = await ctx.db.get(args.id);
       if (!bug) throw new Error("Contribution not found");
@@ -266,7 +267,7 @@ export function makeContributionsFunctions(
 
   const archive = mutationGeneric({
     args: { token: v.string(), id: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const user = await requireContributor(ctx, args.token);
       const bug = await ctx.db.get(args.id);
       if (!bug) throw new Error("Contribution not found");
@@ -287,7 +288,7 @@ export function makeContributionsFunctions(
 
   const unarchive = mutationGeneric({
     args: { token: v.string(), id: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const user = await requireContributor(ctx, args.token);
       const bug = await ctx.db.get(args.id);
       if (!bug) throw new Error("Contribution not found");
@@ -315,7 +316,7 @@ export function makeContributionsFunctions(
       body: v.string(),
       imageUrls: v.optional(v.array(v.string())),
     },
-    handler: async (ctx: any, args: any): Promise<string> => {
+    handler: async (ctx: any, args): Promise<string> => {
       const user = await requireContributor(ctx, args.token);
       const bug = await ctx.db.get(args.id);
       if (!bug) throw new Error("Contribution not found");
@@ -350,7 +351,7 @@ export function makeContributionsFunctions(
 
   const confirmStaging = mutationGeneric({
     args: { token: v.string(), id: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const user = await requireContributor(ctx, args.token);
       const bug = await ctx.db.get(args.id);
       if (!bug) throw new Error("Contribution not found");
@@ -377,7 +378,7 @@ export function makeContributionsFunctions(
 
   const reportStagingIssue = mutationGeneric({
     args: { token: v.string(), id: v.id("devBugs"), note: v.string() },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const user = await requireContributor(ctx, args.token);
       const bug = await ctx.db.get(args.id);
       if (!bug) throw new Error("Contribution not found");
@@ -421,7 +422,7 @@ export function makeContributionsFunctions(
 
   const mergeNow = mutationGeneric({
     args: { token: v.string(), id: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const user = await requireContributor(ctx, args.token);
       const bug = await ctx.db.get(args.id);
       if (!bug) throw new Error("Contribution not found");
@@ -459,7 +460,7 @@ export function makeContributionsFunctions(
 
   const promoteToProduction = mutationGeneric({
     args: { token: v.string(), id: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const user = await requireContributor(ctx, args.token);
       const bug = await ctx.db.get(args.id);
       if (!bug) throw new Error("Contribution not found");
@@ -544,7 +545,7 @@ export function makeContributionsFunctions(
 
   const getThread = queryGeneric({
     args: { token: v.string(), id: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       await requireContributor(ctx, args.token);
       const messages = await ctx.db
         .query("devBugMessages")
@@ -560,7 +561,7 @@ export function makeContributionsFunctions(
 
   const myContributions = queryGeneric({
     args: { token: v.string() },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       const user = await requireContributor(ctx, args.token);
       const bugs = await ctx.db
         .query("devBugs")
@@ -575,7 +576,7 @@ export function makeContributionsFunctions(
 
   const listAll = queryGeneric({
     args: { token: v.string() },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       await requireContributor(ctx, args.token);
       const bugs = await ctx.db.query("devBugs").order("desc").take(200);
       return await withLastMessage(ctx, bugs);
@@ -584,7 +585,7 @@ export function makeContributionsFunctions(
 
   const getContribution = queryGeneric({
     args: { token: v.string(), id: v.id("devBugs") },
-    handler: async (ctx: any, args: any) => {
+    handler: async (ctx: any, args) => {
       await requireContributor(ctx, args.token);
       const bug = await ctx.db.get(args.id);
       if (!bug) return null;
@@ -597,22 +598,24 @@ export function makeContributionsFunctions(
     },
   });
 
-  return {
-    getGithubUsername,
-    setGithubUsername,
-    submit,
-    approveSpec,
-    startBuild,
-    archive,
-    unarchive,
-    postMessage,
-    confirmStaging,
-    reportStagingIssue,
-    mergeNow,
-    promoteToProduction,
-    getThread,
-    myContributions,
-    listAll,
-    getContribution,
-  };
+  // Pin visibility so these survive onto the consumer's generated `api` (see
+  // ./visibility.ts). Every contribution function is public (dashboard-facing).
+  return publicGroup({
+      getGithubUsername,
+      setGithubUsername,
+      submit,
+      approveSpec,
+      startBuild,
+      archive,
+      unarchive,
+      postMessage,
+      confirmStaging,
+      reportStagingIssue,
+      mergeNow,
+      promoteToProduction,
+      getThread,
+      myContributions,
+      listAll,
+      getContribution,
+    });
 }

@@ -40,12 +40,17 @@
  * attribution / Phase 3 auto-merge — see the README.
  */
 
-import { defineTable, type TableDefinition } from "convex/server";
+import { defineTable } from "convex/server";
 import { v, type Validator } from "convex/values";
 
-export interface DevAssistantTablesConfig {
+export interface DevAssistantTablesConfig<
+  ExtraFields extends Record<string, Validator<any, any, any>> = Record<
+    string,
+    never
+  >,
+> {
   /** Extra columns merged into `devBugs` (e.g. a consumer's chat FKs). */
-  extraBugFields?: Record<string, Validator<any, any, any>>;
+  extraBugFields?: ExtraFields;
   /** Extra indexes added to `devBugs`. */
   extraBugIndexes?: Array<{ name: string; fields: string[] }>;
 }
@@ -54,11 +59,22 @@ export interface DevAssistantTablesConfig {
  * Returns the dev-assistant tables to spread into `defineSchema`. A factory
  * (not a plain object) so consumers can extend `devBugs` with their own columns
  * — mirroring `supaTenantTables` in `@supa-media/convex/schema`.
+ *
+ * The return type is left to inference (NOT annotated `Record<string,
+ * TableDefinition>`): a widened annotation would erase the concrete `devBugs`/
+ * `devBugMessages` keys from the consumer's generated `DataModel` (forcing a
+ * cast at the `defineSchema` call site). The function is generic over
+ * `ExtraFields` so a consumer's injected columns (e.g. Togather's chat FKs) keep
+ * their concrete validator types in the resulting document type too. See the
+ * type-level regression test in `test/schemaTypes.test-d.ts`.
  */
-export function supaDevAssistantTables(
-  config: DevAssistantTablesConfig = {},
-): Record<string, TableDefinition> {
-  const { extraBugFields = {}, extraBugIndexes = [] } = config;
+export function supaDevAssistantTables<
+  ExtraFields extends Record<string, Validator<any, any, any>> = Record<
+    string,
+    never
+  >,
+>(config: DevAssistantTablesConfig<ExtraFields> = {}) {
+  const { extraBugFields = {} as ExtraFields, extraBugIndexes = [] } = config;
 
   let devBugs = defineTable({
     // Who filed it. Dashboard items are platform-level (no community/thread);
@@ -173,10 +189,14 @@ export function supaDevAssistantTables(
 
     ...extraBugFields,
   })
-    .index("by_status", ["status"])
-    .index("by_originator", ["originatorUserId"])
-    .index("by_routineRunId", ["routineRunId"])
-    .index("by_mergeCommitSha", ["mergeCommitSha"]);
+    // Index field-paths are cast because the generic `...extraBugFields` spread
+    // makes the document type non-literal to `ExtractFieldPaths` (same reason
+    // the `extraBugIndexes` loop below casts). The index *names* stay literal,
+    // so consumer `.withIndex("by_status", …)` still resolves.
+    .index("by_status", ["status"] as any)
+    .index("by_originator", ["originatorUserId"] as any)
+    .index("by_routineRunId", ["routineRunId"] as any)
+    .index("by_mergeCommitSha", ["mergeCommitSha"] as any);
 
   for (const idx of extraBugIndexes) {
     devBugs = devBugs.index(idx.name, idx.fields as any);

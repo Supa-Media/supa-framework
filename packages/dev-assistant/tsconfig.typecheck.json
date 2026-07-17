@@ -1,0 +1,15 @@
+{
+  // Type-check the shipped source AND the type-level regression tests
+  // (`test/**/*.test-d.ts`). Wired into `pnpm test` so `pnpm -r test` fails the
+  // build if the package's Convex functions ever lose their concrete arg types
+  // (see test/apiTypes.test-d.ts) or the schema factory erases its table keys
+  // (see test/schemaTypes.test-d.ts). This package ships raw `.ts`, so this is
+  // its first and only compiler gate.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node"]
+  },
+  "include": ["src", "test/**/*.test-d.ts"]
+}

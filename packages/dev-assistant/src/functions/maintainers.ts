@@ -11,6 +11,7 @@ import { internalQueryGeneric } from "convex/server";
 import { v } from "convex/values";
 import type { ResolvedDevAssistantConfig } from "../config";
 import type { AutoMergeSeverity } from "../pipeline/severity";
+import { internalGroup } from "./visibility";
 
 export function makeMaintainersFunctions(cfg: ResolvedDevAssistantConfig) {
   /**
@@ -20,12 +21,14 @@ export function makeMaintainersFunctions(cfg: ResolvedDevAssistantConfig) {
    */
   const getAutoMergeCapForUser = internalQueryGeneric({
     args: { userId: v.id("users") },
-    handler: async (ctx: any, args: any): Promise<AutoMergeSeverity> => {
+    handler: async (ctx: any, args): Promise<AutoMergeSeverity> => {
       const user = await ctx.db.get(args.userId);
       return (user?.autoMergeMaxSeverity ??
         cfg.defaultAutoMergeMaxSeverity) as AutoMergeSeverity;
     },
   });
 
-  return { getAutoMergeCapForUser };
+  // Pin visibility so this survives onto the consumer's generated `internal`
+  // (see ./visibility.ts).
+  return internalGroup({ getAutoMergeCapForUser });
 }
