@@ -193,7 +193,12 @@ jobs:
 
           echo "Deploying with flags: $PROD_FLAG $ENV_FLAG"
 
-          npx eas-cli deploy $PROD_FLAG $ENV_FLAG --json --non-interactive > deploy_output.json || true
+          # `eas`, not `npx eas-cli`: the Setup EAS step above already installed
+          # the CLI and put it on PATH. `npx eas-cli` re-resolves `latest` from
+          # npm on every deploy, which fails outright when a release's dist-tag
+          # has propagated but its manifest hasn't yet (ETARGET) — that raced a
+          # real consumer deploy 43s after eas-cli@21.3.0 published.
+          eas deploy $PROD_FLAG $ENV_FLAG --json --non-interactive > deploy_output.json || true
 
           echo "Deploy output:"
           cat deploy_output.json
@@ -222,7 +227,7 @@ jobs:
 
           for ALIAS in ${{ inputs.eas-aliases }}; do
             echo "  Updating alias: $ALIAS"
-            npx eas-cli deploy:alias --alias "$ALIAS" --id "$DEPLOYMENT_ID" --non-interactive
+            eas deploy:alias --alias "$ALIAS" --id "$DEPLOYMENT_ID" --non-interactive
           done
 
           echo "All aliases updated"
