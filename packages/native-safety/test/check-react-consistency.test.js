@@ -239,6 +239,51 @@ test("checkReactDomPairing ignores react-dom entries with no react peer key, and
   assert.equal(ok, true);
 });
 
+test("checkReactDomPairing parses pnpm v9 snapshot keys (no leading slash) — a skewed pair must not pass silently", () => {
+  const dir = path.join(tmpRoot, "v9-skewed-react-dom");
+  const lockfilePath = writeLockfile(
+    dir,
+    [
+      "lockfileVersion: '9.0'",
+      "",
+      "packages:",
+      "",
+      "  react-dom@19.2.4:",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+      "snapshots:",
+      "",
+      "  react-dom@19.2.4(react@19.1.0):",
+      "    dependencies:",
+      "      react: 19.1.0",
+      "",
+    ].join("\n")
+  );
+
+  const ok = silence(() => checkReactDomPairing(lockfilePath));
+  assert.equal(ok, false, "v9-format skewed pair must fail, not silently no-op");
+});
+
+test("checkReactDomPairing passes a matched pair in pnpm v9 snapshot format", () => {
+  const dir = path.join(tmpRoot, "v9-matched-react-dom");
+  const lockfilePath = writeLockfile(
+    dir,
+    [
+      "lockfileVersion: '9.0'",
+      "",
+      "snapshots:",
+      "",
+      "  react-dom@19.1.0(react@19.1.0):",
+      "    dependencies:",
+      "      react: 19.1.0",
+      "",
+    ].join("\n")
+  );
+
+  const ok = silence(() => checkReactDomPairing(lockfilePath));
+  assert.equal(ok, true);
+});
+
 test("checkReactDomPairing throws (does not process.exit) when the lockfile is missing", () => {
   const missingLockfile = path.join(tmpRoot, "no-such-dir-pairing", "pnpm-lock.yaml");
   assert.throws(
@@ -366,6 +411,11 @@ function writeHealthyFixture(dir) {
       "    resolution: {integrity: sha512-fake==}",
       "",
       "  /react-native@0.81.5(react@19.1.0):",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+      // A correctly matched react-dom pair, so the happy-path CLI test
+      // exercises gate #3 non-vacuously (not just "no react-dom present").
+      "  /react-dom@19.1.0(react@19.1.0):",
       "    resolution: {integrity: sha512-fake==}",
       "",
     ].join("\n")

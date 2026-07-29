@@ -432,11 +432,16 @@ function checkReactDomPairing(lockfilePath) {
   const offenders = []; // { key, reactDom, react }
 
   for (const line of lockLines) {
-    const keyMatch = line.match(/^ {2}(\/react-dom@.+):$/);
+    // Match both pnpm lockfile key shapes: v6 package keys have a leading
+    // slash ("  /react-dom@19.2.4(react@19.1.0):"), v9+ snapshot keys don't
+    // ("  react-dom@19.2.4(react@19.1.0):"). Gate #1 is v6-only (ported
+    // unchanged from Togather), but this gate makes a lockfile-WIDE claim,
+    // so silently matching nothing on a v9 lockfile would be a false green.
+    const keyMatch = line.match(/^ {2}(\/?react-dom@.+):$/);
     if (!keyMatch) continue;
     const key = keyMatch[1];
 
-    const versionMatch = key.match(/^\/react-dom@([0-9][^(]*?)(?:\(|$)/);
+    const versionMatch = key.match(/^\/?react-dom@([0-9][^(]*?)(?:\(|$)/);
     if (!versionMatch) continue;
     const reactDomVersion = versionMatch[1];
 

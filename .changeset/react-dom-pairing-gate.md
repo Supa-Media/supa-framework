@@ -17,6 +17,10 @@ pnpm's peer dedup) re-keyed the react-email tree onto the pin, while
 stayed at the latest in-range version. The first react-email `render()` in a
 Convex action then threw in production.
 
+The gate parses both pnpm lockfile key shapes — v6 package keys
+(`/react-dom@X(react@Y)`) and v9+ snapshot keys (no leading slash) — so a
+skewed pair can't slip through as a silent no-op on newer lockfiles.
+
 The gate is lockfile-wide and independent of the app's own React pin:
 multiple distinct react-dom versions are fine as long as each matches the
 react it's keyed to (e.g. a mobile subgraph on 19.1.0 and a web subgraph on
