@@ -26,6 +26,7 @@ const { spawnSync } = require("node:child_process");
 
 const {
   checkReactConsistency,
+  checkReactDomPairing,
   checkNativeUnsafeDenylist,
   packageNameFromKey,
   loadConfig,
@@ -167,6 +168,130 @@ test("checkReactConsistency catches scoped native packages via native-deps.json 
   assert.equal(okWithNames, false, "with native-deps names, the mismatch is caught");
 });
 
+test("checkReactDomPairing passes when every react-dom matches its keyed react — including multiple distinct (but internally matched) pairs", () => {
+  const dir = path.join(tmpRoot, "paired-react-dom");
+  const lockfilePath = writeLockfile(
+    dir,
+    [
+      "packages:",
+      "",
+      "  /react@19.1.0:",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+      "  /react@19.2.4:",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+      // Two react-doms is fine as long as each is keyed to its own version
+      // (e.g. mobile subgraph on 19.1.0, web subgraph on 19.2.4).
+      "  /react-dom@19.1.0(react@19.1.0):",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+      "  /react-dom@19.2.4(react@19.2.4):",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+    ].join("\n")
+  );
+
+  const ok = silence(() => checkReactDomPairing(lockfilePath));
+  assert.equal(ok, true);
+});
+
+test("checkReactDomPairing fails on a skewed pair (the Togather verification-email incident)", () => {
+  const dir = path.join(tmpRoot, "skewed-react-dom");
+  const lockfilePath = writeLockfile(
+    dir,
+    [
+      "packages:",
+      "",
+      "  /react@19.1.0:",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+      // react pinned to 19.1.0 in a workspace package, but react-dom
+      // auto-installed as a transitive peer at 19.2.4 — react-dom/server
+      // hard-errors at render time on this exact shape.
+      "  /react-dom@19.2.4(react@19.1.0):",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+    ].join("\n")
+  );
+
+  const ok = silence(() => checkReactDomPairing(lockfilePath));
+  assert.equal(ok, false);
+});
+
+test("checkReactDomPairing ignores react-dom entries with no react peer key, and @types/react peers", () => {
+  const dir = path.join(tmpRoot, "no-peer-react-dom");
+  const lockfilePath = writeLockfile(
+    dir,
+    [
+      "packages:",
+      "",
+      "  /react-dom@19.1.0:",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+      "  /react-dom@19.1.0(@types/react@19.2.0):",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+    ].join("\n")
+  );
+
+  const ok = silence(() => checkReactDomPairing(lockfilePath));
+  assert.equal(ok, true);
+});
+
+test("checkReactDomPairing parses pnpm v9 snapshot keys (no leading slash) — a skewed pair must not pass silently", () => {
+  const dir = path.join(tmpRoot, "v9-skewed-react-dom");
+  const lockfilePath = writeLockfile(
+    dir,
+    [
+      "lockfileVersion: '9.0'",
+      "",
+      "packages:",
+      "",
+      "  react-dom@19.2.4:",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+      "snapshots:",
+      "",
+      "  react-dom@19.2.4(react@19.1.0):",
+      "    dependencies:",
+      "      react: 19.1.0",
+      "",
+    ].join("\n")
+  );
+
+  const ok = silence(() => checkReactDomPairing(lockfilePath));
+  assert.equal(ok, false, "v9-format skewed pair must fail, not silently no-op");
+});
+
+test("checkReactDomPairing passes a matched pair in pnpm v9 snapshot format", () => {
+  const dir = path.join(tmpRoot, "v9-matched-react-dom");
+  const lockfilePath = writeLockfile(
+    dir,
+    [
+      "lockfileVersion: '9.0'",
+      "",
+      "snapshots:",
+      "",
+      "  react-dom@19.1.0(react@19.1.0):",
+      "    dependencies:",
+      "      react: 19.1.0",
+      "",
+    ].join("\n")
+  );
+
+  const ok = silence(() => checkReactDomPairing(lockfilePath));
+  assert.equal(ok, true);
+});
+
+test("checkReactDomPairing throws (does not process.exit) when the lockfile is missing", () => {
+  const missingLockfile = path.join(tmpRoot, "no-such-dir-pairing", "pnpm-lock.yaml");
+  assert.throws(
+    () => silence(() => checkReactDomPairing(missingLockfile)),
+    /Lockfile not found/
+  );
+});
+
 test("checkNativeUnsafeDenylist passes with no denylisted packages", () => {
   const pkgJson = { dependencies: { react: "19.1.0", "react-native": "0.81.5" } };
   const ok = silence(() =>
@@ -288,6 +413,11 @@ function writeHealthyFixture(dir) {
       "  /react-native@0.81.5(react@19.1.0):",
       "    resolution: {integrity: sha512-fake==}",
       "",
+      // A correctly matched react-dom pair, so the happy-path CLI test
+      // exercises gate #3 non-vacuously (not just "no react-dom present").
+      "  /react-dom@19.1.0(react@19.1.0):",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
     ].join("\n")
   );
   return { pkgPath, lockfilePath };
@@ -310,7 +440,7 @@ test("CLI: bad --config path (explicitly passed, does not exist) exits 1 with a 
   assert.doesNotMatch(result.stdout, /Native React graph OK/);
 });
 
-test("CLI: happy path (no --config) passes both gates and exits 0", () => {
+test("CLI: happy path (no --config) passes all gates and exits 0", () => {
   const dir = path.join(tmpRoot, "cli-happy");
   const { pkgPath, lockfilePath } = writeHealthyFixture(dir);
 
@@ -322,4 +452,41 @@ test("CLI: happy path (no --config) passes both gates and exits 0", () => {
 
   assert.equal(result.status, 0, `expected exit 0, got ${result.status}. stderr: ${result.stderr}`);
   assert.match(result.stdout, /Native React graph OK/);
+});
+
+test("CLI: a skewed react-dom pair fails gate #3 and exits 1, even when the native graph itself is healthy", () => {
+  const dir = path.join(tmpRoot, "cli-skewed-react-dom");
+  fs.mkdirSync(dir, { recursive: true });
+  const pkgPath = path.join(dir, "package.json");
+  fs.writeFileSync(
+    pkgPath,
+    JSON.stringify({ dependencies: { react: "19.1.0", "react-native": "0.81.5" } })
+  );
+  const lockfilePath = writeLockfile(
+    dir,
+    [
+      "packages:",
+      "",
+      "  /react@19.1.0:",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+      "  /react-native@0.81.5(react@19.1.0):",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+      // Native graph is fine (gate #1 passes) — the ONLY problem is the pair.
+      "  /react-dom@19.2.4(react@19.1.0):",
+      "    resolution: {integrity: sha512-fake==}",
+      "",
+    ].join("\n")
+  );
+
+  const result = spawnSync(
+    process.execPath,
+    [CLI_PATH, "--pkg", pkgPath, "--lockfile", lockfilePath],
+    { encoding: "utf-8" }
+  );
+
+  assert.equal(result.status, 1, `expected exit 1, got ${result.status}. stdout: ${result.stdout}`);
+  assert.match(result.stderr, /react-dom \/ react version skew/);
+  assert.doesNotMatch(result.stdout, /Native React graph OK/);
 });

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * CI enforcement: keep an Expo/React-Native app's native React graph healthy.
- * Two gates, ported unchanged (detection logic) from Togather's
+ * Gates #1 and #2 were ported unchanged (detection logic) from Togather's
  * apps/mobile/scripts/check-react-consistency.js — see the postmortem in
  * Togather's docs/architecture/ADR-013-mobile-versioning-and-ota-updates.md.
  *
@@ -11,9 +11,15 @@
  *      emotion / CSS-in-JS / MUI libraries, which reshape the app's
  *      React/module graph and break native Fabric rendering even when they are
  *      only imported on web (this is the mechanism behind gate #1's failure).
+ *   3. react-dom/react pairing — every react-dom instance in the lockfile must
+ *      be peer-keyed to its own exact version of react. react-dom's server
+ *      renderer hard-errors at runtime on any mismatch (React >= 19.2,
+ *      ensureCorrectIsomorphicReactVersion), so a skewed pair is a landmine
+ *      wherever react-dom actually renders — SSR, react-email templates in
+ *      server functions, etc. — while typecheck and non-rendering tests pass.
  *
- * Both gates run every time; the script exits 1 if EITHER fails, and prints a
- * combined OK line only when BOTH pass.
+ * All gates run every time; the script exits 1 if ANY fails, and prints a
+ * combined OK line only when ALL pass.
  *
  * Why this exists
  * ---------------
@@ -400,6 +406,119 @@ function checkReactConsistency(pkgJson, pkgLabel, lockfilePath, nativeDepNames) 
   return true;
 }
 
+/**
+ * Gate #3: react-dom must be exactly version-matched with the react it's
+ * keyed to, everywhere in the lockfile. Returns true when clean.
+ *
+ * Unlike gate #1 this is not scoped to the native graph or to the app's
+ * pinned React — a workspace legitimately runs different Reacts in different
+ * apps (e.g. mobile on the binary-pinned 19.1.0, web on 19.2.4), and each is
+ * fine AS LONG AS any react-dom sharing that subgraph is the same exact
+ * version. The hazard is the skewed pair itself: pinning `react` in one
+ * workspace package (to control pnpm's peer dedup) while `react-dom` is only
+ * auto-installed as someone's peer re-keys react-dom onto the pinned react
+ * WITHOUT changing react-dom's own version — the lockfile ends up with e.g.
+ * `/react-dom@19.2.4(react@19.1.0)`. react-dom's server renderer throws on
+ * exactly this (React >= 19.2, ensureCorrectIsomorphicReactVersion), but only
+ * when something actually renders — which is how Togather shipped a broken
+ * verification email (react-email render in a Convex action) with CI green.
+ */
+function checkReactDomPairing(lockfilePath) {
+  if (!fs.existsSync(lockfilePath)) {
+    throw new Error(`Lockfile not found at ${lockfilePath}`);
+  }
+  const lockLines = fs.readFileSync(lockfilePath, "utf-8").split("\n");
+
+  const offenders = []; // { key, reactDom, react }
+
+  for (const line of lockLines) {
+    // Match both pnpm lockfile key shapes: v6 package keys have a leading
+    // slash ("  /react-dom@19.2.4(react@19.1.0):"), v9+ snapshot keys don't
+    // ("  react-dom@19.2.4(react@19.1.0):"). Gate #1 is v6-only (ported
+    // unchanged from Togather), but this gate makes a lockfile-WIDE claim,
+    // so silently matching nothing on a v9 lockfile would be a false green.
+    const keyMatch = line.match(/^ {2}(\/?react-dom@.+):$/);
+    if (!keyMatch) continue;
+    const key = keyMatch[1];
+
+    const versionMatch = key.match(/^\/?react-dom@([0-9][^(]*?)(?:\(|$)/);
+    if (!versionMatch) continue;
+    const reactDomVersion = versionMatch[1];
+
+    // Real react peer only: "(" immediately before "react@" (not "@types/react@").
+    const peerMatch = key.match(/\(react@([0-9][^)]*)\)/);
+    if (!peerMatch) continue; // no react peer keyed — nothing to compare
+
+    const reactVersion = peerMatch[1];
+    if (reactDomVersion !== reactVersion) {
+      offenders.push({ key, reactDom: reactDomVersion, react: reactVersion });
+    }
+  }
+
+  if (offenders.length > 0) {
+    console.error("❌ react-dom / react version skew in the lockfile.\n");
+    console.error(
+      "   These react-dom instances are peer-keyed to a DIFFERENT react version"
+    );
+    console.error("   than their own:\n");
+    for (const o of offenders) {
+      console.error(`   • react-dom@${o.reactDom}  keyed to  react@${o.react}`);
+      console.error(`       ${o.key}`);
+    }
+    console.error("");
+    console.error(
+      "   react and react-dom must be the EXACT same version. react-dom's server"
+    );
+    console.error(
+      "   renderer hard-errors on this mismatch at runtime (React >= 19.2,"
+    );
+    console.error(
+      "   ensureCorrectIsomorphicReactVersion) — but only when something actually"
+    );
+    console.error(
+      "   renders, so typecheck, bundling and non-rendering tests all stay green."
+    );
+    console.error(
+      "   Anything that server-renders through this react-dom (SSR, react-email"
+    );
+    console.error(
+      "   templates in server functions) will throw in production.\n"
+    );
+    console.error(
+      "   This usually happens when a workspace package pins `react` to an exact"
+    );
+    console.error(
+      "   version (e.g. to control pnpm's peer dedup) but leaves `react-dom` to"
+    );
+    console.error(
+      "   be auto-installed as a transitive peer, which resolves to the latest"
+    );
+    console.error("   version in range.\n");
+    console.error("   How to fix:");
+    console.error(
+      "     Find the workspace package whose dependency subgraph contains the"
+    );
+    console.error(
+      "     skewed pair (grep the lockfile importers for the react-dom version"
+    );
+    console.error(
+      "     above) and pin react-dom to the SAME exact version as its react pin:"
+    );
+    console.error(
+      "       pnpm add -D react-dom@<pinned react version> --filter <that package>"
+    );
+    console.error(
+      "     then confirm the lockfile entry reads react-dom@X(react@X).\n"
+    );
+    return false;
+  }
+
+  console.log(
+    "✅ react-dom pairing check passed — every react-dom in the lockfile matches its keyed react version exactly."
+  );
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -452,25 +571,27 @@ function main() {
   }
   const denylist = [...DEFAULT_NATIVE_UNSAFE_DENYLIST, ...denylistExtra, ...args.denylist];
 
-  // Run BOTH gates (don't short-circuit — report every failure in one pass).
-  // checkReactConsistency() throws (rather than process.exit) on a missing
-  // dependencies.react / lockfile — those are fatal input errors, not a gate
-  // result, so catch here and let the CLI alone own the exit code.
-  let reactOk;
+  // Run ALL gates (don't short-circuit — report every failure in one pass).
+  // checkReactConsistency()/checkReactDomPairing() throw (rather than
+  // process.exit) on a missing dependencies.react / lockfile — those are fatal
+  // input errors, not a gate result, so catch here and let the CLI alone own
+  // the exit code.
+  let reactOk, pairingOk;
   try {
     reactOk = checkReactConsistency(pkgJson, pkgLabel, lockfilePath, nativeDepNames);
+    pairingOk = checkReactDomPairing(lockfilePath);
   } catch (err) {
     console.error(`❌ ${err.message}`);
     process.exit(1);
   }
   const denylistOk = checkNativeUnsafeDenylist(pkgJson, pkgLabel, denylist);
 
-  if (!reactOk || !denylistOk) {
+  if (!reactOk || !pairingOk || !denylistOk) {
     process.exit(1);
   }
 
   console.log(
-    "\n✅ Native React graph OK — single React + no native-unsafe dependencies."
+    "\n✅ Native React graph OK — single React, react-dom exactly paired, no native-unsafe dependencies."
   );
   process.exit(0);
 }
@@ -481,6 +602,7 @@ if (require.main === module) {
 
 module.exports = {
   checkReactConsistency,
+  checkReactDomPairing,
   checkNativeUnsafeDenylist,
   packageNameFromKey,
   loadConfig,
