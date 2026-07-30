@@ -48,6 +48,19 @@ With `--platform all`, every platform that has a build must match, since one OTA
 reaches all of them. Only runtime `dependencies` are considered (a native-looking
 devDependency isn't autolinked, so moving it isn't a native change).
 
+Nativeness is decided by **evidence, not package name**. Candidacy is wide
+(name patterns + `native-deps.json`), but a difference is only reported if the
+installed copy actually ships native code — `ios/`, `android/`, a `*.podspec`,
+`expo-module.config.json`, `react-native.config.js`, i.e. what autolinking
+itself looks for. `react-native-reorderable-list` is the motivating case: named
+like a native package, but pure Reanimated/Gesture-Handler JS and genuinely
+OTA-safe. This matters because a deploy gate that blocks on packages which are
+fine gets switched off, and then it protects nothing. Packages that aren't
+installed (or can't be resolved) stay "unknown" and still count as native, so
+unknowns fail closed — and every exonerated package is printed rather than
+silently dropped, so a wrong classification shows up in the deploy log instead
+of hiding behind a green banner.
+
 Usage — run it immediately before publishing a production OTA:
 
 ```
