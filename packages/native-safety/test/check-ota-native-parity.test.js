@@ -26,7 +26,9 @@ const {
   collectNativeDeps,
   diffNativeDeps,
   selectDeployedBuilds,
-  isNativePackage,
+  isNativeCandidate,
+  classifyInstalled,
+  makeClassifier,
   loadConfig,
 } = require("../src/check-ota-native-parity");
 
@@ -39,23 +41,23 @@ test.after(() => fs.rmSync(tmpRoot, { recursive: true, force: true }));
 // isNativePackage / collectNativeDeps
 // ---------------------------------------------------------------------------
 
-test("isNativePackage matches expo/react-native families by name", () => {
-  assert.equal(isNativePackage("expo-video"), true);
-  assert.equal(isNativePackage("expo"), true);
-  assert.equal(isNativePackage("react-native"), true);
-  assert.equal(isNativePackage("react-native-webview"), true);
-  assert.equal(isNativePackage("@expo/vector-icons"), true);
+test("isNativeCandidate matches expo/react-native families by name", () => {
+  assert.equal(isNativeCandidate("expo-video"), true);
+  assert.equal(isNativeCandidate("expo"), true);
+  assert.equal(isNativeCandidate("react-native"), true);
+  assert.equal(isNativeCandidate("react-native-webview"), true);
+  assert.equal(isNativeCandidate("@expo/vector-icons"), true);
 
-  assert.equal(isNativePackage("zod"), false);
-  assert.equal(isNativePackage("date-fns"), false);
+  assert.equal(isNativeCandidate("zod"), false);
+  assert.equal(isNativeCandidate("date-fns"), false);
 });
 
-test("isNativePackage picks up scoped native packages listed in native-deps.json", () => {
+test("isNativeCandidate picks up scoped native packages listed in native-deps.json", () => {
   const names = new Set(["@gorhom/bottom-sheet"]);
-  assert.equal(isNativePackage("@gorhom/bottom-sheet", names), true);
+  assert.equal(isNativeCandidate("@gorhom/bottom-sheet", names), true);
   // Without the config, an arbitrary scope isn't guessable from the name.
-  assert.equal(isNativePackage("@acme/some-native-thing"), false);
-  assert.equal(isNativePackage("@acme/some-native-thing", new Set(["@acme/some-native-thing"])), true);
+  assert.equal(isNativeCandidate("@acme/some-native-thing"), false);
+  assert.equal(isNativeCandidate("@acme/some-native-thing", new Set(["@acme/some-native-thing"])), true);
 });
 
 test("collectNativeDeps takes runtime dependencies only, ignoring devDependencies", () => {
@@ -118,6 +120,97 @@ test("diffNativeDeps sorts findings by package name for stable output", () => {
     diff.changed.map((c) => c.name),
     ["expo-audio", "expo-video", "react-native-maps"]
   );
+});
+
+// ---------------------------------------------------------------------------
+// classifyInstalled — nativeness by evidence on disk, not by package name
+// ---------------------------------------------------------------------------
+
+/** Fake an installed package under <root>/node_modules/<name>. */
+function installFake(root, name, files = []) {
+  const dir = path.join(root, "node_modules", ...name.split("/"));
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name, version: "1.0.0" }));
+  for (const file of files) {
+    const target = path.join(dir, file);
+    if (file.endsWith("/")) fs.mkdirSync(target, { recursive: true });
+    else {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, "");
+    }
+  }
+  return dir;
+}
+
+test("classifyInstalled proves a JS-only package is not native", () => {
+  const app = path.join(tmpRoot, "classify-js");
+  fs.mkdirSync(app, { recursive: true });
+  // react-native-reorderable-list is the real-world case: named like a native
+  // package, but pure Reanimated/Gesture-Handler JS — no ios/, android/, podspec.
+  installFake(app, "react-native-reorderable-list", ["lib/index.js"]);
+
+  assert.equal(classifyInstalled("react-native-reorderable-list", app), false);
+});
+
+test("classifyInstalled detects native code via ios/, android/, or a podspec", () => {
+  const app = path.join(tmpRoot, "classify-native");
+  fs.mkdirSync(app, { recursive: true });
+  installFake(app, "pkg-ios", ["ios/"]);
+  installFake(app, "pkg-android", ["android/"]);
+  installFake(app, "pkg-podspec", ["PkgPodspec.podspec"]);
+  installFake(app, "pkg-expo-module", ["expo-module.config.json"]);
+
+  assert.equal(classifyInstalled("pkg-ios", app), true);
+  assert.equal(classifyInstalled("pkg-android", app), true);
+  assert.equal(classifyInstalled("pkg-podspec", app), true);
+  assert.equal(classifyInstalled("pkg-expo-module", app), true);
+});
+
+test("classifyInstalled returns null for a package that isn't installed", () => {
+  const app = path.join(tmpRoot, "classify-missing");
+  fs.mkdirSync(app, { recursive: true });
+
+  assert.equal(classifyInstalled("never-installed-anywhere", app), null);
+});
+
+test("diffNativeDeps exonerates proven JS-only packages but reports them", () => {
+  const classify = (name) => (name === "react-native-reorderable-list" ? false : null);
+
+  const diff = diffNativeDeps(
+    { expo: "~54.0.23" },
+    { expo: "~54.0.23", "react-native-reorderable-list": "^0.18.0" },
+    { classify }
+  );
+
+  assert.equal(diff.ok, true, "a JS-only package must not block a deploy");
+  assert.deepEqual(diff.added, []);
+  // Reported, not silently dropped — a wrong classification must be visible.
+  assert.deepEqual(diff.ignored, [{ name: "react-native-reorderable-list", spec: "^0.18.0" }]);
+});
+
+test("diffNativeDeps treats an unknown classification as native (fails closed)", () => {
+  const diff = diffNativeDeps(
+    { expo: "~54.0.23" },
+    { expo: "~54.0.23", "expo-blur": "~15.0.8" },
+    { classify: () => null }
+  );
+
+  assert.equal(diff.ok, false);
+  assert.deepEqual(diff.added, [{ name: "expo-blur", spec: "~15.0.8" }]);
+  assert.deepEqual(diff.ignored, []);
+});
+
+test("makeClassifier caches per name and tolerates a missing app dir", () => {
+  const app = path.join(tmpRoot, "classify-cache");
+  fs.mkdirSync(app, { recursive: true });
+  installFake(app, "cached-native-pkg", ["ios/"]);
+
+  const classify = makeClassifier(app);
+  assert.equal(classify("cached-native-pkg"), true);
+  assert.equal(classify("cached-native-pkg"), true);
+
+  // No app dir at all -> everything unknown -> everything fails closed.
+  assert.equal(makeClassifier(null)("cached-native-pkg"), null);
 });
 
 // ---------------------------------------------------------------------------
@@ -386,6 +479,48 @@ test("CLI checks EVERY platform's build, not just the first", () => {
   assert.equal(res.status, 1, "a mismatch on any platform must fail the deploy");
   assert.match(res.stdout, /android/);
   assert.match(res.stderr, /ios/);
+});
+
+test("CLI passes when the only moved package is a proven JS-only one, and says so", () => {
+  const repo = makeRepo(
+    "js-only-added",
+    { expo: "~54.0.23" },
+    { expo: "~54.0.23", "react-native-reorderable-list": "^0.18.0" }
+  );
+  // Install it JS-only (no ios/, no android/, no podspec) next to the app's
+  // package.json, which is where --app-dir defaults to.
+  installFake(path.join(repo.dir, "apps", "mobile"), "react-native-reorderable-list", [
+    "lib/index.js",
+  ]);
+
+  const res = runCli(
+    ["--pkg", "apps/mobile/package.json", "--build-commit", repo.buildCommit],
+    repo.dir
+  );
+
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /ignoring react-native-reorderable-list/);
+  assert.match(res.stdout, /OTA\/native parity OK/);
+});
+
+test("CLI still fails on a real native package even when a JS-only one also moved", () => {
+  const repo = makeRepo(
+    "js-only-plus-skew",
+    { expo: "~54.0.23", "expo-video": "^55.0.11" },
+    { expo: "~54.0.23", "expo-video": "^3.0.16", "react-native-reorderable-list": "^0.18.0" }
+  );
+  const appDir = path.join(repo.dir, "apps", "mobile");
+  installFake(appDir, "react-native-reorderable-list", ["lib/index.js"]);
+  installFake(appDir, "expo-video", ["ios/"]);
+
+  const res = runCli(
+    ["--pkg", "apps/mobile/package.json", "--build-commit", repo.buildCommit],
+    repo.dir
+  );
+
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /expo-video: binary has \^55\.0\.11, this bundle ships \^3\.0\.16/);
+  assert.doesNotMatch(res.stderr, /reorderable/);
 });
 
 test("CLI requires a way to identify the deployed build", () => {

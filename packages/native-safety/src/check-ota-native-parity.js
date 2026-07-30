@@ -91,6 +91,7 @@ function parseArgs(argv) {
     profile: "production",
     platform: "all",
     repo: null,
+    appDir: null,
   };
 
   for (let i = 2; i < argv.length; i++) {
@@ -115,6 +116,9 @@ function parseArgs(argv) {
         break;
       case "--repo":
         args.repo = argv[++i];
+        break;
+      case "--app-dir":
+        args.appDir = argv[++i];
         break;
       case "--help":
       case "-h":
@@ -150,6 +154,11 @@ Options:
                            platform that has a build must match — an OTA goes to
                            all of them.
   --repo <path>           Git repo root (default: cwd)
+  --app-dir <path>        Directory to resolve installed packages from, used to
+                           tell real native packages from JS-only ones that just
+                           look native by name (default: --pkg's directory).
+                           Dependencies must be installed for this to work; an
+                           unresolvable package counts as native (fails closed).
   --help, -h              Show this help message
 
 Exit codes:
@@ -196,28 +205,82 @@ function loadConfig(configPath) {
 // ---------------------------------------------------------------------------
 
 /**
- * True when a package name identifies a package containing native code.
+ * True when a package NAME looks like it could carry native code.
  *
- * Deliberately INCLUDES packages that are JS-only in practice but named like
- * native ones (e.g. expo-router): a false positive here costs one deliberate
- * native build, while a false negative ships a skewed OTA to production.
+ * This is only candidacy, not a verdict — `react-native-*` and `expo-*` are
+ * full of JS-only packages (e.g. react-native-reorderable-list, which is pure
+ * Reanimated/Gesture-Handler JS). The verdict comes from `classifyInstalled`
+ * below, which looks for actual native code on disk. Keeping candidacy wide and
+ * the verdict evidence-based is what makes this check both safe AND quiet
+ * enough that nobody switches it off.
  */
-function isNativePackage(name, nativeDepNames = new Set()) {
+function isNativeCandidate(name, nativeDepNames = new Set()) {
   if (nativeDepNames.has(name)) return true;
   return NATIVE_PACKAGE_PATTERNS.some((pattern) => pattern.test(name));
 }
 
+/** Files/directories that mean a package actually ships native code. */
+const NATIVE_MARKERS = ["ios", "android", "expo-module.config.json", "react-native.config.js"];
+
 /**
- * Collect { name: versionSpec } for every native dependency of a package.json.
+ * Decide whether an INSTALLED package really contains native code.
+ *
+ * Returns true (native), false (proven JS-only), or null (not installed, so
+ * unknown — treated as native, because failing closed on an unknown is the
+ * whole point).
+ *
+ * A package only needs a native build if it contributes native code to the
+ * binary, which autolinking discovers exactly this way: an ios/ or android/
+ * directory, a podspec, or an expo-module/react-native config. A JS-only
+ * package that merely *depends* on native ones (Reanimated, Gesture Handler)
+ * ships fine over the air — its native dependencies are what must match, and
+ * those are checked on their own.
+ */
+function classifyInstalled(name, appDir) {
+  let pkgJsonPath;
+  try {
+    pkgJsonPath = require.resolve(`${name}/package.json`, { paths: [appDir] });
+  } catch {
+    return null; // not installed / not exported — unknown, so assume native
+  }
+
+  const dir = path.dirname(pkgJsonPath);
+  for (const marker of NATIVE_MARKERS) {
+    if (fs.existsSync(path.join(dir, marker))) return true;
+  }
+  try {
+    if (fs.readdirSync(dir).some((entry) => entry.endsWith(".podspec"))) return true;
+  } catch {
+    return null;
+  }
+  return false;
+}
+
+/** Build a classifier bound to an app directory, with `null` for "unknown". */
+function makeClassifier(appDir) {
+  if (!appDir) return () => null;
+  const cache = new Map();
+  return (name) => {
+    if (!cache.has(name)) cache.set(name, classifyInstalled(name, appDir));
+    return cache.get(name);
+  };
+}
+
+/**
+ * Collect { name: versionSpec } for every native-CANDIDATE dependency.
  *
  * Only `dependencies` are considered: a native module must be a runtime
  * dependency to be autolinked into the binary, and devDependencies (typecheck
  * shims, test harnesses) legitimately move without a native build.
+ *
+ * Candidacy (not the native verdict) is used here because this also runs
+ * against the deployed commit's package.json, where nothing is installed to
+ * inspect. The verdict is applied later, in diffNativeDeps.
  */
 function collectNativeDeps(pkgJson, nativeDepNames = new Set()) {
   const out = {};
   for (const [name, spec] of Object.entries(pkgJson.dependencies || {})) {
-    if (isNativePackage(name, nativeDepNames)) out[name] = spec;
+    if (isNativeCandidate(name, nativeDepNames)) out[name] = spec;
   }
   return out;
 }
@@ -225,34 +288,58 @@ function collectNativeDeps(pkgJson, nativeDepNames = new Set()) {
 /**
  * Compare deployed vs current native dependency maps.
  *
- * Returns { ok, changed, added, removed } where each entry names the package
- * and (for changed) both versions. Every difference matters: an added native
- * dep isn't in the binary at all, a removed one is still linked but its JS is
- * gone, and a changed one is the version-skew case.
+ * Returns { ok, changed, added, removed, ignored }. Every difference in a
+ * package that really carries native code matters: an added one isn't in the
+ * binary at all, a removed one is still linked but its JS is gone, and a changed
+ * one is the version-skew case.
+ *
+ * `classify(name)` decides whether a differing package actually ships native
+ * code — false means proven JS-only (e.g. react-native-reorderable-list, which
+ * is pure Reanimated JS), and such packages move freely over the air. They are
+ * reported in `ignored` rather than dropped silently, so a wrong classification
+ * is visible in the log instead of being an invisible hole. `null`/absent
+ * (unknown) counts as native: unknowns fail closed.
  */
-function diffNativeDeps(deployed, current) {
+function diffNativeDeps(deployed, current, { classify = () => null } = {}) {
   const changed = [];
   const added = [];
   const removed = [];
+  const ignored = [];
+
+  const record = (bucket, entry) => {
+    // Only ever exonerate on positive evidence of JS-only.
+    if (classify(entry.name) === false) ignored.push(entry);
+    else bucket.push(entry);
+  };
 
   for (const [name, spec] of Object.entries(current)) {
     if (!(name in deployed)) {
-      added.push({ name, spec });
+      record(added, { name, spec });
     } else if (deployed[name] !== spec) {
-      changed.push({ name, from: deployed[name], to: spec });
+      record(changed, { name, from: deployed[name], to: spec });
     }
   }
 
   for (const [name, spec] of Object.entries(deployed)) {
-    if (!(name in current)) removed.push({ name, spec });
+    // A removed package is usually uninstalled, so classify() can't see it;
+    // `null` -> treated as native -> reported. Correct: its native code is
+    // still linked into the binary while its JS is gone from the bundle.
+    if (!(name in current)) record(removed, { name, spec });
   }
 
   const byName = (a, b) => a.name.localeCompare(b.name);
   changed.sort(byName);
   added.sort(byName);
   removed.sort(byName);
+  ignored.sort(byName);
 
-  return { ok: changed.length === 0 && added.length === 0 && removed.length === 0, changed, added, removed };
+  return {
+    ok: changed.length === 0 && added.length === 0 && removed.length === 0,
+    changed,
+    added,
+    removed,
+    ignored,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -479,6 +566,12 @@ function main() {
   const currentPkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
   const current = collectNativeDeps(currentPkg, nativeDepNames);
 
+  // Resolve nativeness from the installed tree (the app dir by default), so a
+  // JS-only package that merely looks native by name doesn't block a deploy.
+  // Unresolvable names stay "unknown" and are treated as native.
+  const appDir = args.appDir ? path.resolve(args.appDir) : path.dirname(pkgPath);
+  const classify = makeClassifier(appDir);
+
   // Resolve which builds (and therefore which commits) we're comparing against.
   let targets;
   if (args.buildCommit) {
@@ -561,7 +654,16 @@ function main() {
     }
 
     const deployed = collectNativeDeps(deployedPkg, nativeDepNames);
-    const diff = diffNativeDeps(deployed, current);
+    const diff = diffNativeDeps(deployed, current, { classify });
+
+    // Always say what was exonerated — a silent skip is how a real skew would
+    // hide behind a green banner.
+    for (const entry of diff.ignored) {
+      const moved = entry.from ? `${entry.from} -> ${entry.to}` : `added at ${entry.spec}`;
+      console.log(
+        `   ℹ️  ignoring ${entry.name} (${moved}) — installed copy ships no native code, so it is OTA-safe`
+      );
+    }
 
     if (diff.ok) {
       console.log(
@@ -589,6 +691,9 @@ module.exports = {
   collectNativeDeps,
   diffNativeDeps,
   selectDeployedBuilds,
-  isNativePackage,
+  isNativeCandidate,
+  classifyInstalled,
+  makeClassifier,
   loadConfig,
+  NATIVE_MARKERS,
 };
