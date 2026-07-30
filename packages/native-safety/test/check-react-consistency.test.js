@@ -27,6 +27,10 @@ const { spawnSync } = require("node:child_process");
 const {
   checkReactConsistency,
   checkReactDomPairing,
+  checkSingleNativeInstance,
+  parsePackageDependencies,
+  parseImporterVersions,
+  parseImporterKeys,
   checkNativeUnsafeDenylist,
   packageNameFromKey,
   loadConfig,
@@ -489,4 +493,214 @@ test("CLI: a skewed react-dom pair fails gate #3 and exits 1, even when the nati
   assert.equal(result.status, 1, `expected exit 1, got ${result.status}. stdout: ${result.stdout}`);
   assert.match(result.stderr, /react-dom \/ react version skew/);
   assert.doesNotMatch(result.stdout, /Native React graph OK/);
+});
+
+// ---------------------------------------------------------------------------
+// Gate #4: single native INSTANCE
+// ---------------------------------------------------------------------------
+
+/**
+ * Regression origin: Togather's video/GIF break of 2026-07 (the SECOND one).
+ * A dev-assistant dependency bump re-resolved the workspace and flipped
+ * expo-modules-core & friends onto a second react-native instance that was
+ * peer-keyed to the SAME react version, so gate #1 stayed green while two
+ * physical react-native copies split the Fabric registry.
+ */
+
+const APP_RN = "0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)";
+const ROOT_RN = "0.81.5(@babel/core@7.29.0)(react@19.1.0)";
+
+/** Lockfile with two react-native instances; `emcRn` picks which one expo-modules-core uses. */
+function twoInstanceLockfile(emcRn) {
+  return `lockfileVersion: '6.0'
+
+importers:
+
+  apps/mobile:
+    dependencies:
+      react:
+        specifier: 19.1.0
+        version: 19.1.0
+      react-native:
+        specifier: 0.81.5
+        version: ${APP_RN}
+
+  .:
+    dependencies:
+      react-native:
+        specifier: 0.81.5
+        version: ${ROOT_RN}
+
+packages:
+
+  /react-native@${APP_RN}:
+    resolution: {integrity: sha512-aaa}
+    dependencies:
+      react: 19.1.0
+    dev: false
+
+  /react-native@${ROOT_RN}:
+    resolution: {integrity: sha512-bbb}
+    dependencies:
+      react: 19.1.0
+    dev: false
+
+  /expo-modules-core@3.0.29(react-native@0.81.5)(react@19.1.0):
+    resolution: {integrity: sha512-ccc}
+    peerDependencies:
+      react-native: '*'
+    dependencies:
+      react-native: ${emcRn}
+    dev: false
+
+  /expo-video@3.0.16(react-native@0.81.5)(react@19.1.0):
+    resolution: {integrity: sha512-ddd}
+    peerDependencies:
+      react-native: '*'
+    dependencies:
+      react-native: ${APP_RN}
+    dev: false
+
+  /@react-native/virtualized-lists@0.81.5(react-native@0.81.5)(react@19.1.0):
+    resolution: {integrity: sha512-eee}
+    dependencies:
+      react-native: ${ROOT_RN}
+    dev: false
+
+  /@react-native/virtualized-lists@0.81.5(@types/react@19.1.17)(react-native@0.81.5)(react@19.1.0):
+    resolution: {integrity: sha512-fff}
+    dependencies:
+      react-native: ${APP_RN}
+    dev: false
+`;
+}
+
+test("gate #4 passes when every shared native package uses the app's instance", () => {
+  const lockfilePath = writeLockfile(
+    path.join(tmpRoot, "instance-ok"),
+    twoInstanceLockfile(APP_RN)
+  );
+
+  assert.equal(checkSingleNativeInstance(lockfilePath, new Set(), "apps/mobile"), true);
+});
+
+test("gate #4 fails when expo-modules-core is re-keyed onto the other instance", () => {
+  const lockfilePath = writeLockfile(
+    path.join(tmpRoot, "instance-split"),
+    twoInstanceLockfile(ROOT_RN)
+  );
+
+  assert.equal(checkSingleNativeInstance(lockfilePath, new Set(), "apps/mobile"), false);
+});
+
+test("gate #4 does NOT fire on per-family copies of a multi-copy package", () => {
+  // @react-native/virtualized-lists exists twice — one copy per react-native
+  // instance — and each correctly points at its own family's runtime. Demanding
+  // both match the app would be a false positive on a healthy graph.
+  const lockfilePath = writeLockfile(
+    path.join(tmpRoot, "instance-multicopy"),
+    twoInstanceLockfile(APP_RN)
+  );
+
+  assert.equal(checkSingleNativeInstance(lockfilePath, new Set(), "apps/mobile"), true);
+});
+
+test("gate #4 is blind-spot-free where gate #1 is blind: same react, different instance", () => {
+  // The whole point: both instances are keyed (react@19.1.0), so the
+  // React-version set is a clean {pinned} and gate #1 passes on BOTH lockfiles.
+  const good = writeLockfile(path.join(tmpRoot, "blind-good"), twoInstanceLockfile(APP_RN));
+  const bad = writeLockfile(path.join(tmpRoot, "blind-bad"), twoInstanceLockfile(ROOT_RN));
+  const pkgJson = { dependencies: { react: "19.1.0", "react-native": "0.81.5" } };
+
+  assert.equal(checkReactConsistency(pkgJson, "apps/mobile/package.json", good, new Set()), true);
+  assert.equal(checkReactConsistency(pkgJson, "apps/mobile/package.json", bad, new Set()), true);
+
+  // Gate #4 is what separates them.
+  assert.equal(checkSingleNativeInstance(good, new Set(), "apps/mobile"), true);
+  assert.equal(checkSingleNativeInstance(bad, new Set(), "apps/mobile"), false);
+});
+
+test("gate #4 throws (never silently passes) when the importer isn't in the lockfile", () => {
+  const lockfilePath = writeLockfile(
+    path.join(tmpRoot, "instance-no-importer"),
+    twoInstanceLockfile(APP_RN)
+  );
+
+  assert.throws(
+    () => checkSingleNativeInstance(lockfilePath, new Set(), "apps/does-not-exist"),
+    /not in pnpm-lock\.yaml.*Available/s
+  );
+});
+
+test("gate #4 is n/a for an importer with no react-native/expo", () => {
+  const lockfilePath = writeLockfile(
+    path.join(tmpRoot, "instance-non-native"),
+    twoInstanceLockfile(APP_RN)
+  );
+
+  // "." declares react-native in this fixture, so use a fresh lockfile where a
+  // real importer has neither runtime.
+  const p = writeLockfile(
+    path.join(tmpRoot, "instance-web-only"),
+    `lockfileVersion: '6.0'
+
+importers:
+
+  apps/web:
+    dependencies:
+      react:
+        specifier: 19.2.4
+        version: 19.2.4
+
+packages:
+
+  /react@19.2.4:
+    resolution: {integrity: sha512-zzz}
+    dev: false
+`
+  );
+
+  assert.equal(checkSingleNativeInstance(p, new Set(), "apps/web"), true);
+  assert.ok(fs.existsSync(lockfilePath));
+});
+
+test("parseImporterVersions/parseImporterKeys read the importers block", () => {
+  const lines = twoInstanceLockfile(APP_RN).split("\n");
+
+  assert.deepEqual(parseImporterKeys(lines), new Set(["apps/mobile", "."]));
+  assert.equal(parseImporterVersions(lines, "apps/mobile")["react-native"], APP_RN);
+  assert.equal(parseImporterVersions(lines, ".")["react-native"], ROOT_RN);
+});
+
+test("parsePackageDependencies ignores peerDependencies ranges", () => {
+  const entries = parsePackageDependencies(twoInstanceLockfile(ROOT_RN).split("\n"));
+  const emc = entries.find((e) => e.key.startsWith("/expo-modules-core@"));
+
+  // peerDependencies said `react-native: '*'`; only the real resolution counts.
+  assert.equal(emc.deps["react-native"], ROOT_RN);
+});
+
+test("gate #4 is n/a for a non-workspace lockfile (no importers block)", () => {
+  // pnpm writes top-level dependencies instead of `importers:` for a single
+  // project. No per-app anchor exists, and no workspace root can introduce a
+  // second instance — so this is genuinely n/a, unlike a WRONG importer name,
+  // which throws.
+  const p = writeLockfile(
+    path.join(tmpRoot, "instance-no-workspace"),
+    `lockfileVersion: '6.0'
+
+dependencies:
+  react-native:
+    specifier: 0.81.5
+    version: ${APP_RN}
+
+packages:
+
+  /react-native@${APP_RN}:
+    resolution: {integrity: sha512-aaa}
+    dev: false
+`
+  );
+
+  assert.equal(checkSingleNativeInstance(p, new Set(), "."), true);
 });
