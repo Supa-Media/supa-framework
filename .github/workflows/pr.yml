@@ -1,0 +1,42 @@
+# Gates pull requests against this repo's own workspace. `ci.yml` is not reused:
+# it is workflow_call-only and shaped for consumer apps scaffolded from this
+# framework (apps/mobile, apps/convex, convex typecheck) — none exist here.
+
+name: PR
+
+on:
+  pull_request:
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+# @supa-media/* resolve from GitHub Packages (private) via the root .npmrc,
+# which reads ${GITHUB_TOKEN}. `packages: read` lets that token install them.
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  verify:
+    name: Install, Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: pnpm build
+
+      - run: pnpm test
