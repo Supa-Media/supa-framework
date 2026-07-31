@@ -38,18 +38,28 @@ export function derivePrState(signals: PrSignals): PrState {
  * Two ways in, per the wireframe: the fleet owner is an explicitly requested
  * reviewer, or a required (codeowner) review is missing — which GitHub reports
  * as `reviewDecision: REVIEW_REQUIRED` on a non-draft PR.
+ *
+ * `author` exists because `REVIEW_REQUIRED` comes back for **any** PR under a
+ * branch-protection rule requiring approvals — including ones the owner opened
+ * himself. GitHub forbids self-review, so those rows would be structurally
+ * un-actionable in a panel whose whole premise is "what is blocked on *you*".
+ * In a fleet where most PRs are agent-authored on the owner's behalf, that
+ * would be most of the list the day protection is switched on. An explicit
+ * review request still counts: GitHub won't create one for your own PR.
  */
 export function needsYouReason(
   signals: PrSignals,
   requestedReviewers: readonly string[],
   owner: string,
+  author: string | null,
 ): string | null {
   if (signals.isDraft) return null;
 
-  const ownerRequested = requestedReviewers.some(
-    (login) => login.toLowerCase() === owner.toLowerCase(),
-  );
-  if (ownerRequested) return `review requested from ${owner}`;
+  const isOwner = (login: string) => login.toLowerCase() === owner.toLowerCase();
+
+  if (requestedReviewers.some(isOwner)) return `review requested from ${owner}`;
+
+  if (author !== null && isOwner(author)) return null;
 
   if (signals.reviewDecision === "REVIEW_REQUIRED") return "required review missing";
   if (signals.reviewDecision === "CHANGES_REQUESTED") return "changes requested";

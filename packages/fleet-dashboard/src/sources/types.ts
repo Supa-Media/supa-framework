@@ -95,15 +95,22 @@ export interface Gardener {
    * `{ id: "custom", model: "qwen3-coder:480b" }`. Nulls when undeclared.
    */
   engine: EngineConfig;
-  /** Raw 5-field cron expression, or `null` if the workflow has no schedule. */
-  cron: string | null;
-  /** Human-readable rendering of `cron`, e.g. "Mondays at 09:00 UTC". */
+  /**
+   * Every 5-field cron on the workflow. A workflow may declare several; an
+   * empty array means it is manual / event-driven.
+   */
+  crons: string[];
+  /** Human-readable rendering of `crons`, e.g. "Mondays at 09:00 UTC". */
   schedule: string;
-  /** ISO-8601 of the next scheduled fire, or `null` when unscheduled. */
+  /** ISO-8601 of the soonest next fire across `crons`, or `null`. */
   nextRunAt: string | null;
   lastRun: RunSummary | null;
-  /** Month-to-date USD, or `null` when no cost report was found. */
-  costMtdUsd: number | null;
+  /**
+   * USD for this workflow as stated by the most recent cost report, or `null`
+   * when no report was found. NOT month-to-date: the gh-aw report is weekly and
+   * nothing here does month arithmetic, so the field is named for what it is.
+   */
+  costReportedUsd: number | null;
 }
 
 export interface ProjectSnapshot {
@@ -114,7 +121,14 @@ export interface ProjectSnapshot {
   defaultBranch: string;
   /** Workflow runs currently queued or in progress. */
   activeRuns: number;
+  /** Exact count from GitHub's search `issueCount` — never a length of nodes. */
   openPrs: number;
+  /**
+   * How many PRs were actually fetched. Lower than `openPrs` only when a repo
+   * exceeds the pagination cap, which the UI must then say out loud rather
+   * than render a short list as if it were complete.
+   */
+  fetchedPrs: number;
   /** Latest run on the default branch, whatever workflow it was. */
   ci: RunSummary | null;
   /** Latest *successful* run of any workflow named in the repo's `deployWorkflows`. */
@@ -142,8 +156,13 @@ export interface FleetSnapshot {
   projects: ProjectSnapshot[];
   /** PRs across every project that are blocked on a human. */
   needsYou: PullRequestCard[];
-  /** Month-to-date spend across the fleet, or `null` when unknown. */
-  spendMtdUsd: number | null;
+  /**
+   * Total spend across the fleet's most recent cost reports, or `null` when
+   * unknown. Deliberately not called month-to-date — see `costReportedUsd`.
+   */
+  spendReportedUsd: number | null;
+  /** ISO-8601 of the newest cost report seen, so staleness is visible. */
+  spendReportedAt: string | null;
   errors: SourceError[];
   rateLimit: RateLimitInfo | null;
 }
@@ -163,7 +182,8 @@ export function emptySnapshot(): FleetSnapshot {
     fetchedAt: new Date(0).toISOString(),
     projects: [],
     needsYou: [],
-    spendMtdUsd: null,
+    spendReportedUsd: null,
+    spendReportedAt: null,
     errors: [],
     rateLimit: null,
   };

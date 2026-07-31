@@ -56,6 +56,42 @@ function writeCache(key: string, value: CachedResponse): void {
   }
 }
 
+/**
+ * Drop every cached response.
+ *
+ * Must be called on sign-out AND on sign-in, because the cache holds full REST
+ * bodies — including private-repo workflow file contents — keyed by request
+ * path with no reference to the token that authorized fetching them. Without
+ * this, "Sign out" would leave the fleet's private data readable in
+ * `sessionStorage`, and signing in with a different identity would serve the
+ * previous account's bodies as 304 fallbacks.
+ */
+export function clearResponseCache(): void {
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i += 1) {
+      const key = sessionStorage.key(i);
+      if (key !== null && key.startsWith(CACHE_PREFIX)) doomed.push(key);
+    }
+    for (const key of doomed) sessionStorage.removeItem(key);
+  } catch {
+    // Storage disabled — nothing was cached in the first place.
+  }
+}
+
+/**
+ * Percent-encode each segment of a repo-controlled path.
+ *
+ * Not an XSS fix — the scheme is always a fixed `https://` literal and React
+ * escapes attributes. It fixes mundane breakage from filenames a repo can
+ * legally contain: `#` truncates the ✎ deep link at the fragment, `?` injects
+ * query parameters into the REST request, and a space or `%` breaks the
+ * contents fetch outright so the gardener renders with no cron and no engine.
+ */
+export function encodePath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
 export class GitHubClient {
   private readonly token: string;
   private latestRateLimit: RateLimitInfo | null = null;

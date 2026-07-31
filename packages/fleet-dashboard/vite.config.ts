@@ -15,6 +15,10 @@ export default defineConfig({
   base: "./",
   build: {
     outDir: "dist",
-    sourcemap: true,
+    // No source map. It was 4.6x the bundle and would be deployed beside a page
+    // that holds a PAT, handing anyone past Cloudflare Access a readable map of
+    // the token-handling code for zero runtime benefit. Use "hidden" if an
+    // error reporter ever needs maps without publishing the reference.
+    sourcemap: false,
   },
 });

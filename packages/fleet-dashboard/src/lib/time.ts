@@ -32,7 +32,13 @@ export function until(iso: string, now: Date = new Date()): string {
   return `in ${formatDuration(ms)}`;
 }
 
-/** Local-time absolute stamp for tooltips, where precision beats brevity. */
+/**
+ * Local-time absolute stamp for tooltips, where precision beats brevity.
+ *
+ * The zone name is not optional decoration: these tooltips sit directly beside
+ * cells that render schedules in UTC, so an unlabelled local time is the one
+ * genuinely ambiguous thing on the page.
+ */
 export function absolute(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
@@ -41,5 +47,6 @@ export function absolute(iso: string): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZoneName: "short",
   });
 }

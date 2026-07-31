@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { costForWorkflow, formatUsd, parseCostReport, reportTotal } from "../src/lib/cost";
+import {
+  costForWorkflow,
+  formatUsd,
+  parseCostReport,
+  pickLatestReports,
+  reportTotal,
+} from "../src/lib/cost";
 
 const REPORT = [
   "## Gardener activity — July 2026",
@@ -34,6 +40,68 @@ test("the money column is found even when it isn't last, and commas survive", ()
     ),
   );
   assert.equal(report.byWorkflow.get("big-gardener"), 1204.5);
+});
+
+test("a Budget column to the right of Cost is not reported as spend", () => {
+  // The naive right-to-left scan read $50.00 here — a 25x overstatement of a
+  // number whose entire job is to be trusted at a glance.
+  const report = parseCostReport(
+    [
+      "| Workflow | Cost | Budget |",
+      "| --- | ---: | ---: |",
+      "| g-a | $2.00 | $50.00 |",
+      "| g-b | $1.50 | $50.00 |",
+    ].join("\n"),
+  );
+
+  assert.equal(report.byWorkflow.get("g-a"), 2);
+  assert.equal(report.byWorkflow.get("g-b"), 1.5);
+  assert.equal(reportTotal(report), 3.5);
+});
+
+test("header binding also handles Spend, and ignores lookalike money columns", () => {
+  const report = parseCostReport(
+    ["| Workflow | Remaining | Spend |", "| --- | --- | --- |", "| g-a | $48.00 | $2.00 |"].join(
+      "\n",
+    ),
+  );
+  assert.equal(report.byWorkflow.get("g-a"), 2);
+});
+
+test("subtotal rows are summaries, not workflows, and never double-count", () => {
+  const report = parseCostReport(
+    [
+      "| Workflow | Cost |",
+      "| --- | --- |",
+      "| g-a | $1.00 |",
+      "| Subtotal | $1.00 |",
+      "| g-b | $2.00 |",
+      "| Total | $3.00 |",
+    ].join("\n"),
+  );
+
+  assert.equal(report.byWorkflow.has("Subtotal"), false);
+  assert.equal(report.byWorkflow.has("Total"), false);
+  assert.deepEqual([...report.byWorkflow.entries()], [["g-a", 1], ["g-b", 2]]);
+  assert.equal(reportTotal(report), 3);
+});
+
+test("the newest report wins per repo, regardless of arrival order", () => {
+  // The report is weekly, so a year of gardeners means ~52 candidates. Picking
+  // the wrong one presents a stale week as current, with no staleness signal.
+  const candidates = [
+    { title: "[gardeners] weekly cost & activity report", updatedAt: "2026-07-06T00:00:00Z", repoKey: "o/a" },
+    { title: "[gardeners] weekly cost & activity report", updatedAt: "2026-07-27T00:00:00Z", repoKey: "o/a" },
+    { title: "[gardeners] weekly cost & activity report", updatedAt: "2026-07-13T00:00:00Z", repoKey: "o/a" },
+    { title: "[gardeners] weekly cost & activity report", updatedAt: "2026-07-20T00:00:00Z", repoKey: "o/b" },
+    { title: "gardeners: something else entirely", updatedAt: "2026-07-31T00:00:00Z", repoKey: "o/a" },
+  ];
+
+  const latest = pickLatestReports(candidates, "[gardeners] weekly cost & activity report");
+
+  assert.equal(latest.size, 2);
+  assert.equal(latest.get("o/a")?.updatedAt, "2026-07-27T00:00:00Z");
+  assert.equal(latest.get("o/b")?.updatedAt, "2026-07-20T00:00:00Z");
 });
 
 test("a missing or moneyless report yields null, not zero", () => {

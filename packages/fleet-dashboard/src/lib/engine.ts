@@ -36,7 +36,13 @@ function scalar(raw: string): string | null {
 
 /** The YAML frontmatter block, or null when the document has none. */
 export function frontmatter(markdown: string): string | null {
-  const normalized = markdown.replace(/^﻿/, "");
+  // Strip the BOM and normalize CRLF. Without the CRLF pass the block extracts
+  // fine but every downstream regex fails on the trailing `\r` (`.` doesn't
+  // match it, and `$` won't match before it), so a CRLF file silently reads as
+  // "no engine" — indistinguishable from a genuinely undeclared one. Reachable
+  // through this app's own ✎ path: GitHub's web editor plus a `.gitattributes`
+  // `eol=crlf` produces exactly such a file.
+  const normalized = markdown.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
   if (!normalized.startsWith("---")) return null;
 
   const lines = normalized.split("\n");

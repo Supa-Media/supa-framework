@@ -70,8 +70,18 @@ function Section({
   );
 }
 
-function Empty({ children }: { children: React.ReactNode }) {
+function Empty({ children }: { children: ReactNode }) {
   return <p className="empty">{children}</p>;
+}
+
+/** Tooltip explaining a count the list below it doesn't fully show. */
+function prCountTitle(project: ProjectSnapshot): string | undefined {
+  if (project.fetchedPrs >= project.openPrs) return undefined;
+  return `${project.openPrs} open; ${project.fetchedPrs} fetched (pagination cap)`;
+}
+
+function reportAge(iso: string | null): string {
+  return iso === null ? "no cost report found" : `report updated ${absolute(iso)}`;
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
@@ -106,9 +116,12 @@ export function Header({
       </div>
       <dl className="header__stats">
         <div>
-          <dt>Spend MTD</dt>
-          {/* Placeholder until a gardener cost report exists to parse — see README. */}
-          <dd className="num">{formatUsd(snapshot.spendMtdUsd)}</dd>
+          {/* Not "MTD": the gh-aw report is weekly and nothing here does month
+              arithmetic, so the label states what the number actually is. */}
+          <dt>Spend (last report)</dt>
+          <dd className="num" title={reportAge(snapshot.spendReportedAt)}>
+            {formatUsd(snapshot.spendReportedUsd)}
+          </dd>
         </div>
         <div>
           <dt>Updated</dt>
@@ -153,7 +166,10 @@ export function ProjectCards({ projects }: { projects: ProjectSnapshot[] }) {
             </div>
             <div>
               <dt>Open PRs</dt>
-              <dd className="num">{project.openPrs}</dd>
+              <dd className="num" title={prCountTitle(project)}>
+                {project.openPrs}
+                {project.fetchedPrs < project.openPrs && <span className="partial">+</span>}
+              </dd>
             </div>
             <div>
               <dt>CI ({project.defaultBranch})</dt>
@@ -205,6 +221,12 @@ export function ActiveWork({ projects }: { projects: ProjectSnapshot[] }) {
         withWork.map((project) => (
           <div className="project-group" key={project.key}>
             <h3 className="project-group__name">{project.label}</h3>
+            {project.fetchedPrs < project.openPrs && (
+              // Say it out loud rather than render a short list as complete.
+              <p className="truncated">
+                showing {project.fetchedPrs} of {project.openPrs} open PRs
+              </p>
+            )}
             {project.initiatives.map((initiative) => (
               <div className="initiative" key={initiative.name}>
                 <h4 className="initiative__name">
@@ -247,7 +269,7 @@ export function Gardeners({ projects }: { projects: ProjectSnapshot[] }) {
                 <th scope="col">Last run</th>
                 <th scope="col">Schedule</th>
                 <th scope="col" className="num">
-                  Cost MTD
+                  Cost (last report)
                 </th>
                 <th scope="col">
                   <span className="sr-only">Edit cadence</span>
@@ -275,7 +297,7 @@ export function Gardeners({ projects }: { projects: ProjectSnapshot[] }) {
                       </span>
                     )}
                   </td>
-                  <td className="num">{formatUsd(gardener.costMtdUsd)}</td>
+                  <td className="num">{formatUsd(gardener.costReportedUsd)}</td>
                   <td>
                     {/* The single write action in v1: GitHub's own web editor,
                         deep-linked to the gh-aw markdown source. */}

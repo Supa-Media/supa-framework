@@ -5,6 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
     <meta name="robots" content="noindex, nofollow" />
+    <!--
+      This page holds a GitHub PAT in localStorage, so pin where it may talk.
+      `connect-src` is the load-bearing line: it means any future injection
+      cannot exfiltrate the token to an attacker's host. `style-src` needs
+      'unsafe-inline' because Vite injects the stylesheet inline; no script is
+      inline, so 'self' is enough there.
+
+      `frame-ancestors` is deliberately absent — browsers ignore it in a <meta>
+      CSP and log a warning. It lives in `public/_headers` instead, which
+      Cloudflare Pages serves as a real header. Keep the two in sync.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src https://api.github.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
+    />
     <title>Fleet</title>
   </head>
   <body>

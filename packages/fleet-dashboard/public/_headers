@@ -1,0 +1,13 @@
+# Cloudflare Pages response headers. Vite copies `public/` into `dist/`, so
+# deploying `dist/` picks this up automatically.
+#
+# This is the same policy as the <meta> CSP in index.html, plus the directives
+# a browser only honours from a real header — `frame-ancestors` above all,
+# which a <meta> tag cannot deliver. Keep the two in sync; the meta tag is the
+# fallback for hosts that don't serve custom headers.
+/*
+  Content-Security-Policy: default-src 'self'; connect-src https://api.github.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(), camera=(), microphone=(), payment=()

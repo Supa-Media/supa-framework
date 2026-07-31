@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActiveWork, Gardeners, Header, NeedsYou, ProjectCards } from "./components/panels";
 import { TokenGate } from "./components/TokenGate";
 import { fleetConfig } from "./fleet.config";
+import { clearResponseCache } from "./sources/github/client";
 import { createGitHubSource } from "./sources/github/githubSource";
 import { emptySnapshot, type FleetSnapshot } from "./sources/types";
 
@@ -58,6 +59,10 @@ export function App() {
   }, [refresh]);
 
   const acceptToken = useCallback((next: string) => {
+    // Start cold: the response cache is keyed by request path with no reference
+    // to the credential that fetched it, so a token swap must not inherit the
+    // previous identity's cached bodies.
+    clearResponseCache();
     try {
       localStorage.setItem(TOKEN_KEY, next);
     } catch {
@@ -72,6 +77,10 @@ export function App() {
     } catch {
       // Nothing to clean up.
     }
+    // The ETag cache holds full REST bodies, including private-repo workflow
+    // file contents. Clearing only the token would leave the fleet's private
+    // data sitting in sessionStorage after "Sign out".
+    clearResponseCache();
     inFlight.current?.abort();
     setToken(null);
     setSnapshot(emptySnapshot());

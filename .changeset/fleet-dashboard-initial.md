@@ -8,8 +8,8 @@ One phone-friendly page showing every repo in the fleet at once — active runs,
 open PRs, default-branch CI, and last deploy per project; open pull requests
 grouped by project then by initiative (the branch prefix); the gh-aw "gardener"
 maintenance workflows with their engine/model, schedule, last run, and
-month-to-date cost; and a "needs you" row for anything blocked on a human
-review.
+most-recently-reported cost; and a "needs you" row for anything blocked on a
+human review.
 
 Data comes from the GitHub REST + GraphQL APIs only, called directly from the
 browser with a fine-grained PAT the user supplies at runtime and that is stored

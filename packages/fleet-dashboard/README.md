@@ -34,7 +34,16 @@ permissions:
 
 Give it the shortest expiry you can live with. The token is stored in
 `localStorage` and sent only to `api.github.com` — there is no backend, nothing
-is bundled into the build, and nothing is committed. "Sign out" clears it.
+is bundled into the build, and nothing is committed.
+
+"Sign out" clears the token **and** the ETag response cache, which holds full
+REST bodies including private workflow file contents. Signing in clears it too,
+so a token swap never inherits the previous identity's cached data. A
+`Content-Security-Policy` meta tag pins `connect-src` to `api.github.com`, so
+even a future injection could not exfiltrate the token to another host.
+`public/_headers` carries the same policy as a real response header for
+Cloudflare Pages, plus `frame-ancestors` and friends that a `<meta>` tag can't
+deliver — keep the two in sync if you change either.
 
 ## Configuration
 
@@ -87,10 +96,17 @@ components/            presentational only; no fetching
 ```
 
 **Rate limits.** One GraphQL call covers every open PR and the cost issues
-across the whole fleet; the rest is REST with `If-None-Match` conditional
-requests, and a `304` costs no budget. There is no polling — the page fetches
-once and then only when you press Refresh. Remaining budget is shown in the
-header.
+across the whole fleet — one aliased search node per repo, so each repo also
+reports an exact `issueCount` and paginates on its own cursor. The rest is REST
+with `If-None-Match` conditional requests, and a `304` costs no budget. There is
+no polling — the page fetches once and then only when you press Refresh.
+Remaining budget is shown in the header.
+
+**Pagination cap.** Each repo is paged up to `MAX_PR_PAGES` (5 × 100 = 500 open
+PRs). The project card always shows the exact count from `issueCount`, never the
+number of rows fetched; if a repo ever exceeds the cap, the card marks the count
+with a `+` and ACTIVE WORK says "showing N of M open PRs" rather than presenting
+a short list as complete.
 
 ### v2 hooks
 
@@ -106,16 +122,26 @@ header.
 
 ## Notes and limitations
 
-- **Cost parsing is speculative.** `lib/cost.ts` parses the gh-aw
-  `[gardeners] weekly cost & activity report` issue. No repo in the fleet posts
-  one yet, so the parser is shape-tolerant rather than schema-strict and every
-  cost cell currently renders `—`. When a report appears, verify the column
-  layout against `test/cost.test.ts` before trusting the numbers. `—` means
-  "unknown", never "$0.00".
+- **Costs are per-report, not month-to-date.** The gh-aw report is *weekly* and
+  nothing here does month arithmetic, so the column is labelled
+  `Cost (last report)` and the header reads `Spend (last report)` — hover it for
+  the report's timestamp. When several reports exist for a repo, the newest by
+  `updatedAt` wins.
+- **Cost parsing is still unproven against a real report.** No repo in the fleet
+  posts one yet, so `lib/cost.ts` is shape-tolerant rather than schema-strict and
+  every cost cell currently renders `—`. It binds to the column whose header
+  matches `cost`/`spend` (never `budget`/`limit`/`remaining`) and only falls back
+  to a positional scan when there is no usable header; `test/cost.test.ts` pins
+  both paths plus the subtotal-row case. Re-check against the first real report
+  anyway. `—` means "unknown", never "$0.00".
 - **Cron and engine come from different files.** The compiled `.lock.yml` holds
   the real cron (gh-aw lets the source write a friendly string like
   `daily around 12:00 on weekdays` and compiles it down), while only the `.md`
   source holds the engine frontmatter. Both are fetched, both are ETag-cached.
 - **"Active runs" counts the last 100 runs.** A repo doing more than 100 runs
-  between refreshes could under-count. Deploys are queried per workflow, so they
-  are exact.
+  between refreshes could under-count. Deploys are queried per workflow and CI
+  is queried with a `branch=` filter, so both of those are exact.
+- **NEEDS YOU skips your own PRs.** GitHub reports `REVIEW_REQUIRED` for any PR
+  under a rule requiring approvals, including ones you opened, and then forbids
+  self-review — so those rows would be un-actionable. An explicit review request
+  addressed to you still shows.

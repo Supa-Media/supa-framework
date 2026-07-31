@@ -62,6 +62,20 @@ test("a missing engine renders as an em dash, never a guess", () => {
   assert.deepEqual(parseEngine("# Just a readme"), { id: null, model: null });
 });
 
+test("CRLF frontmatter parses — the app's own edit path can produce it", () => {
+  // GitHub's web editor (where the ✎ link goes) plus a `.gitattributes`
+  // eol=crlf yields CRLF sources. `.` doesn't match `\r`, so the naive regex
+  // read these as "no engine" — indistinguishable from genuinely undeclared.
+  assert.deepEqual(parseEngine("---\r\nengine: claude\r\n---\r\n"), {
+    id: "claude",
+    model: null,
+  });
+  assert.deepEqual(
+    parseEngine("---\r\nengine:\r\n  id: custom\r\n  model: qwen3-coder:480b\r\n---\r\n"),
+    { id: "custom", model: "qwen3-coder:480b" },
+  );
+});
+
 test("only the frontmatter is scanned, so the prose body can't spoof the engine", () => {
   const source = [
     "---",

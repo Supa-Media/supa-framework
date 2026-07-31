@@ -1,6 +1,12 @@
 import type { FleetConfig, RepoConfig } from "../../fleet.config";
-import { costForWorkflow, parseCostReport, reportTotal, type CostReport } from "../../lib/cost";
-import { describeCron, extractCron, nextRun } from "../../lib/cron";
+import {
+  costForWorkflow,
+  parseCostReport,
+  pickLatestReports,
+  reportTotal,
+  type CostReport,
+} from "../../lib/cost";
+import { describeCrons, extractCrons, nextRunAcross } from "../../lib/cron";
 import { parseEngine } from "../../lib/engine";
 import { groupByInitiative, initiativeFromBranch } from "../../lib/initiative";
 import { derivePrState, needsYouReason, type PrSignals } from "../../lib/prState";
@@ -14,12 +20,14 @@ import type {
   RunSummary,
   SourceError,
 } from "../types";
-import { decodeBase64Content, GitHubClient } from "./client";
+import { decodeBase64Content, encodePath, GitHubClient } from "./client";
 import {
+  buildFleetQuery,
   buildIssueQuery,
   buildPrQuery,
-  FLEET_QUERY,
+  MAX_PR_PAGES,
   type FleetQueryResult,
+  type GqlIssue,
   type GqlPull,
 } from "./queries";
 
@@ -99,8 +107,94 @@ function toCard(pull: GqlPull, label: string, owner: string): PullRequestCard {
     createdAt: pull.createdAt,
     updatedAt: pull.updatedAt,
     requestedReviewers,
-    needsYouReason: needsYouReason(signals, requestedReviewers, owner),
+    needsYouReason: needsYouReason(signals, requestedReviewers, owner, pull.author?.login ?? null),
   };
+}
+
+interface FleetSearch {
+  /** repoKey → every PR node fetched for it. */
+  pullsByRepo: Map<string, GqlPull[]>;
+  /** repoKey → exact open-PR count from GitHub's `issueCount`. */
+  countsByRepo: Map<string, number>;
+  costIssues: Array<GqlIssue | null>;
+}
+
+/**
+ * Fetch every open PR in the fleet, paginating each repo independently.
+ *
+ * One aliased search node per repo means one HTTP request covers the whole
+ * fleet in the common case, and a repo that exceeds a page pages on its own
+ * without dragging the others through extra round-trips. `issueCount` is
+ * recorded separately from the nodes so the project card can show a **count**
+ * rather than however many nodes came back — the earlier version derived the
+ * card number from `nodes.length`, so a truncated fetch silently rendered a
+ * smaller, calmer, wrong number.
+ */
+async function fetchAllPulls(
+  client: GitHubClient,
+  slugs: readonly string[],
+  errors: SourceError[],
+  signal?: AbortSignal,
+): Promise<FleetSearch> {
+  const pullsByRepo = new Map<string, GqlPull[]>();
+  const countsByRepo = new Map<string, number>();
+  let costIssues: Array<GqlIssue | null> = [];
+
+  const query = buildFleetQuery(slugs.length);
+  const cursors: Array<string | null> = slugs.map(() => null);
+  const done: boolean[] = slugs.map(() => false);
+
+  for (let page = 0; page < MAX_PR_PAGES; page += 1) {
+    if (done.every(Boolean)) break;
+
+    const variables: Record<string, unknown> = { issueQuery: buildIssueQuery(slugs) };
+    slugs.forEach((slug, i) => {
+      variables[`q${i}`] = buildPrQuery(slug);
+      variables[`after${i}`] = cursors[i];
+    });
+
+    const data = await client
+      .graphql<FleetQueryResult>(query, variables, signal)
+      .catch((error: unknown) => {
+        errors.push({ scope: "github", message: describeError(error) });
+        return null;
+      });
+    if (data === null) break;
+
+    if (page === 0) costIssues = data.costIssues?.nodes ?? [];
+
+    slugs.forEach((slug, i) => {
+      // A repo that finished on an earlier page must be skipped, not re-read.
+      // The document asks for every alias on every round-trip, so an exhausted
+      // alias replays its last cursor — and for a repo that finished on page 1
+      // that cursor is still `null`, so it hands back page 1 again and appends
+      // a duplicate set of PRs. (Caught by forcing a 5-per-page fetch against
+      // the live fleet: a 3-PR repo rendered 6 rows.)
+      if (done[i]) return;
+
+      const node = data[`repo${i}`];
+      const key = slug.toLowerCase();
+      if (!node) {
+        done[i] = true;
+        return;
+      }
+
+      countsByRepo.set(key, node.issueCount);
+      const bucket = pullsByRepo.get(key) ?? [];
+      for (const pull of node.nodes) {
+        if (pull && typeof pull.number === "number") bucket.push(pull);
+      }
+      pullsByRepo.set(key, bucket);
+
+      if (node.pageInfo.hasNextPage && node.pageInfo.endCursor !== null) {
+        cursors[i] = node.pageInfo.endCursor;
+      } else {
+        done[i] = true;
+      }
+    });
+  }
+
+  return { pullsByRepo, countsByRepo, costIssues };
 }
 
 /**
@@ -119,36 +213,21 @@ export function createGitHubSource(config: FleetConfig, token: string): FleetSou
       const errors: SourceError[] = [];
       const slugs = config.repos.map((repo) => repo.slug);
 
-      const fleetData = await client
-        .graphql<FleetQueryResult>(
-          FLEET_QUERY,
-          { prQuery: buildPrQuery(slugs), issueQuery: buildIssueQuery(slugs) },
-          signal,
-        )
-        .catch((error: unknown) => {
-          errors.push({ scope: "github", message: describeError(error) });
-          return null;
-        });
+      const search = await fetchAllPulls(client, slugs, errors, signal);
 
-      const pullsByRepo = new Map<string, GqlPull[]>();
-      for (const node of fleetData?.pulls.nodes ?? []) {
-        if (!node || typeof node.number !== "number") continue;
-        const key = node.repository.nameWithOwner.toLowerCase();
-        const bucket = pullsByRepo.get(key);
-        if (bucket) bucket.push(node);
-        else pullsByRepo.set(key, [node]);
-      }
+      const costIssues = search.costIssues
+        .filter((node): node is GqlIssue => node !== null && typeof node.title === "string")
+        .map((node) => ({ ...node, repoKey: node.repository.nameWithOwner.toLowerCase() }));
 
+      const latestIssues = pickLatestReports(costIssues, config.costIssueTitle);
       const costByRepo = new Map<string, CostReport>();
-      for (const node of fleetData?.costIssues.nodes ?? []) {
-        if (!node || typeof node.title !== "string") continue;
-        if (!node.title.toLowerCase().includes(config.costIssueTitle.toLowerCase())) continue;
-        costByRepo.set(node.repository.nameWithOwner.toLowerCase(), parseCostReport(node.body ?? ""));
+      for (const [repoKey, issue] of latestIssues) {
+        costByRepo.set(repoKey, parseCostReport(issue.body ?? ""));
       }
 
       const projects = await Promise.all(
         config.repos.map((repo) =>
-          buildProject(client, config, repo, pullsByRepo, costByRepo, errors, signal),
+          buildProject(client, config, repo, search, costByRepo, errors, signal),
         ),
       );
 
@@ -160,12 +239,14 @@ export function createGitHubSource(config: FleetConfig, token: string): FleetSou
       const spendValues = [...costByRepo.values()]
         .map(reportTotal)
         .filter((value): value is number => value !== null);
+      const reportTimes = [...latestIssues.values()].map((issue) => issue.updatedAt).sort();
 
       return {
         fetchedAt: new Date().toISOString(),
         projects,
         needsYou,
-        spendMtdUsd: spendValues.length > 0 ? spendValues.reduce((a, b) => a + b, 0) : null,
+        spendReportedUsd: spendValues.length > 0 ? spendValues.reduce((a, b) => a + b, 0) : null,
+        spendReportedAt: reportTimes[reportTimes.length - 1] ?? null,
         errors,
         rateLimit: client.rateLimit,
       };
@@ -177,13 +258,13 @@ async function buildProject(
   client: GitHubClient,
   config: FleetConfig,
   repo: RepoConfig,
-  pullsByRepo: Map<string, GqlPull[]>,
+  search: FleetSearch,
   costByRepo: Map<string, CostReport>,
   errors: SourceError[],
   signal?: AbortSignal,
 ): Promise<ProjectSnapshot> {
   const key = repo.slug.toLowerCase();
-  const pulls = pullsByRepo.get(key) ?? [];
+  const pulls = search.pullsByRepo.get(key) ?? [];
   const cards = pulls
     .map((pull) => toCard(pull, repo.label, config.owner))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -194,7 +275,10 @@ async function buildProject(
     url: `https://github.com/${repo.slug}`,
     defaultBranch: "main",
     activeRuns: 0,
-    openPrs: cards.length,
+    // The exact count, not `cards.length` — those differ when the repo has
+    // more open PRs than the pagination cap fetches.
+    openPrs: search.countsByRepo.get(key) ?? cards.length,
+    fetchedPrs: cards.length,
     ci: null,
     lastDeploy: null,
     initiatives: groupByInitiative(cards, (card) => card.initiative).map((group) => ({
@@ -214,20 +298,31 @@ async function buildProject(
     fail(describeError(error));
   }
 
-  const [runsResult, deployResults, gardenersResult] = await Promise.all([
-    // One page of recent runs answers both "how many are active" and "what is
-    // CI on the default branch", instead of two filtered queries.
+  const branch = encodeURIComponent(project.defaultBranch);
+  const [runsResult, ciResult, deployResults, gardenersResult] = await Promise.all([
+    // One page of recent runs across all refs gives the active-run count.
     client
       .rest<{ workflow_runs: RestRun[] }>(`/repos/${repo.slug}/actions/runs?per_page=100`, signal)
       .catch((error: unknown) => {
         fail(describeError(error));
         return null;
       }),
+    // CI gets its own branch-filtered call rather than being mined out of the
+    // 100-run page above. On a repo where PR CI dominates — togather being the
+    // case — 100 runs can be one busy afternoon with no default-branch run in
+    // the window, and the card would read "no runs" when it means "I could not
+    // see far enough back". One extra ETag-cached request buys an exact answer.
+    client
+      .rest<{ workflow_runs: RestRun[] }>(
+        `/repos/${repo.slug}/actions/runs?branch=${branch}&per_page=1`,
+        signal,
+      )
+      .catch(() => null),
     Promise.all(
       repo.deployWorkflows.map((workflow) =>
         client
           .rest<{ workflow_runs: RestRun[] }>(
-            `/repos/${repo.slug}/actions/workflows/${workflow}/runs?status=success&per_page=1`,
+            `/repos/${repo.slug}/actions/workflows/${encodeURIComponent(workflow)}/runs?status=success&per_page=1`,
             signal,
           )
           // A repo may not have every configured deploy workflow; that's a
@@ -244,14 +339,13 @@ async function buildProject(
   ]);
 
   if (runsResult) {
-    const runs = runsResult.workflow_runs;
-    project.activeRuns = runs.filter(
+    project.activeRuns = runsResult.workflow_runs.filter(
       (run) => run.status !== null && ACTIVE_RUN_STATUSES.has(run.status),
     ).length;
-
-    const latestOnDefault = runs.find((run) => run.head_branch === project.defaultBranch);
-    project.ci = latestOnDefault ? toRunSummary(latestOnDefault) : null;
   }
+
+  const latestOnDefault = ciResult?.workflow_runs[0];
+  project.ci = latestOnDefault ? toRunSummary(latestOnDefault) : null;
 
   const deploys = deployResults
     .flatMap((result) => result?.workflow_runs ?? [])
@@ -307,28 +401,28 @@ async function loadGardeners(
       const [content, sourceContent, runs] = await Promise.all([
         client
           .rest<{ content?: string; encoding?: string }>(
-            `/repos/${repo.slug}/contents/${entry.path}`,
+            `/repos/${repo.slug}/contents/${encodePath(entry.path)}`,
             signal,
           )
           .catch(() => null),
         client
           .rest<{ content?: string; encoding?: string }>(
-            `/repos/${repo.slug}/contents/${sourcePath}`,
+            `/repos/${repo.slug}/contents/${encodePath(sourcePath)}`,
             signal,
           )
           .catch(() => null),
         client
           .rest<{ workflow_runs: RestRun[] }>(
-            `/repos/${repo.slug}/actions/workflows/${entry.name}/runs?per_page=1`,
+            `/repos/${repo.slug}/actions/workflows/${encodeURIComponent(entry.name)}/runs?per_page=1`,
             signal,
           )
           .catch(() => null),
       ]);
 
       const yaml = decodeContents(content);
-      const cron = yaml === "" ? null : extractCron(yaml);
+      const crons = yaml === "" ? [] : extractCrons(yaml);
       const engine = parseEngine(decodeContents(sourceContent));
-      const next = cron === null ? null : nextRun(cron);
+      const next = nextRunAcross(crons);
       const lastRunNode = runs?.workflow_runs[0];
       // The workflow file's own `name:` wins. The Actions API reports a run's
       // name as the workflow *path* when the workflow was renamed (or never
@@ -346,13 +440,13 @@ async function loadGardeners(
         name: displayName,
         workflowPath: entry.path,
         sourcePath,
-        editUrl: `https://github.com/${repo.slug}/edit/${defaultBranch}/${sourcePath}`,
+        editUrl: `https://github.com/${repo.slug}/edit/${encodeURIComponent(defaultBranch)}/${encodePath(sourcePath)}`,
         engine,
-        cron,
-        schedule: cron === null ? "manual / event-driven" : describeCron(cron),
+        crons,
+        schedule: describeCrons(crons),
         nextRunAt: next === null ? null : next.toISOString(),
         lastRun: lastRunNode ? toRunSummary(lastRunNode) : null,
-        costMtdUsd: costReport
+        costReportedUsd: costReport
           ? costForWorkflow(costReport, displayName, baseName, entry.name, sourcePath)
           : null,
       };
