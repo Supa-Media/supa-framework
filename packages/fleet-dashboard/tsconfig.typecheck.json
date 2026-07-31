@@ -1,0 +1,12 @@
+{
+  // Type-check the app AND its node:test suite in one pass. The tests import
+  // `node:test`/`node:assert`, so this config adds Node's types on top of the
+  // browser-only ones the app itself uses. Wired into `pnpm test` so a type
+  // error fails the suite — this package has no other compiler gate (Vite
+  // transpiles without type-checking).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"]
+  },
+  "include": ["src", "test"]
+}
