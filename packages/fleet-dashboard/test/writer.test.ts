@@ -11,12 +11,20 @@ import { createGitHubWriter } from "../src/sources/github/writer";
  * GitHub answers a partially-applied batch with `HTTP 200` carrying `data` AND
  * `errors`, and the REST issues endpoints *create* a label they don't recognize
  * instead of rejecting it.
+ *
+ * The writer now takes an owner → token map rather than one token, because a
+ * fine-grained PAT is scoped to a single resource owner. Most fixtures below
+ * write to `o/r`, so one entry for `o` is the whole of "signed in" here.
  */
+
+const TOKENS = { o: "token-o" };
 
 interface Call {
   url: string;
   method: string;
   body: unknown;
+  /** The bearer token this request actually went out with. */
+  auth: string | null;
 }
 
 const calls: Call[] = [];
@@ -26,10 +34,12 @@ const originalFetch = globalThis.fetch;
 
 function stubFetch(): void {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
     const call: Call = {
       url: String(input),
       method: init?.method ?? "GET",
       body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+      auth: headers.get("Authorization"),
     };
     calls.push(call);
     const payload = handler(call);
@@ -76,7 +86,7 @@ test("the approve batch is chunked, and every issue is accounted for", async () 
   handler = (call) => labelsExist(call) ?? { data: {} };
 
   const nodes = Array.from({ length: 45 }, (_, i) => `node-${i}`);
-  const writer = createGitHubWriter("t");
+  const writer = createGitHubWriter(TOKENS);
   const outcome = await writer.addLabelToMany("o/r", nodes, "plan:approved");
 
   const sizes = mutations().map(
@@ -111,7 +121,7 @@ test("a 200 carrying both data and errors reports per issue, not success", async
     };
   };
 
-  const writer = createGitHubWriter("t");
+  const writer = createGitHubWriter(TOKENS);
   const outcome = await writer.addLabelToMany("o/r", ["node-a", "node-b", "node-c"], "plan:approved");
 
   assert.deepEqual(outcome.labelled, ["node-a", "node-c"]);
@@ -128,7 +138,7 @@ test("an error naming no alias fails its whole chunk, since nothing says which r
       errors: [{ message: "API rate limit exceeded" }],
     };
 
-  const writer = createGitHubWriter("t");
+  const writer = createGitHubWriter(TOKENS);
   const outcome = await writer.addLabelToMany("o/r", ["a", "b"], "plan:approved");
 
   assert.deepEqual(outcome.labelled, []);
@@ -152,7 +162,7 @@ test("a partial batch still reports the chunks that landed", async () => {
   };
 
   const nodes = Array.from({ length: 25 }, (_, i) => `node-${i}`);
-  const outcome = await createGitHubWriter("t").addLabelToMany("o/r", nodes, "plan:approved");
+  const outcome = await createGitHubWriter(TOKENS).addLabelToMany("o/r", nodes, "plan:approved");
 
   assert.equal(outcome.labelled.length, 24);
   assert.deepEqual(
@@ -166,7 +176,7 @@ test("addLabels refuses a label the repo does not have, and never reaches REST",
   handler = () => ({ data: { repository: { l0: null } } });
 
   await assert.rejects(
-    () => createGitHubWriter("t").addLabels("o/r", 7, ["agent:redy"]),
+    () => createGitHubWriter(TOKENS).addLabels("o/r", 7, ["agent:redy"]),
     /no label "agent:redy"/,
   );
   assert.equal(
@@ -182,7 +192,7 @@ test("createIssue refuses an unknown label before filing anything", async () => 
 
   await assert.rejects(
     () =>
-      createGitHubWriter("t").createIssue("o/r", {
+      createGitHubWriter(TOKENS).createIssue("o/r", {
         title: "x",
         body: "y",
         labels: ["agent:ready"],
@@ -197,7 +207,7 @@ test("a known label passes, is checked once per repo, and then writes", async ()
   handler = (call) =>
     labelsExist(call) ?? { html_url: "https://github.com/o/r/issues/1", number: 1 };
 
-  const writer = createGitHubWriter("t");
+  const writer = createGitHubWriter(TOKENS);
   await writer.addLabels("o/r", 7, ["agent:ready"]);
   await writer.addLabels("o/r", 8, ["agent:ready"]);
 
@@ -210,8 +220,65 @@ test("a known label passes, is checked once per repo, and then writes", async ()
   assert.equal(calls.filter((call) => call.url.includes("/issues/8/labels")).length, 1);
 });
 
+test("every request is signed with the token for that repo's owner", async () => {
+  stubFetch();
+  handler = (call) => labelsExist(call) ?? { html_url: "https://x/1", number: 1 };
+
+  const writer = createGitHubWriter({
+    togathernyc: "token-togather",
+    "Supa-Media": "token-supa",
+    shyoh: "token-shyoh",
+  });
+
+  await writer.addLabels("togathernyc/togather", 1, ["agent:ready"]);
+  await writer.comment("Supa-Media/events-os", 2, "hi");
+  await writer.closeIssue("shyoh/fount-studios", 3, null);
+
+  const authFor = (fragment: string): string | null | undefined =>
+    calls.find((call) => call.url.includes(fragment))?.auth;
+
+  assert.equal(authFor("/repos/togathernyc/togather/"), "Bearer token-togather");
+  assert.equal(authFor("/repos/Supa-Media/events-os/"), "Bearer token-supa");
+  assert.equal(authFor("/repos/shyoh/fount-studios/"), "Bearer token-shyoh");
+
+  // The GraphQL half of a write routes too. `addLabels` resolves label ids
+  // first, and that lookup naming `togathernyc` must not go out under another
+  // owner's token — it would 404 on a repo the *other* token can see, which
+  // reads on screen as a label the repo doesn't have.
+  const lookup = calls.find(
+    (call) =>
+      call.url.endsWith("/graphql") &&
+      (call.body as { variables?: { owner?: string } }).variables?.owner === "togathernyc",
+  );
+  assert.equal(lookup?.auth, "Bearer token-togather");
+});
+
+test("an owner login's casing never changes which token is picked", async () => {
+  stubFetch();
+  handler = (call) => labelsExist(call) ?? {};
+
+  // GitHub logins are case-insensitive, and a map written by hand (or by an
+  // older build) may spell the owner differently from `fleet.config.ts`.
+  await createGitHubWriter({ "supa-media": "token-supa" }).comment("Supa-Media/events-os", 4, "x");
+
+  assert.equal(calls.at(-1)?.auth, "Bearer token-supa");
+});
+
+test("a write to an owner with no token refuses before it reaches GitHub", async () => {
+  stubFetch();
+  handler = (call) => labelsExist(call) ?? {};
+
+  // Partial sign-in is a supported state for *reads* — that repo's card says so.
+  // A write has no honest silent form, so it names the owner and stops.
+  await assert.rejects(
+    () => createGitHubWriter({ togathernyc: "token-togather" }).comment("shyoh/fount-studios", 9, "x"),
+    /No token loaded for shyoh/,
+  );
+  assert.equal(calls.length, 0, "nothing may go out unsigned");
+});
+
 test("the writer exposes no way to run a workflow", () => {
-  const writer = createGitHubWriter("t") as unknown as Record<string, unknown>;
+  const writer = createGitHubWriter(TOKENS) as unknown as Record<string, unknown>;
   assert.equal(writer["dispatchWorkflow"], undefined);
   assert.deepEqual(Object.keys(writer).sort(), [
     "addLabelToMany",

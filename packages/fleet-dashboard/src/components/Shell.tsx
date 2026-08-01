@@ -34,6 +34,8 @@ export function Shell({
   onNavigate,
   onOpenPalette,
   onRefresh,
+  onEditTokens,
+  missingOwners,
   onSignOut,
   children,
 }: {
@@ -44,6 +46,15 @@ export function Shell({
   onNavigate: (view: ViewId) => void;
   onOpenPalette: () => void;
   onRefresh: () => void;
+  /** Reopen the token gate — one PAT expiring shouldn't need a sign-out. */
+  onEditTokens: () => void;
+  /**
+   * Owners with no token loaded. Partial sign-in is supported and the affected
+   * repos say so on their own cards, but a page whose only sign is on cards you
+   * may not visit is a page that quietly under-reports the fleet — hence the ⚠
+   * in the top bar, which is on every screen.
+   */
+  missingOwners: string[];
   onSignOut: () => void;
   children: ReactNode;
 }) {
@@ -67,8 +78,25 @@ export function Shell({
           <button type="button" className="bt quiet" onClick={onRefresh} disabled={loading}>
             {loading ? "…" : "refresh"}
           </button>
-          <button type="button" className="bt quiet" onClick={onSignOut}>
-            sign out
+          <button
+            type="button"
+            className="bt quiet"
+            onClick={onEditTokens}
+            title={
+              missingOwners.length === 0
+                ? "One fine-grained token per repo owner — add or replace one"
+                : `No token for ${missingOwners.join(", ")} — those repos are not loaded`
+            }
+          >
+            {missingOwners.length === 0 ? "tokens" : "tokens ⚠"}
+          </button>
+          <button
+            type="button"
+            className="bt quiet"
+            onClick={onSignOut}
+            title="Forget every owner's token and clear the cached responses"
+          >
+            sign out all
           </button>
         </div>
       </header>

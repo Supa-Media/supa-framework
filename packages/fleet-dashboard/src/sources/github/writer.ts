@@ -1,5 +1,6 @@
+import { ownerOf, type TokenMap } from "../../lib/tokens";
 import type { FleetWriter, LabelBatchOutcome } from "../types";
-import { clearResponseCache, encodePath, GitHubClient } from "./client";
+import { clearResponseCache, encodePath, GitHubClient, GitHubClients } from "./client";
 import { buildAddLabelMutation, buildLabelIdsQuery, MAX_APPROVE_BATCH } from "./queries";
 
 /**
@@ -18,9 +19,31 @@ import { buildAddLabelMutation, buildLabelIdsQuery, MAX_APPROVE_BATCH } from "./
  * which would let a token sitting in localStorage fire every production deploy
  * in the fleet, to buy one button. The button is now a deep link to GitHub's own
  * dispatch form, where the run is attributed to a session GitHub authenticated.
+ *
+ * Every verb here already takes the repo slug it is acting on, which is also
+ * what selects the token: routing is `clientFor(slug)` and nothing above the
+ * writer knows a token exists.
  */
-export function createGitHubWriter(token: string): FleetWriter {
-  const client = new GitHubClient(token);
+export function createGitHubWriter(tokens: TokenMap): FleetWriter {
+  const clients = new GitHubClients(tokens);
+
+  /**
+   * The client whose token covers `slug`, or a refusal naming the owner.
+   *
+   * Throwing beats degrading here. A read with no token renders a card that
+   * says so; a *write* with no token has no honest silent form — the label
+   * either lands in GitHub or it doesn't, and the review screen's whole claim is
+   * that what it shows is what GitHub holds.
+   */
+  const clientFor = (slug: string): GitHubClient => {
+    const client = clients.forRepo(slug);
+    if (client === null) {
+      throw new Error(
+        `No token loaded for ${ownerOf(slug)} — add one under "tokens" in the header.`,
+      );
+    }
+    return client;
+  };
 
   /** `owner/name` → `["owner", "name"]`, for GraphQL's split arguments. */
   const split = (slug: string): [string, string] => {
@@ -59,7 +82,7 @@ export function createGitHubWriter(token: string): FleetWriter {
         variables[`label${index}`] = label;
       });
 
-      const data = await client.graphql<{
+      const data = await clientFor(slug).graphql<{
         repository: (Record<string, { id: string } | null> & { __typename?: string }) | null;
       }>(buildLabelIdsQuery(missing.length), variables);
 
@@ -92,7 +115,9 @@ export function createGitHubWriter(token: string): FleetWriter {
     async addLabels(slug, issueNumber, labels) {
       if (labels.length === 0) return;
       await resolveLabels(slug, labels);
-      await client.write("POST", `/repos/${slug}/issues/${issueNumber}/labels`, { labels });
+      await clientFor(slug).write("POST", `/repos/${slug}/issues/${issueNumber}/labels`, {
+        labels,
+      });
     },
 
     async removeLabel(slug, issueNumber, label) {
@@ -100,7 +125,7 @@ export function createGitHubWriter(token: string): FleetWriter {
       // naively-interpolated path — `agent:ready` is fine, `size:M/L` is not.
       // No existence check: removing a label that isn't there is a 404, and
       // nothing is created either way.
-      await client.write(
+      await clientFor(slug).write(
         "DELETE",
         `/repos/${slug}/issues/${issueNumber}/labels/${encodePath(label)}`,
       );
@@ -119,7 +144,7 @@ export function createGitHubWriter(token: string): FleetWriter {
           variables[`target${index}`] = nodeId;
         });
 
-        const { data, errors } = await client.graphqlRaw<Record<string, unknown>>(
+        const { data, errors } = await clientFor(slug).graphqlRaw<Record<string, unknown>>(
           buildAddLabelMutation(chunk.length),
           variables,
         );
@@ -153,7 +178,9 @@ export function createGitHubWriter(token: string): FleetWriter {
     },
 
     async comment(slug, issueNumber, body) {
-      await client.write("POST", `/repos/${slug}/issues/${issueNumber}/comments`, { body });
+      await clientFor(slug).write("POST", `/repos/${slug}/issues/${issueNumber}/comments`, {
+        body,
+      });
     },
 
     async closeIssue(slug, issueNumber, comment) {
@@ -161,11 +188,11 @@ export function createGitHubWriter(token: string): FleetWriter {
       // issue would be shut with no stated reason — the one outcome that is
       // worse than the action not happening at all.
       if (comment !== null && comment.trim() !== "") {
-        await client.write("POST", `/repos/${slug}/issues/${issueNumber}/comments`, {
+        await clientFor(slug).write("POST", `/repos/${slug}/issues/${issueNumber}/comments`, {
           body: comment,
         });
       }
-      await client.write("PATCH", `/repos/${slug}/issues/${issueNumber}`, {
+      await clientFor(slug).write("PATCH", `/repos/${slug}/issues/${issueNumber}`, {
         state: "closed",
         state_reason: "not_planned",
       });
@@ -177,7 +204,7 @@ export function createGitHubWriter(token: string): FleetWriter {
       // because the labels come from a palette action rather than an issue that
       // already carries them.
       await resolveLabels(slug, issue.labels);
-      const created = await client.write<{ html_url: string; number: number }>(
+      const created = await clientFor(slug).write<{ html_url: string; number: number }>(
         "POST",
         `/repos/${slug}/issues`,
         issue,

@@ -14,6 +14,7 @@ import { groupByInitiative, initiativeFromBranch } from "../../lib/initiative";
 import { parseInitiatives, type InitiativesManifest } from "../../lib/initiativesFile";
 import { hasLabel, initiativeLabels, LABELS, sizeLabel } from "../../lib/labels";
 import { derivePrState, needsYouReason, type PrSignals } from "../../lib/prState";
+import { fleetOwners, ownerOf, type TokenMap } from "../../lib/tokens";
 import type {
   FetchOptions,
   FleetSnapshot,
@@ -27,7 +28,7 @@ import type {
   ShippedPr,
   SourceError,
 } from "../types";
-import { decodeBase64Content, encodePath, GitHubClient } from "./client";
+import { decodeBase64Content, encodePath, GitHubClient, GitHubClients } from "./client";
 import {
   buildFleetQuery,
   buildIssueQuery,
@@ -200,34 +201,66 @@ function isSearchPage(value: unknown): value is GqlSearchPage {
 }
 
 /**
- * Fetch every open PR in the fleet plus the merged/labelled sets, paginating
- * each repo's open PRs independently.
+ * Fetch the fleet search **once per resource owner**, in parallel, and merge.
  *
- * One aliased search node per repo means one HTTP request covers the whole
- * fleet in the common case, and a repo that exceeds a page pages on its own
- * without dragging the others through extra round-trips. `issueCount` is
- * recorded separately from the nodes so the project card can show a **count**
- * rather than however many nodes came back — the earlier version derived the
- * card number from `nodes.length`, so a truncated fetch silently rendered a
- * smaller, calmer, wrong number.
+ * The split is forced by the credential, not chosen: one GraphQL request
+ * carries one `Authorization` header, and a fine-grained PAT is scoped to a
+ * single owner — so a single fleet-wide document would resolve only the repos
+ * belonging to whichever owner's token it was sent with, and answer `NOT_FOUND`
+ * for the rest. Three requests, three tokens, one merged result.
  *
- * Merged PRs and labelled issues are fetched once (on the first page) rather
- * than on every pagination round-trip: neither paginates, and re-asking would
- * duplicate them for exactly the repos busy enough to need a second page.
+ * Everything that made the single request efficient survives inside each
+ * owner's request: one aliased search node per repo (exact `issueCount`,
+ * independent cursors), pagination per repo, and the merged/labelled sets
+ * fetched only on the first page. An owner with no token is skipped entirely —
+ * its repos are rendered as "no token for <owner>" cards rather than as zeros.
  */
 async function fetchAllPulls(
-  client: GitHubClient,
+  clients: GitHubClients,
   repos: readonly RepoConfig[],
   since: string,
   errors: SourceError[],
   signal?: AbortSignal,
 ): Promise<FleetSearch> {
+  const search: FleetSearch = {
+    pullsByRepo: new Map(),
+    countsByRepo: new Map(),
+    mergedByRepo: new Map(),
+    issues: [],
+    costIssues: [],
+  };
+
+  await Promise.all(
+    fleetOwners(repos).map(async (group) => {
+      const client = clients.forOwner(group.owner);
+      // No token for this owner: not an error, a state the cards render.
+      if (client === null) return;
+      await fetchOwnerPulls(client, group.owner, group.repos, since, search, errors, signal);
+    }),
+  );
+
+  return search;
+}
+
+/**
+ * One owner's slice of the fleet search, merged into `search` as it arrives.
+ *
+ * Failures are scoped to the **owner**, not to `"github"`: with three tokens in
+ * play, "GitHub rejected the token (401)" is useless without knowing which one,
+ * and the banner renders `scope` in bold ahead of the message — so an expired
+ * PAT reads "**Supa-Media** GitHub rejected the token (401)".
+ */
+async function fetchOwnerPulls(
+  client: GitHubClient,
+  owner: string,
+  repos: readonly RepoConfig[],
+  since: string,
+  search: FleetSearch,
+  errors: SourceError[],
+  signal?: AbortSignal,
+): Promise<void> {
   const slugs = repos.map((repo) => repo.slug);
-  const pullsByRepo = new Map<string, GqlPull[]>();
-  const countsByRepo = new Map<string, number>();
-  const mergedByRepo = new Map<string, GqlMerged[]>();
-  let issues: GqlIssueNode[] = [];
-  let costIssues: Array<GqlIssue | null> = [];
+  const { pullsByRepo, countsByRepo, mergedByRepo } = search;
 
   const query = buildFleetQuery(slugs.length);
   const cursors: Array<string | null> = slugs.map(() => null);
@@ -252,7 +285,7 @@ async function fetchAllPulls(
     const result = await client
       .graphqlRaw<FleetQueryResult>(query, variables, signal)
       .catch((error: unknown) => {
-        errors.push({ scope: "github", message: describeError(error) });
+        errors.push({ scope: owner, message: describeError(error) });
         return null;
       });
     if (result === null) break;
@@ -265,16 +298,20 @@ async function fetchAllPulls(
       const message = error.message;
       if (reported.has(message)) continue;
       reported.add(message);
-      errors.push({ scope: "github", message });
+      errors.push({ scope: owner, message });
     }
 
     const data = result.data;
     if (data === null) break;
 
     if (page === 0) {
-      costIssues = data.costIssues?.nodes ?? [];
-      issues = (data.labelled?.nodes ?? []).filter(
-        (node): node is GqlIssueNode => node !== null && typeof node.number === "number",
+      // Appended, not assigned: these two are fleet-wide lists assembled from
+      // every owner's request.
+      search.costIssues.push(...(data.costIssues?.nodes ?? []));
+      search.issues.push(
+        ...(data.labelled?.nodes ?? []).filter(
+          (node): node is GqlIssueNode => node !== null && typeof node.number === "number",
+        ),
       );
       slugs.forEach((slug, i) => {
         const merged = data[`merged${i}`] as GqlMergedPage | undefined;
@@ -317,25 +354,26 @@ async function fetchAllPulls(
       }
     });
   }
-
-  return { pullsByRepo, countsByRepo, mergedByRepo, issues, costIssues };
 }
 
 /**
  * The v2 data source: GitHub REST + GraphQL, straight from the browser.
  *
- * Per-repo work is issued in parallel and each repo's failure is isolated —
- * a token that can't see one repo degrades that card, not the page. See the
+ * Takes an owner → token **map**, because a fine-grained PAT is scoped to one
+ * resource owner and the fleet spans three; every request is routed to the token
+ * covering its repo. Per-repo work is issued in parallel and each repo's failure
+ * is isolated — a token that can't see one repo degrades that card, not the
+ * page, and an owner with no token at all degrades only its own repos. See the
  * adapter-seam contract in `sources/types.ts`.
  */
-export function createGitHubSource(config: FleetConfig, token: string): FleetSource {
-  const client = new GitHubClient(token);
+export function createGitHubSource(config: FleetConfig, tokens: TokenMap): FleetSource {
+  const clients = new GitHubClients(tokens);
 
   return {
     id: "github",
     async fetchFleet({ since, signal }: FetchOptions): Promise<FleetSnapshot> {
       const errors: SourceError[] = [];
-      const search = await fetchAllPulls(client, config.repos, since, errors, signal);
+      const search = await fetchAllPulls(clients, config.repos, since, errors, signal);
 
       const costIssues = search.costIssues
         .filter((node): node is GqlIssue => node !== null && typeof node.title === "string")
@@ -348,9 +386,13 @@ export function createGitHubSource(config: FleetConfig, token: string): FleetSou
       }
 
       const projects = await Promise.all(
-        config.repos.map((repo) =>
-          buildProject(client, config, repo, search, costByRepo, errors, signal),
-        ),
+        config.repos.map((repo) => {
+          const client = clients.forRepo(repo.slug);
+          // Nothing was fetched for this repo and nothing will be — the card
+          // says so and links back to the gate.
+          if (client === null) return skeletonProject(config, repo, search, true);
+          return buildProject(client, config, repo, search, costByRepo, errors, signal);
+        }),
       );
 
       const needsYou = projects
@@ -391,7 +433,7 @@ export function createGitHubSource(config: FleetConfig, token: string): FleetSou
         spendReportedUsd: spendValues.length > 0 ? spendValues.reduce((a, b) => a + b, 0) : null,
         spendReportedAt: reportTimes[reportTimes.length - 1] ?? null,
         errors,
-        rateLimit: client.rateLimit,
+        rateLimit: clients.rateLimit,
       };
     },
   };
@@ -415,25 +457,31 @@ async function readFile(
   }
 }
 
-async function buildProject(
-  client: GitHubClient,
+/**
+ * The card as far as the fleet search alone can fill it — no per-repo REST yet.
+ *
+ * Also the *entire* answer for a repo whose owner has no token: `tokenMissing`
+ * is what lets the UI say "no token for shyoh" instead of rendering a row of
+ * confident zeros for a repo nobody looked at.
+ */
+function skeletonProject(
   config: FleetConfig,
   repo: RepoConfig,
   search: FleetSearch,
-  costByRepo: Map<string, CostReport>,
-  errors: SourceError[],
-  signal?: AbortSignal,
-): Promise<ProjectSnapshot> {
+  tokenMissing: boolean,
+): ProjectSnapshot {
   const key = repo.slug.toLowerCase();
   const pulls = search.pullsByRepo.get(key) ?? [];
   const cards = pulls
     .map((pull) => toCard(pull, repo.label, config.owner))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
-  const project: ProjectSnapshot = {
+  return {
     key,
     slug: repo.slug,
     label: repo.label,
+    owner: ownerOf(repo.slug),
+    tokenMissing,
     url: `https://github.com/${repo.slug}`,
     defaultBranch: "main",
     activeRuns: 0,
@@ -453,6 +501,19 @@ async function buildProject(
     allowlist: { required: [], optional: [], problem: null } satisfies Allowlist,
     secretNames: null,
   };
+}
+
+async function buildProject(
+  client: GitHubClient,
+  config: FleetConfig,
+  repo: RepoConfig,
+  search: FleetSearch,
+  costByRepo: Map<string, CostReport>,
+  errors: SourceError[],
+  signal?: AbortSignal,
+): Promise<ProjectSnapshot> {
+  const key = repo.slug.toLowerCase();
+  const project = skeletonProject(config, repo, search, false);
 
   const fail = (message: string) => errors.push({ scope: repo.slug, message });
 
