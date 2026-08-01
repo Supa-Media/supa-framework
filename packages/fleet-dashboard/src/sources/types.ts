@@ -194,6 +194,19 @@ export interface ProjectSnapshot {
   /** `owner/name` with GitHub's own casing — what API paths need. */
   slug: string;
   label: string;
+  /**
+   * The GitHub resource owner, derived from `slug`. A fine-grained PAT is
+   * scoped to exactly one of these, so it is also the answer to "which token
+   * fetched this?".
+   */
+  owner: string;
+  /**
+   * `true` when no token for `owner` is loaded, so **nothing** here was
+   * fetched. Not the same as an empty repo: every count below is a default
+   * rather than an observation, and the card must say "no token for <owner>"
+   * instead of rendering zeros as if someone had looked.
+   */
+  tokenMissing: boolean;
   url: string;
   defaultBranch: string;
   /** Workflow runs currently queued or in progress. */

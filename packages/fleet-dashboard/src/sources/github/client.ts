@@ -1,7 +1,12 @@
+import { ownerOf, type TokenMap } from "../../lib/tokens";
 import type { RateLimitInfo } from "../types";
 
 /**
  * A very small GitHub API client — REST + GraphQL, browser-only, no SDK.
+ *
+ * One client holds one token. A fine-grained PAT is scoped to a single resource
+ * owner and the fleet spans three, so callers hold a `GitHubClients` (below) and
+ * ask it for the client that covers a given repo.
  *
  * Two things it does that a plain `fetch` wrapper doesn't:
  *
@@ -261,6 +266,59 @@ export class GitHubClient {
     }
     if (data === null) throw new GitHubError("GitHub returned no data for the query.", status);
     return data;
+  }
+}
+
+/**
+ * One `GitHubClient` per resource owner, and the routing that picks between
+ * them.
+ *
+ * This is the whole of multi-token support at the transport layer: every caller
+ * already knows the repo it is talking about, and a repo slug already carries
+ * its owner, so nothing above needs to hold a token or think about which one.
+ *
+ * An owner with no token resolves to `null` rather than to a client with an
+ * empty `Authorization` header. The difference matters: an empty header is a
+ * 401 per request — four banner lines saying "expired" about a token that was
+ * never entered — while `null` is a state the UI can name ("no token for shyoh")
+ * and act on.
+ */
+export class GitHubClients {
+  private readonly byOwner = new Map<string, GitHubClient>();
+
+  constructor(tokens: TokenMap) {
+    for (const [owner, token] of Object.entries(tokens)) {
+      if (token !== "") this.byOwner.set(owner.toLowerCase(), new GitHubClient(token));
+    }
+  }
+
+  /** The client for `owner`, or `null` when no token was supplied for it. */
+  forOwner(owner: string): GitHubClient | null {
+    return this.byOwner.get(owner.toLowerCase()) ?? null;
+  }
+
+  /** The client whose token covers an `owner/name` slug, or `null`. */
+  forRepo(slug: string): GitHubClient | null {
+    return this.forOwner(ownerOf(slug));
+  }
+
+  /**
+   * The **tightest** remaining budget across the loaded tokens.
+   *
+   * Each token has its own hourly allowance, so there is no single fleet-wide
+   * number to report. The one about to run out is the one that will break the
+   * next refresh, and it is the only one worth a slot in the top bar; showing
+   * the newest response's budget instead would make the header flicker between
+   * three unrelated counters.
+   */
+  get rateLimit(): RateLimitInfo | null {
+    let tightest: RateLimitInfo | null = null;
+    for (const client of this.byOwner.values()) {
+      const info = client.rateLimit;
+      if (info === null) continue;
+      if (tightest === null || info.remaining < tightest.remaining) tightest = info;
+    }
+    return tightest;
   }
 }
 

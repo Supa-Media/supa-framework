@@ -20,7 +20,7 @@ true blockers reach Telegram; everything else waits on that screen.
 | ＋ New app      | What does standing up a new app actually take?                           |
 
 There is no backend. Everything is the GitHub REST + GraphQL API, called
-directly from the browser with a fine-grained PAT you supply at runtime.
+directly from the browser with fine-grained PATs you supply at runtime.
 
 ## Running it
 
@@ -30,8 +30,40 @@ pnpm --filter @supa-media/fleet-dashboard build    # static output in dist/
 pnpm --filter @supa-media/fleet-dashboard test     # typecheck + node --test
 ```
 
-On first load the page asks for a GitHub token. Create a **fine-grained
-personal access token** scoped to just the fleet repos:
+### Three tokens, one per owner
+
+A fine-grained personal access token is scoped to exactly **one resource
+owner**, and this fleet spans three of them. So the gate has three fields, not
+one:
+
+| Owner         | Repos it covers            |
+| ------------- | -------------------------- |
+| `togathernyc` | togather                   |
+| `Supa-Media`  | events-os, supa-framework  |
+| `shyoh`       | fount-studios              |
+
+This is a property of the credential, not a design choice: one HTTP request
+carries one `Authorization` header, so a single fleet-wide GraphQL search sent
+with one owner's PAT resolves that owner's repos and answers `NOT_FOUND` for
+everyone else's. The dashboard therefore keeps a map of `owner → token` in
+localStorage under `fleet-dashboard:tokens`, routes every request by the owner
+half of the repo slug, and **splits the fleet search into one request per
+owner**, merging the results. Per-owner failures are named in the Partial-data
+banner ("**Supa-Media** GitHub rejected the token (401)") rather than reported as
+one anonymous fleet error.
+
+The owner is *derived* from `slug` in `fleet.config.ts` — adding a repo under a
+fourth owner adds a fourth field to the gate with no further wiring.
+
+**Partial sign-in is supported.** Load with one token and that owner's repos
+work; the others render a "no token for `shyoh` — add" card that links back to
+the gate (also reachable any time from **tokens** in the top bar, which grows a
+⚠ while any owner is missing). A repo with no token issues **zero** requests and
+never renders zeros as if someone had looked. Writes are the exception: a write
+to an owner with no token refuses by name rather than failing silently.
+
+Create each token as a **fine-grained personal access token** scoped to that
+owner's fleet repos, with the same permissions every time:
 
 | Permission                    | Why                                                        |
 | ----------------------------- | ---------------------------------------------------------- |
@@ -52,15 +84,19 @@ order to render one button, so the button is a deep link to GitHub's own dispatc
 form instead, where the run is attributed to a session GitHub authenticated.
 
 > **v1 → v2 is a real escalation, and it is exactly one axis wide.** v1's token
-> was read-only. v2's can relabel and comment on every repo in the fleet — and
-> nothing else. Give it the shortest expiry you can live with and keep
+> was read-only. v2's can relabel and comment on the repos it covers — and
+> nothing else. Give each the shortest expiry you can live with and keep
 > Cloudflare Access in front.
 
-The token lives in `localStorage` and is sent only to `api.github.com` — there
+The tokens live in `localStorage` and are sent only to `api.github.com` — there
 is no backend, nothing is bundled into the build, and nothing is committed.
-"Sign out" clears the token **and** the ETag response cache, which holds full
-REST bodies including private workflow file contents. Signing in clears it too,
-so a token swap never inherits the previous identity's cached data. A
+**"Sign out all"** clears every owner's token **and** the ETag response cache,
+which holds full REST bodies including private workflow file contents. Saving
+tokens clears the cache too, so replacing one owner's PAT never inherits the
+previous identity's cached data. If a v2 single token is still in the browser
+under `fleet-dashboard:token`, it is applied to every owner once, on first load,
+and the old key is deleted; the owners it doesn't actually cover then say so in
+the banner rather than leaving a blank page. A
 `Content-Security-Policy` meta tag pins `connect-src` to `api.github.com`;
 `public/_headers` carries the same policy as a real header for Cloudflare Pages
 plus `frame-ancestors` — keep the two in sync.
@@ -234,9 +270,9 @@ Then, in the Cloudflare dashboard:
 2. Add a policy of `Allow` / `Emails` limited to your own address.
 3. Confirm an incognito window is challenged before the page loads.
 
-Access is what stops a stranger who finds the URL from reaching a page where a
-token may already be stored — and in v2 that token can write. Treat it as
-required, not optional.
+Access is what stops a stranger who finds the URL from reaching a page where
+three tokens may already be stored — and in v2 those tokens can write. Treat it
+as required, not optional.
 
 Because the repo's `release.yml` runs `turbo run build` across every workspace
 package on push to `main`, this package's build must never need a secret or a
@@ -248,13 +284,14 @@ network call — and it doesn't.
 fleet.config.ts        which repos, what counts as a deploy, static policy
 sources/types.ts       the FleetSource + FleetWriter contracts  ← next source plugs in here
 sources/github/        the only implementation (REST + GraphQL)
-  client.ts              ETag-cached reads, cache-invalidating writes
+  client.ts              ETag-cached reads, cache-invalidating writes, and
+                         GitHubClients — one client per owner, routed by slug
   queries.ts             the aliased fleet document + the batched label mutation
-  githubSource.ts        reads
+  githubSource.ts        reads, one fleet search per owner, merged
   writer.ts              the three write verbs, and the label guard on all of them
-lib/                   pure logic, unit-tested: evidence, markers, select,
-                       labels, allowlist, initiativesFile, review, cron, cost,
-                       engine, initiative, prState, time
+lib/                   pure logic, unit-tested: tokens, evidence, markers,
+                       select, labels, allowlist, initiativesFile, review, cron,
+                       cost, engine, initiative, prState, time
 components/            shell, nav, palette, shared primitives
 views/                 one file per nav destination; presentational + actions
 ```
@@ -281,18 +318,21 @@ in one mutation, chunked at 20 aliases. GitHub answers a partially-applied batch
 with `HTTP 200` carrying `data` **and** `errors`, so the row reports "approved 4
 of 5", names the ones that failed, and offers a retry scoped to just those. The
 same 200-with-errors on the read path files each message into `snapshot.errors`,
-which is what the "Partial data" banner renders — a repo the token cannot see
-names itself rather than silently shortening the fleet.
+which is what the "Partial data" banner renders — a repo a token cannot see names
+itself, scoped to the **owner** whose token was used, rather than silently
+shortening the fleet.
 
-**Rate limits.** One GraphQL call covers every open PR, every merge in the
-review window, every labelled issue, and the cost issues across the whole fleet —
-one aliased search node per repo, so each repo also reports an exact `issueCount`
-and paginates on its own cursor. The rest is REST with `If-None-Match`
-conditional requests, and a `304` costs no budget. There is no polling: the page
-fetches once, and again after a write or a Refresh. Remaining budget is in the
-top bar. A write **invalidates the whole read cache** — the cache is keyed by
-path with no notion of what a write touched, so total invalidation is the only
-safe kind. It costs one cold refresh.
+**Rate limits.** One GraphQL call **per owner** covers every open PR, every merge
+in the review window, every labelled issue, and the cost issues for that owner's
+repos — one aliased search node per repo, so each repo also reports an exact
+`issueCount` and paginates on its own cursor. Three requests instead of one is
+the price of the credential, not of the query shape. The rest is REST with
+`If-None-Match` conditional requests, and a `304` costs no budget. There is no
+polling: the page fetches once, and again after a write or a Refresh. Each token
+has its own hourly allowance, so the top bar shows the **tightest** remaining
+budget — the one that will break the next refresh. A write **invalidates the
+whole read cache** — the cache is keyed by path with no notion of what a write
+touched, so total invalidation is the only safe kind. It costs one cold refresh.
 
 **Caps.** Open PRs page to 5 × 100 per repo; merges cap at 50 per repo per
 window; labelled issues cap at 100 across the fleet; issue comments at the last

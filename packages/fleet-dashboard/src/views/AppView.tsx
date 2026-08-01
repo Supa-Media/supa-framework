@@ -44,6 +44,8 @@ const PHASE_TONE: Record<string, Tone> = {
 export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }) {
   const [showArchived, setShowArchived] = useState(false);
 
+  if (project.tokenMissing) return <NoToken ctx={ctx} project={project} />;
+
   const manifest = indexInitiatives(project.manifest);
   const byLabel = selectByInitiative(ctx.snapshot.issues, project.key);
   const byBranch = new Map(
@@ -209,6 +211,38 @@ export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }
   );
 }
 
+/**
+ * The whole view for a repo whose owner has no token loaded.
+ *
+ * Not an error and not an empty state: nothing was fetched, so there is nothing
+ * to be empty about. Rendering the normal view with zeros would claim the repo
+ * has no initiatives, no CI, and no deploys — four confident statements about a
+ * repo nobody looked at.
+ */
+function NoToken({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }) {
+  return (
+    <>
+      <ViewHeader
+        title={project.label}
+        sub={`owned by ${project.owner}`}
+        actions={
+          <a className="bt" href={project.url} target="_blank" rel="noreferrer">
+            repo
+          </a>
+        }
+      />
+      <Empty>
+        <b>No token for {project.owner}.</b> A fine-grained PAT is scoped to a single resource
+        owner, so this repo needs its own — nothing here was fetched. The rest of the fleet is
+        loaded and accurate.{" "}
+        <button type="button" className="bt pri" onClick={ctx.openTokens}>
+          add a token
+        </button>
+      </Empty>
+    </>
+  );
+}
+
 function InitiativeCard({
   name,
   entry,
@@ -281,24 +315,36 @@ export function AppsIndex({ ctx }: { ctx: Ctx }) {
             key={project.key}
             type="button"
             className="card"
-            onClick={() => ctx.navigate(`app:${project.key}`)}
+            // A card for a repo with no token goes to the gate, not to a view
+            // that would only repeat that there is no token.
+            onClick={() =>
+              project.tokenMissing ? ctx.openTokens() : ctx.navigate(`app:${project.key}`)
+            }
           >
             <span className="card__chip" aria-hidden="true">
-              ▣
+              {project.tokenMissing ? "🔑" : "▣"}
             </span>
             <span className="card__title">{project.label}</span>
             <span className="card__body">
-              {project.lastProdDeploy === null
-                ? "no production deploy seen"
-                : `prod ${age(project.lastProdDeploy.at)} ago`}
+              {project.tokenMissing
+                ? `no token for ${project.owner} — add`
+                : project.lastProdDeploy === null
+                  ? "no production deploy seen"
+                  : `prod ${age(project.lastProdDeploy.at)} ago`}
             </span>
             <span className="card__stat">
-              <span>
-                <b>{project.openPrs}</b> open PRs
-              </span>
-              <span>
-                <b>{project.activeRuns}</b> running
-              </span>
+              {project.tokenMissing ? (
+                <span className="muted">nothing fetched</span>
+              ) : (
+                <>
+                  <span>
+                    <b>{project.openPrs}</b> open PRs
+                  </span>
+                  <span>
+                    <b>{project.activeRuns}</b> running
+                  </span>
+                </>
+              )}
             </span>
           </button>
         ))}

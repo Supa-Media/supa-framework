@@ -185,6 +185,39 @@ code,
   margin-bottom: 0.15rem;
 }
 
+/* One field per resource owner — a fine-grained PAT covers exactly one. */
+.gate__field {
+  margin-bottom: 0.2rem;
+}
+
+.gate__field label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.3rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.gate__repos {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+.gate__note {
+  color: var(--ink);
+}
+
+.gate__foot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .gate input {
   width: 100%;
   padding: 0.7rem 0.85rem;

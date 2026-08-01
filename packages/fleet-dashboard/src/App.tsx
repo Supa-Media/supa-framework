@@ -8,6 +8,15 @@ import { fleetConfig } from "./fleet.config";
 import { LABELS } from "./lib/labels";
 import { readLastReviewed, writeLastReviewed } from "./lib/review";
 import { selectParked, selectPlan, selectProposed, selectQueue } from "./lib/select";
+import {
+  clearTokens,
+  fleetOwners,
+  hasAnyToken,
+  loadTokens,
+  ownersMissingToken,
+  saveTokens,
+  type TokenMap,
+} from "./lib/tokens";
 import { clearResponseCache } from "./sources/github/client";
 import { createGitHubSource } from "./sources/github/githubSource";
 import { createGitHubWriter } from "./sources/github/writer";
@@ -24,18 +33,18 @@ import { Review } from "./views/Review";
 import { Secrets } from "./views/Secrets";
 import { Watchdog } from "./views/Watchdog";
 
-const TOKEN_KEY = "fleet-dashboard:token";
-
-function readStoredToken(): string | null {
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
+/**
+ * The fleet's distinct resource owners, in config order. Derived from the repo
+ * slugs rather than configured, so adding a repo under a fourth owner adds its
+ * token field to the gate with no further wiring.
+ */
+const OWNERS = fleetOwners(fleetConfig.repos);
+const OWNER_NAMES = OWNERS.map((group) => group.owner);
 
 export function App() {
-  const [token, setToken] = useState<string | null>(readStoredToken);
+  // One token per owner. `loadTokens` also migrates v2's single-token key, once.
+  const [tokens, setTokens] = useState<TokenMap>(() => loadTokens(OWNER_NAMES));
+  const [gateOpen, setGateOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<FleetSnapshot>(emptySnapshot);
   const [loading, setLoading] = useState(false);
   const [fatal, setFatal] = useState<string | null>(null);
@@ -50,12 +59,12 @@ export function App() {
   // Another source (a `@supa-media/dev-assistant` Convex source) would join
   // here and merge into the snapshot by project key.
   const source = useMemo(
-    () => (token === null ? null : createGitHubSource(fleetConfig, token)),
-    [token],
+    () => (hasAnyToken(tokens) ? createGitHubSource(fleetConfig, tokens) : null),
+    [tokens],
   );
   const writer: FleetWriter | null = useMemo(
-    () => (token === null ? null : createGitHubWriter(token)),
-    [token],
+    () => (hasAnyToken(tokens) ? createGitHubWriter(tokens) : null),
+    [tokens],
   );
 
   const refresh = useCallback(async () => {
@@ -132,31 +141,28 @@ export function App() {
     [busy, refresh, writeDone, writeError, writer],
   );
 
-  const acceptToken = useCallback((next: string) => {
+  const acceptTokens = useCallback((next: TokenMap) => {
     // Start cold: the response cache is keyed by request path with no reference
-    // to the credential that fetched it, so a token swap must not inherit the
-    // previous identity's cached bodies.
+    // to the credential that fetched it, so swapping *any* owner's token must
+    // not inherit the previous identity's cached bodies.
     clearResponseCache();
-    try {
-      localStorage.setItem(TOKEN_KEY, next);
-    } catch {
-      // Private-mode browsers: keep the token in memory for this session only.
-    }
-    setToken(next);
+    saveTokens(next);
+    setTokens(next);
+    setGateOpen(false);
   }, []);
 
-  const forgetToken = useCallback(() => {
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-    } catch {
-      // Nothing to clean up.
-    }
+  const forgetTokens = useCallback(() => {
+    // Every owner, not the one whose card you were looking at: a "sign out"
+    // that left two of three tokens in localStorage would be a lie with a
+    // reassuring label on it.
+    clearTokens();
     // The ETag cache holds full REST bodies, including private-repo workflow
-    // file contents. Clearing only the token would leave the fleet's private
+    // file contents. Clearing only the tokens would leave the fleet's private
     // data sitting in sessionStorage after "Sign out".
     clearResponseCache();
     inFlight.current?.abort();
-    setToken(null);
+    setTokens({});
+    setGateOpen(false);
     setSnapshot(emptySnapshot());
     setFatal(null);
     setLoading(false);
@@ -168,9 +174,29 @@ export function App() {
     setSince(now);
   }, []);
 
-  if (token === null) return <TokenGate onSubmit={acceptToken} />;
+  // The gate is both the sign-in screen and the "one PAT expired" screen, so it
+  // is reachable mid-session from the header rather than only via a sign-out.
+  if (!hasAnyToken(tokens) || gateOpen) {
+    return (
+      <TokenGate
+        owners={OWNERS}
+        saved={tokens}
+        onSubmit={acceptTokens}
+        onCancel={hasAnyToken(tokens) ? () => setGateOpen(false) : null}
+      />
+    );
+  }
 
-  const ctx: Ctx = { config: fleetConfig, snapshot, actions, since, navigate: setView };
+  const missingOwners = ownersMissingToken(tokens, fleetConfig.repos);
+
+  const ctx: Ctx = {
+    config: fleetConfig,
+    snapshot,
+    actions,
+    since,
+    navigate: setView,
+    openTokens: () => setGateOpen(true),
+  };
 
   const proposed = selectProposed(snapshot.issues).length;
   const parked = selectParked(snapshot.issues).length;
@@ -208,7 +234,9 @@ export function App() {
         onNavigate={setView}
         onOpenPalette={() => setPaletteOpen(true)}
         onRefresh={() => void refresh()}
-        onSignOut={forgetToken}
+        onEditTokens={() => setGateOpen(true)}
+        missingOwners={missingOwners}
+        onSignOut={forgetTokens}
       >
         {fatal !== null && <Banner tone="err">{fatal}</Banner>}
         {snapshot.errors.length > 0 && (

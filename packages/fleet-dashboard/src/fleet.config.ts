@@ -3,12 +3,25 @@
  * where each repo keeps the files the dashboard reads.
  *
  * Everything here is public information (repo slugs, workflow filenames, file
- * paths). The GitHub token is NOT here — it is entered in the UI at runtime and
- * kept in localStorage. See README.md.
+ * paths). The GitHub tokens are NOT here — they are entered in the UI at runtime
+ * and kept in localStorage, one per repo owner. See README.md.
+ *
+ * The fleet spans three resource owners (`togathernyc`, `Supa-Media`, `shyoh`)
+ * and a fine-grained PAT is scoped to one of them, so adding a repo under a new
+ * owner adds a token field to the gate automatically — the owner is derived from
+ * `slug`. See `lib/tokens.ts`.
  */
 
 export interface RepoConfig {
-  /** `owner/name` exactly as GitHub spells it. */
+  /**
+   * `owner/name` exactly as GitHub spells it.
+   *
+   * The `owner` half is load-bearing beyond the URL: a fine-grained PAT is
+   * scoped to exactly **one** resource owner, so this is what selects the token
+   * every request for this repo is made with (`lib/tokens.ts`). It is derived,
+   * never configured beside the slug — a second field saying the same thing is
+   * a second field that can disagree with the first.
+   */
   slug: string;
   /** Short label for the project card. */
   label: string;

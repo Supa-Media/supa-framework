@@ -53,4 +53,12 @@ export interface Ctx {
   /** ISO-8601 lower bound of the current review window. */
   since: string;
   navigate(view: ViewId): void;
+  /**
+   * Reopen the token gate.
+   *
+   * On `Ctx` rather than only in the header because the state it fixes is
+   * per-owner: a repo card that says "no token for shyoh" is the place someone
+   * actually notices, and it is the place the fix should be one click away.
+   */
+  openTokens(): void;
 }
