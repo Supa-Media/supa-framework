@@ -1,0 +1,12 @@
+{
+  // Type-check the worker AND its node:test suite in one pass. The tests import
+  // `node:test`/`node:assert`, so this config adds Node's types on top of the
+  // worker-only ones `src` uses. Wired into `pnpm test` so a type error fails
+  // the suite — nothing else compiles this package (wrangler transpiles without
+  // type-checking, and deployment is a separate follow-up anyway).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src", "test"]
+}
