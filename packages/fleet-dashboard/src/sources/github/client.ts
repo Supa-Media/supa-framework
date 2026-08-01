@@ -142,6 +142,55 @@ export class GitHubClient {
   }
 
   /**
+   * REST write — POST / PATCH / PUT / DELETE.
+   *
+   * Separate from `rest()` rather than a parameter on it, because every
+   * difference between them is a correctness rule this app depends on: a write
+   * must never send `If-None-Match` (a 304 on a POST is nonsense), must never
+   * be served from cache, and — critically — **invalidates** the cache, since
+   * adding a label to an issue makes every cached search that mentioned that
+   * issue wrong. Sharing one method would make forgetting any of the three a
+   * one-character mistake.
+   *
+   * A 204 (the usual answer to a label delete or a workflow dispatch) resolves
+   * to `null`.
+   */
+  async write<T>(
+    method: "POST" | "PATCH" | "PUT" | "DELETE",
+    path: string,
+    body?: unknown,
+    signal?: AbortSignal,
+  ): Promise<T | null> {
+    const response = await fetch(API_ROOT + path, {
+      method,
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${this.token}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
+    });
+    this.captureRateLimit(response.headers);
+
+    if (!response.ok) {
+      throw new GitHubError(await describeFailure(response, path), response.status);
+    }
+
+    // The read cache is keyed by path with no notion of what a write touched,
+    // so the only safe invalidation is total. It costs one cold refresh.
+    clearResponseCache();
+
+    if (response.status === 204 || response.headers.get("content-length") === "0") return null;
+    try {
+      return (await response.json()) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * GraphQL POST. Not conditionally cached — GitHub doesn't ETag the GraphQL
    * endpoint — but one GraphQL call replaces dozens of REST ones, which is the
    * bigger rate-limit win.
