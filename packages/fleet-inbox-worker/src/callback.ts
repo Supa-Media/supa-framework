@@ -68,6 +68,73 @@ export interface Proposal {
   issueNumber: number;
   issueUrl: string;
   title: string;
+  /**
+   * The acceptance criteria filed on the issue. Rendered in the summary so ✅
+   * approves something that was actually shown — see {@link renderSummary}.
+   */
+  criteria: string[];
+  /** True when the content came from a forward rather than the owner's voice. */
+  thirdParty: boolean;
+}
+
+/** How many criteria are shown per item before the summary points at the issue. */
+export const SUMMARY_CRITERIA_LIMIT = 4;
+/** Criteria longer than this are truncated in the summary (never on the issue). */
+export const SUMMARY_CRITERION_CHARS = 120;
+
+function truncate(text: string, max: number): string {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return collapsed.length <= max ? collapsed : `${collapsed.slice(0, max - 1)}…`;
+}
+
+/**
+ * The approval message.
+ *
+ * Renders each proposal's **acceptance criteria**, not just its title — that is
+ * the entire point of this function. ✅ promotes an issue body to
+ * `agent:ready`, and an earlier version showed only an 80-character title, so
+ * the owner was approving text he had never seen: the criteria and the source
+ * quote (exactly where a crafted instruction would sit) were reachable only
+ * through the ✏️ link. Showing the criteria makes the default gesture an
+ * informed one.
+ *
+ * Long lists are capped and long lines truncated, with an explicit "+N more"
+ * and the issue link, so a wall of criteria cannot push the buttons off the
+ * screen — but the message never silently hides that there is more to read.
+ *
+ * Plain text, no Markdown — see `TelegramClient.sendMessage`.
+ */
+export function renderSummary(
+  headline: string,
+  proposals: readonly Proposal[],
+): string {
+  const blocks = proposals.map((proposal, index) => {
+    const lines = [`${index + 1}. ${proposal.title}  (#${proposal.issueNumber})`];
+
+    if (proposal.thirdParty) {
+      lines.push("   ⚠️ forwarded content — not your own words");
+    }
+
+    if (proposal.criteria.length === 0) {
+      lines.push("   • no acceptance criteria captured");
+    } else {
+      for (const criterion of proposal.criteria.slice(0, SUMMARY_CRITERIA_LIMIT)) {
+        lines.push(`   • ${truncate(criterion, SUMMARY_CRITERION_CHARS)}`);
+      }
+      const hidden = proposal.criteria.length - SUMMARY_CRITERIA_LIMIT;
+      if (hidden > 0) lines.push(`   • +${hidden} more — ${proposal.issueUrl}`);
+    }
+
+    return lines.join("\n");
+  });
+
+  return [
+    headline,
+    "",
+    blocks.join("\n\n"),
+    "",
+    "All inbox:proposed. Nothing runs until you keep it.",
+  ].join("\n");
 }
 
 export interface InlineButton {

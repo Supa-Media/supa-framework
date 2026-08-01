@@ -45,6 +45,12 @@ export interface IssueSummary {
   number: number;
   title: string;
   html_url: string;
+  /**
+   * Label names. Load-bearing: the keep path refuses to promote an issue that
+   * isn't currently `inbox:proposed`, which is what stops a forged callback
+   * from stamping `agent:ready` onto an arbitrary issue number.
+   */
+  labels: string[];
 }
 
 /**
@@ -126,7 +132,19 @@ export class GitHubClient {
     return (await response.json()) as T;
   }
 
-  /** Initiatives declared by the repo, or derived from its `init:*` labels. */
+  /**
+   * Initiatives declared by the repo, or derived from its `init:*` labels.
+   *
+   * **Nothing in here throws.** Both stages swallow everything, not just
+   * `GitHubError`: `.fleet/initiatives.json` is a repo-authored file, so a
+   * malformed one raises a `SyntaxError` from `JSON.parse` and a corrupt
+   * base64 payload raises from `atob` — neither is a GitHub error, and an
+   * earlier version rethrew both. Since the caller fans these out across four
+   * repos, that meant one repo's bad file killed every voice note, including
+   * ones that had nothing to do with that repo. `parseInitiativesFile` already
+   * treats this file as untrusted input; the parse belongs inside the same
+   * tolerance.
+   */
   async listInitiatives(slug: string): Promise<Initiative[]> {
     try {
       const file = await this.request<{ content?: string }>(
@@ -135,11 +153,10 @@ export class GitHubClient {
       if (file.content !== undefined) {
         return parseInitiativesFile(JSON.parse(decodeBase64Content(file.content)));
       }
-    } catch (error) {
-      // 404 is the common, expected case: most repos have no `.fleet/` yet.
-      // Anything else (403 on a repo outside the token's scope, a 5xx) is also
-      // survivable — fall through to labels, and let that fail quietly too.
-      if (!(error instanceof GitHubError)) throw error;
+    } catch {
+      // 404 is the common, expected case — most repos have no `.fleet/` yet.
+      // A 403 (repo outside the token's scope), a 5xx, a malformed file, or a
+      // corrupt payload are all equally survivable: fall through to labels.
     }
 
     try {
@@ -150,9 +167,10 @@ export class GitHubClient {
         .filter((label) => label.name.startsWith("init:"))
         .map((label) => ({ name: label.name.slice("init:".length) }))
         .filter((initiative) => initiative.name !== "");
-    } catch (error) {
-      if (error instanceof GitHubError) return [];
-      throw error;
+    } catch {
+      // No initiatives for this repo. The extraction prompt says so explicitly
+      // ("no initiatives declared yet") rather than pretending the repo has none.
+      return [];
     }
   }
 
@@ -174,7 +192,20 @@ export class GitHubClient {
   }
 
   async getIssue(slug: string, issueNumber: number): Promise<IssueSummary> {
-    return this.request<IssueSummary>(`/repos/${slug}/issues/${issueNumber}`);
+    const issue = await this.request<{
+      number: number;
+      title: string;
+      html_url: string;
+      labels?: Array<{ name?: string } | string>;
+    }>(`/repos/${slug}/issues/${issueNumber}`);
+
+    // GitHub returns label objects, but the same field is a bare string array
+    // in some older payloads. Normalize so callers can just check membership.
+    const labels = (issue.labels ?? [])
+      .map((label) => (typeof label === "string" ? label : (label.name ?? "")))
+      .filter((name) => name !== "");
+
+    return { number: issue.number, title: issue.title, html_url: issue.html_url, labels };
   }
 
   async addLabels(slug: string, issueNumber: number, labels: string[]): Promise<void> {

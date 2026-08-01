@@ -22,6 +22,7 @@ import {
   buildKeyboard,
   parseCallback,
   parseQueueCommand,
+  renderSummary,
   type InlineKeyboard,
   type Proposal,
 } from "./callback";
@@ -30,6 +31,7 @@ import { FLEET_APPS, UNASSIGNED, labelForApp, slugForApp } from "./fleet";
 import { GitHubClient } from "./github";
 import {
   clampTitle,
+  isThirdPartyContent,
   issueLabels,
   planEditLabels,
   renderIssueBody,
@@ -55,8 +57,11 @@ const SECRET_HEADER = "X-Telegram-Bot-Api-Secret-Token";
  * a stretch — but comparing every byte costs nothing and removes the question.
  * Length is compared first (and leaks, unavoidably, as it does in every
  * implementation of this).
+ *
+ * Exported for tests: this and {@link isAllowedChat} are the entire
+ * authentication story, and the README's security section rests on them.
  */
-function secretMatches(provided: string | null, expected: string): boolean {
+export function secretMatches(provided: string | null, expected: string): boolean {
   if (provided === null || provided.length !== expected.length) return false;
   let diff = 0;
   for (let i = 0; i < expected.length; i += 1) {
@@ -65,7 +70,14 @@ function secretMatches(provided: string | null, expected: string): boolean {
   return diff === 0;
 }
 
-function isAllowedChat(chatId: number | undefined, expected: string): boolean {
+/**
+ * The single-chat allowlist. See {@link secretMatches} for why it's exported.
+ *
+ * Returning `false` for `undefined` is load-bearing on the callback path:
+ * Telegram omits `callback_query.message` for an inline-message callback, and
+ * the optional chain then yields `undefined`.
+ */
+export function isAllowedChat(chatId: number | undefined, expected: string): boolean {
   return chatId !== undefined && String(chatId) === expected;
 }
 
@@ -109,12 +121,23 @@ export default {
     // non-2xx makes Telegram redeliver the same update, and a bug that throws
     // would turn into an infinite retry loop that files the same issues again
     // and again.
-    ctx.waitUntil(handleUpdate(update, env));
+    //
+    // The work therefore runs after the response, where a rejection has nobody
+    // to report to. `handleUpdate` catches everything and DMs the owner; the
+    // `.catch` here is the backstop for a throw in its own catch block, so the
+    // waitUntil promise can never reject silently.
+    ctx.waitUntil(
+      handleUpdate(update, env).catch((error: unknown) => {
+        log("update.unreported", {
+          error: error instanceof Error ? error.name : "unknown",
+        });
+      }),
+    );
     return new Response("ok");
   },
 };
 
-async function handleUpdate(update: TelegramUpdate, env: Env): Promise<void> {
+export async function handleUpdate(update: TelegramUpdate, env: Env): Promise<void> {
   const telegram = new TelegramClient(env.TELEGRAM_BOT_TOKEN);
 
   try {
@@ -246,15 +269,34 @@ async function handleMessage(
   await reply(telegram, env, summary, proposals);
 }
 
+/**
+ * Fetch every repo's initiatives, tolerating any one of them failing.
+ *
+ * `listInitiatives` is written not to throw, and `allSettled` is the belt to
+ * that braces: with `Promise.all`, a single repo raising for any reason would
+ * reject the whole fan-out and cost the owner a voice note that had nothing to
+ * do with that repo. A repo that fails contributes an empty initiative list,
+ * which the prompt renders as "no initiatives declared yet" — degraded routing
+ * for that one app, not a dead pipeline.
+ */
 async function loadFleetContext(github: GitHubClient): Promise<FleetContext[]> {
-  return Promise.all(
-    FLEET_APPS.map(async (app) => ({
+  const settled = await Promise.allSettled(
+    FLEET_APPS.map((app) => github.listInitiatives(app.slug)),
+  );
+
+  return FLEET_APPS.map((app, index) => {
+    const result = settled[index];
+    if (result === undefined || result.status === "rejected") {
+      log("initiatives.unavailable", { repo: app.slug });
+      return { appKey: app.key, label: app.label, slug: app.slug, initiatives: [] };
+    }
+    return {
       appKey: app.key,
       label: app.label,
       slug: app.slug,
-      initiatives: await github.listInitiatives(app.slug),
-    })),
-  );
+      initiatives: result.value,
+    };
+  });
 }
 
 async function fileItems(
@@ -275,6 +317,9 @@ async function fileItems(
       issueNumber: issue.number,
       issueUrl: issue.html_url,
       title: `[${labelForApp(item.app)}] ${clampTitle(item.title, 80)}`,
+      // Shown in the summary so ✅ approves text that was actually displayed.
+      criteria: item.acceptance_criteria,
+      thirdParty: isThirdPartyContent(source),
     });
     log("issue.proposed", { repo: slug, number: issue.number, size: item.size });
   }
@@ -299,17 +344,13 @@ async function filePlanEdits(
       issueNumber: issue.number,
       issueUrl: issue.html_url,
       title: `[plan edit] ${clampTitle(edit.target, 60)}`,
+      // A plan edit has no criteria; the reason is what the owner needs to see.
+      criteria: edit.reason === "" ? [] : [`${edit.type}: ${edit.reason}`],
+      thirdParty: isThirdPartyContent(source),
     });
     log("planEdit.proposed", { repo: slug, number: issue.number, type: edit.type });
   }
   return proposals;
-}
-
-function renderSummary(headline: string, proposals: readonly Proposal[]): string {
-  const lines = proposals.map(
-    (proposal, index) => `${index + 1}. ${proposal.title} — #${proposal.issueNumber}`,
-  );
-  return [headline, "", ...lines, "", `All \`${PROPOSED_LABEL}\`. Nothing runs until you keep it.`].join("\n");
 }
 
 async function reply(
@@ -333,7 +374,7 @@ async function reply(
 /* Button presses                                                              */
 /* -------------------------------------------------------------------------- */
 
-async function handleCallback(
+export async function handleCallback(
   query: NonNullable<TelegramUpdate["callback_query"]>,
   env: Env,
   telegram: TelegramClient,
@@ -354,6 +395,21 @@ async function handleCallback(
   const github = new GitHubClient(env.GH_TOKEN);
   const issue = await github.getIssue(slug, payload.issueNumber);
 
+  // The precondition that makes ✅ mean what it says.
+  //
+  // Without it, a callback payload naming any issue number would strip
+  // `inbox:proposed` from and stamp `agent:ready` onto whatever issue that
+  // happens to be — and `slugForApp` falls back to the framework repo for an
+  // unknown app key, so an unrecognized key targets a real repo rather than
+  // failing. Promotion is the one irreversible-ish step here (it is what the
+  // fleet acts on), so it is gated on the issue actually being one of ours,
+  // still awaiting a decision.
+  if (payload.action === "keep" && !issue.labels.includes(PROPOSED_LABEL)) {
+    log("callback.refused", { repo: slug, number: payload.issueNumber, reason: "not_proposed" });
+    await telegram.answerCallbackQuery(query.id, "Already handled — nothing changed.");
+    return;
+  }
+
   if (payload.action === "keep") {
     await github.removeLabel(slug, payload.issueNumber, PROPOSED_LABEL);
     await github.addLabels(slug, payload.issueNumber, [READY_LABEL]);
@@ -368,20 +424,34 @@ async function handleCallback(
     log("issue.rejected", { repo: slug, number: payload.issueNumber });
   }
 
-  const message = query.message;
-  if (message !== undefined) {
-    const keyboard: InlineKeyboard = message.reply_markup?.inline_keyboard ?? [];
-    const outcome = applyDecision(message.text ?? "", keyboard, payload, issue.title);
-    await telegram.editMessageText(
-      env.TELEGRAM_CHAT_ID,
-      message.message_id,
-      outcome.text,
-      outcome.keyboard,
-    );
-  }
-
+  // Answer before editing. Telegram's callback window is short and the edit is
+  // cosmetic — a slow edit that leaves the button spinning reads as a hang,
+  // even though the decision already landed on GitHub.
   await telegram.answerCallbackQuery(
     query.id,
     payload.action === "keep" ? "Kept — marked agent:ready." : "Rejected and closed.",
+  );
+
+  const message = query.message;
+  if (message === undefined) return;
+
+  const keyboard: InlineKeyboard = message.reply_markup?.inline_keyboard ?? [];
+  const currentText = message.text ?? "";
+  const outcome = applyDecision(currentText, keyboard, payload, issue.title);
+
+  // A double-press (stale render, or the same message open on two devices)
+  // leaves the message identical, and Telegram rejects a no-op edit with
+  // `400 message is not modified`. `editMessageText` tolerates that too, but
+  // not making the call at all is cheaper and clearer about the intent.
+  if (outcome.text === currentText && outcome.keyboard.length === keyboard.length) {
+    log("callback.noop", { repo: slug, number: payload.issueNumber });
+    return;
+  }
+
+  await telegram.editMessageText(
+    env.TELEGRAM_CHAT_ID,
+    message.message_id,
+    outcome.text,
+    outcome.keyboard,
   );
 }

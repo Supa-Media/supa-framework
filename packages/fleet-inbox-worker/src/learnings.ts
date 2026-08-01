@@ -50,9 +50,42 @@ export function trimLearnings(
   return lines.slice(-max).join("\n");
 }
 
-/** The line recorded when a proposal is rejected. */
+/**
+ * How much of a rejected title survives into the learning line.
+ *
+ * Deliberately independent of `clampTitle`'s 200-char issue-title cap: this is
+ * a prompt-budget bound, and it should not change silently because a GitHub
+ * concern changed.
+ */
+export const MAX_LEARNING_TITLE_CHARS = 120;
+
+/**
+ * The line recorded when a proposal is rejected.
+ *
+ * This string is interpolated verbatim into the `## Previously rejected`
+ * section of every later extraction system prompt, so it is a real injection
+ * surface: a transcript shapes a title, ❌ files it, and it sits in the next 30
+ * prompts. The sanitisation is deliberate, not incidental —
+ *
+ *  - **Whitespace is collapsed.** The load-bearing part: it flattens newlines,
+ *    so a title cannot forge extra learning lines or a fake `##` section header
+ *    inside the prompt.
+ *  - **Backticks and quotes are stripped**, so the span cannot close the
+ *    quoting that surrounds it here.
+ *  - **Length is capped explicitly** (above); FIFO caps the total budget.
+ *
+ * Note `title` is read back from GitHub rather than taken from the model, so
+ * anyone with write access to any of the four repos could rename an issue to
+ * choose this string. Narrow, but it is a second author — and the same three
+ * bounds are what contain it.
+ */
 export function formatRejectionLearning(title: string, appKey: string): string {
-  return `- Rejected (${labelForApp(appKey)}): "${title.replace(/\s+/g, " ").trim()}" — do not propose work like this again.`;
+  const sanitised = title
+    .replace(/[`"'“”]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_LEARNING_TITLE_CHARS);
+  return `- Rejected (${labelForApp(appKey)}): "${sanitised}" — do not propose work like this again.`;
 }
 
 export async function readLearnings(store: LearningsStore): Promise<string> {

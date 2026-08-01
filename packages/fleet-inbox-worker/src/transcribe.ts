@@ -15,11 +15,40 @@ import type { Env } from "./env";
 import type { TelegramClient, TelegramFileRef } from "./telegram";
 
 /**
- * Telegram's Bot API refuses to serve a download over 20MB, regardless of what
- * it accepted from the sender. Checking here turns a confusing mid-download
- * failure into a specific message.
+ * The cap is the **Worker's memory budget**, not Telegram's 20MB download
+ * limit.
+ *
+ * Workers AI takes audio as a `number[]`, so every byte becomes a JS array
+ * element — even as packed SMIs under pointer compression that is ~4 bytes
+ * each, on top of the `ArrayBuffer` itself and whatever the AI binding needs to
+ * serialise it across. At Telegram's 20MB the array alone approaches the
+ * isolate's 128MB ceiling, and an OOM inside `ctx.waitUntil` kills the isolate
+ * **after** the 200 has already been returned: the owner gets nothing at all.
+ * That is exactly the silent failure the video path is written to avoid,
+ * reintroduced through a different door.
+ *
+ * 5MB is several minutes of opus (a real voice note is roughly 1MB/minute), so
+ * this only ever bites the video path — which is the path where "send a voice
+ * note instead" is the honest answer anyway.
  */
-export const MAX_TRANSCRIBE_BYTES = 20 * 1024 * 1024;
+export const MAX_TRANSCRIBE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Copy an `ArrayBuffer` into the `number[]` Workers AI wants.
+ *
+ * A preallocated loop rather than `[...new Uint8Array(buf)]` for two reasons:
+ * spread pushes every element through argument-list machinery, and
+ * array-literal spread grows its backing store by repeated reallocation, so
+ * peak memory transiently exceeds the finished array. Preallocating the exact
+ * length avoids both. This is still O(n) memory — the cap above is what
+ * actually keeps it inside the isolate.
+ */
+export function toAudioArray(buffer: ArrayBuffer): number[] {
+  const bytes = new Uint8Array(buffer);
+  const audio = new Array<number>(bytes.length);
+  for (let i = 0; i < bytes.length; i += 1) audio[i] = bytes[i] as number;
+  return audio;
+}
 
 export type TranscriptionResult =
   | { ok: true; text: string }
@@ -30,11 +59,12 @@ export async function transcribe(
   telegram: TelegramClient,
   media: { ref: TelegramFileRef; kind: "voice" | "video" },
 ): Promise<TranscriptionResult> {
+  const limitMb = MAX_TRANSCRIBE_BYTES / 1024 / 1024;
   const declaredSize = media.ref.file_size;
   if (declaredSize !== undefined && declaredSize > MAX_TRANSCRIBE_BYTES) {
     return {
       ok: false,
-      reason: `That ${media.kind} is ${(declaredSize / 1024 / 1024).toFixed(1)}MB — over the 20MB Telegram will hand me. Send a voice note, or type it.`,
+      reason: `That ${media.kind} is ${(declaredSize / 1024 / 1024).toFixed(1)}MB — over the ${limitMb}MB I can hold in memory while transcribing. Send a voice note, or type it.`,
     };
   }
 
@@ -48,19 +78,18 @@ export async function transcribe(
     };
   }
 
+  // `file_size` is absent on some media, so the real bytes are re-checked here
+  // — this is the check that actually protects the isolate.
   if (audio.byteLength > MAX_TRANSCRIBE_BYTES) {
     return {
       ok: false,
-      reason: `That ${media.kind} is too large to transcribe. Send a voice note, or type it.`,
+      reason: `That ${media.kind} is ${(audio.byteLength / 1024 / 1024).toFixed(1)}MB — over the ${limitMb}MB I can hold in memory while transcribing. Send a voice note, or type it.`,
     };
   }
 
   try {
-    // Workers AI takes the audio as a plain byte array, not a Blob or a
-    // base64 string. For a 20MB file that's a 20-million-element array —
-    // expensive, and the reason the size cap above is not merely defensive.
     const result = await env.AI.run("@cf/openai/whisper", {
-      audio: [...new Uint8Array(audio)],
+      audio: toAudioArray(audio),
     });
 
     const text = (result.text ?? "").trim();

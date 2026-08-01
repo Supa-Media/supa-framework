@@ -15,7 +15,17 @@ as a GitHub issue with a criteria checklist, a verbatim source quote, and a
 with the list and a ✅ keep / ❌ reject / ✏️ edit button per item.
 
 **Nothing executes.** Every issue is filed `inbox:proposed`, which no agent
-picks up; work becomes real only when ✅ flips the label to `agent:ready`.
+picks up; work becomes real only when ✅ flips the label to `agent:ready` — and
+the keep path refuses any issue not currently carrying `inbox:proposed`, so it
+can only ever promote items this worker filed and the owner hasn't decided on.
+Filed issues are PAT-authored, meaning `author_association: OWNER`, which the
+fleet's orchestrator trusts; the chat allowlist is therefore what makes them
+safe for a downstream agent to act on, and the README's "Trust model" section
+states that coupling along with the four controls that hold it. The Telegram
+summary renders each item's acceptance criteria so ✅ approves text that was
+actually displayed, and forwarded (third-party) content is flagged in the
+extraction prompt, the issue body, and the summary.
+
 Rejecting closes the issue and appends a line to a `learnings.md` in KV that is
 injected into later extraction prompts (30 lines, FIFO) — the cheapest possible
 feedback loop. `queue: <text>` is a fast path that files one item with no model

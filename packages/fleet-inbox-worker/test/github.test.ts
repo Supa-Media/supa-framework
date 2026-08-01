@@ -114,6 +114,58 @@ test("a repo the token cannot see contributes nothing rather than failing", asyn
   assert.deepEqual(await new GitHubClient("t").listInitiatives("o/private"), []);
 });
 
+test("a malformed initiatives file degrades to labels, it does not throw (M6)", async () => {
+  // JSON.parse raises a SyntaxError, which is not a GitHubError — an earlier
+  // version rethrew it, and because the caller fans out across four repos, one
+  // repo's bad file killed every voice note.
+  mockFetch([
+    { match: /contents\/\.fleet/, body: { content: base64("{ not json at all") } },
+    { match: /\/labels/, body: [{ name: "init:fallback" }] },
+  ]);
+
+  assert.deepEqual(await new GitHubClient("t").listInitiatives("o/r"), [{ name: "fallback" }]);
+});
+
+test("a corrupt base64 payload also degrades to labels (M6)", async () => {
+  // atob raises InvalidCharacterError — likewise not a GitHubError.
+  mockFetch([
+    { match: /contents\/\.fleet/, body: { content: "!!! not base64 !!!" } },
+    { match: /\/labels/, body: [{ name: "init:fallback" }] },
+  ]);
+
+  assert.deepEqual(await new GitHubClient("t").listInitiatives("o/r"), [{ name: "fallback" }]);
+});
+
+test("a malformed file with unreachable labels yields an empty list, still no throw", async () => {
+  mockFetch([
+    { match: /contents\/\.fleet/, body: { content: base64("[[[") } },
+    { match: /\/labels/, status: 500 },
+  ]);
+  assert.deepEqual(await new GitHubClient("t").listInitiatives("o/r"), []);
+});
+
+test("getIssue normalizes labels so the keep path can check them (M4)", async () => {
+  mockFetch([
+    {
+      match: /issues\/9$/,
+      body: {
+        number: 9,
+        title: "T",
+        html_url: "u",
+        labels: [{ name: "inbox:proposed" }, "size:m", { name: "" }, {}],
+      },
+    },
+  ]);
+
+  const issue = await new GitHubClient("t").getIssue("o/r", 9);
+  assert.deepEqual(issue.labels, ["inbox:proposed", "size:m"]);
+});
+
+test("getIssue on an issue with no labels yields an empty array, not undefined", async () => {
+  mockFetch([{ match: /issues\/9$/, body: { number: 9, title: "T", html_url: "u" } }]);
+  assert.deepEqual((await new GitHubClient("t").getIssue("o/r", 9)).labels, []);
+});
+
 test("creating an issue posts title, body, and labels", async () => {
   const calls = mockFetch([
     { match: /\/issues$/, status: 201, body: { number: 9, html_url: "https://x/9" } },

@@ -6,7 +6,9 @@ import {
   encodeCallback,
   parseCallback,
   parseQueueCommand,
+  renderSummary,
   CALLBACK_DATA_MAX_BYTES,
+  SUMMARY_CRITERIA_LIMIT,
   type Proposal,
 } from "../src/callback";
 import { FLEET_APPS } from "../src/fleet";
@@ -63,8 +65,22 @@ test("malformed callback data is rejected, not coerced", () => {
 });
 
 const proposals: Proposal[] = [
-  { appKey: "togather", issueNumber: 10, issueUrl: "https://x/10", title: "One" },
-  { appKey: "events-os", issueNumber: 20, issueUrl: "https://x/20", title: "Two" },
+  {
+    appKey: "togather",
+    issueNumber: 10,
+    issueUrl: "https://x/10",
+    title: "One",
+    criteria: ["first thing", "second thing"],
+    thirdParty: false,
+  },
+  {
+    appKey: "events-os",
+    issueNumber: 20,
+    issueUrl: "https://x/20",
+    title: "Two",
+    criteria: [],
+    thirdParty: false,
+  },
 ];
 
 test("the keyboard gives each proposal keep / reject / edit", () => {
@@ -134,6 +150,64 @@ test("rows are matched by payload, not by position", () => {
   // The second row went, the first stayed — an index-based implementation
   // would have removed the wrong one.
   assert.equal(outcome.keyboard[0]?.[0]?.callback_data, "k|togather|10");
+});
+
+/* -------------------------------------------------------------------------- */
+/* The approval message                                                        */
+/* -------------------------------------------------------------------------- */
+
+test("the summary shows criteria, so ✅ approves what was displayed", () => {
+  // The whole point: an earlier version rendered only the title, so the owner
+  // was approving body text he had never seen.
+  const summary = renderSummary("Proposed 2 items.", proposals);
+  assert.match(summary, /1\. One {2}\(#10\)/);
+  assert.match(summary, /• first thing/);
+  assert.match(summary, /• second thing/);
+  assert.match(summary, /2\. Two {2}\(#20\)/);
+  assert.match(summary, /• no acceptance criteria captured/);
+  assert.match(summary, /All inbox:proposed\. Nothing runs until you keep it\./);
+});
+
+test("the summary is plain text — no Markdown that Telegram could reject", () => {
+  const summary = renderSummary("Proposed 1 item.", [
+    { ...proposals[0]!, title: "rename user_id to userId", criteria: ["use `camelCase`"] },
+  ]);
+  // Nothing escapes or is stripped, because nothing is parsed. The literal
+  // underscore and backtick survive, which is exactly the point of dropping
+  // parse_mode.
+  assert.match(summary, /rename user_id to userId/);
+  assert.match(summary, /use `camelCase`/);
+});
+
+test("a long criteria list is capped with an explicit pointer to the issue", () => {
+  const many = Array.from({ length: SUMMARY_CRITERIA_LIMIT + 3 }, (_, i) => `criterion ${i}`);
+  const summary = renderSummary("Proposed 1 item.", [{ ...proposals[0]!, criteria: many }]);
+
+  assert.match(summary, /criterion 0/);
+  assert.doesNotMatch(summary, /criterion 5/, "beyond the cap is not rendered");
+  // Never silently hides that there's more — a wall of criteria must not push
+  // the buttons off screen, but the owner has to know it was truncated.
+  assert.match(summary, /• \+3 more — https:\/\/x\/10/);
+});
+
+test("a very long criterion is truncated in the summary, not on the issue", () => {
+  const summary = renderSummary("x", [
+    { ...proposals[0]!, criteria: ["y".repeat(400)] },
+  ]);
+  const line = summary.split("\n").find((entry) => entry.includes("yyy"));
+  assert.ok(line !== undefined);
+  assert.ok(line.length < 200, "summary line is bounded");
+  assert.ok(line.endsWith("…"), "truncation is visible");
+});
+
+test("forwarded content is flagged in the summary", () => {
+  const summary = renderSummary("x", [{ ...proposals[0]!, thirdParty: true }]);
+  assert.match(summary, /⚠️ forwarded content — not your own words/);
+  assert.doesNotMatch(
+    renderSummary("x", [proposals[0]!]),
+    /forwarded content/,
+    "own dictation carries no banner",
+  );
 });
 
 test("queue: is a fast path, and only when it is the prefix", () => {
