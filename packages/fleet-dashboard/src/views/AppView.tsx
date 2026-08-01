@@ -5,6 +5,7 @@ import { selectByInitiative } from "../lib/select";
 import { absolute, age } from "../lib/time";
 import type { ProjectSnapshot } from "../sources/types";
 import {
+  Banner,
   Empty,
   Group,
   Pill,
@@ -96,14 +97,14 @@ export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }
       />
 
       {project.manifest.problems.length > 0 && (
-        <p className="banner err">
+        <Banner tone="err">
           <code>{ctx.config.initiativesPath}</code> has problems:
           <ul>
             {project.manifest.problems.map((problem) => (
               <li key={problem}>{problem}</li>
             ))}
           </ul>
-        </p>
+        </Banner>
       )}
 
       {live.length === 0 ? (

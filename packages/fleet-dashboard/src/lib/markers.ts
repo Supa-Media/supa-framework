@@ -28,9 +28,11 @@
  * watchdog writes one sheet per park and the question is part of it, so this
  * parser returns every marker block in a document rather than only the first.
  *
- * Deliberately strict about placement: the marker must start a line. Otherwise
- * a review comment *quoting* the convention ("we should use **[decider]** for
- * this") would file itself as a decision you have to keep or overturn.
+ * Deliberately strict about placement: the marker must start a line, and must
+ * not be inside a fenced code block. Otherwise a review comment *quoting* the
+ * convention would file itself as a decision you have to keep or overturn — and
+ * a fence is how someone actually quotes a convention in a GitHub comment, so
+ * the start-of-line rule alone left the common case open.
  */
 
 export interface MarkerBlock {
@@ -59,6 +61,12 @@ const MARKER_LINE = /^\s*\*\*\[([a-z][a-z0-9-]*)\]\*\*\s*(.*)$/i;
  * `//example.com/a …`, quietly deleting the line from the body it belongs to.
  */
 const FIELD_LINE = /^\s*([a-z][a-z0-9_-]{0,30}):\s*(.+?)\s*$/;
+/**
+ * A fence line: ``` or ~~~ (three or more), optionally indented and carrying an
+ * info string. Only a fence of the *same* character closes one, which is how
+ * CommonMark works and why a ``` block quoting a ~~~ example stays one block.
+ */
+const FENCE_LINE = /^\s{0,3}(`{3,}|~{3,})/;
 
 /**
  * Every marker block in a comment body, in document order.
@@ -71,20 +79,27 @@ export function parseMarkers(text: string | null | undefined): MarkerBlock[] {
 
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   const blocks: MarkerBlock[] = [];
-  let current: { marker: string; headline: string; lines: string[] } | null = null;
+  let current: {
+    marker: string;
+    headline: string;
+    lines: Array<{ text: string; fenced: boolean }>;
+  } | null = null;
 
   const flush = () => {
     if (current === null) return;
     const fields: Record<string, string> = {};
     const body: string[] = [];
     for (const line of current.lines) {
-      const field = FIELD_LINE.exec(line);
+      // A fenced line is content, never structure: an `options:` inside a code
+      // sample is being shown, not asked, and turning it into answer buttons
+      // would be the same mistake as reading a fenced marker.
+      const field = line.fenced ? null : FIELD_LINE.exec(line.text);
       if (field) {
         const key = (field[1] as string).trim().toLowerCase();
         if (!(key in fields)) fields[key] = field[2] as string;
         continue;
       }
-      body.push(line);
+      body.push(line.text);
     }
     blocks.push({
       marker: current.marker,
@@ -95,18 +110,33 @@ export function parseMarkers(text: string | null | undefined): MarkerBlock[] {
     current = null;
   };
 
+  let fence: string | null = null;
+
   for (const line of lines) {
-    const marker = MARKER_LINE.exec(line);
-    if (marker) {
-      flush();
-      current = {
-        marker: (marker[1] as string).toLowerCase(),
-        headline: (marker[2] as string).trim(),
-        lines: [],
-      };
+    const fenceMatch = FENCE_LINE.exec(line);
+    if (fenceMatch) {
+      const char = (fenceMatch[1] as string)[0] as string;
+      if (fence === null) fence = char;
+      else if (fence === char) fence = null;
+      // The delimiter line itself belongs to the block's body.
+      if (current !== null) current.lines.push({ text: line, fenced: true });
       continue;
     }
-    if (current !== null) current.lines.push(line);
+
+    if (fence === null) {
+      const marker = MARKER_LINE.exec(line);
+      if (marker) {
+        flush();
+        current = {
+          marker: (marker[1] as string).toLowerCase(),
+          headline: (marker[2] as string).trim(),
+          lines: [],
+        };
+        continue;
+      }
+    }
+
+    if (current !== null) current.lines.push({ text: line, fenced: fence !== null });
   }
   flush();
 
@@ -125,15 +155,36 @@ export function findMarker(text: string | null | undefined, marker: string): Mar
  * commas ("client id, falling back to ts"). Capped at six: past that it is not
  * a batched question, it is a design review, and the honest move is to open the
  * issue rather than render a wall of buttons.
+ *
+ * Deduplicated, because the values are agent-authored and the UI keys the answer
+ * buttons by value — two identical options would collide on that key and React
+ * would render one of them wrong.
  */
 export function questionOptions(block: MarkerBlock): string[] {
   const raw = block.fields["options"];
   if (raw === undefined) return [];
-  return raw
-    .split("|")
-    .map((option) => option.trim())
-    .filter((option) => option !== "")
-    .slice(0, 6);
+  const seen = new Set<string>();
+  for (const option of raw.split("|")) {
+    const trimmed = option.trim();
+    if (trimmed !== "") seen.add(trimmed);
+    if (seen.size === 6) break;
+  }
+  return [...seen];
+}
+
+/** Longest option text a button may show before it stops being a button. */
+const MAX_OPTION_LABEL = 72;
+
+/**
+ * The button face for an option.
+ *
+ * Only the face: the answer comment posts the option verbatim, so a clamped
+ * label never turns into a clamped answer. Agent-authored text has no length
+ * discipline, and a 500-character option would otherwise render as a
+ * 500-character button.
+ */
+export function optionLabel(option: string): string {
+  return option.length > MAX_OPTION_LABEL ? `${option.slice(0, MAX_OPTION_LABEL - 1)}…` : option;
 }
 
 /**

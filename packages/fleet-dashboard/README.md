@@ -37,14 +37,24 @@ personal access token** scoped to just the fleet repos:
 | ----------------------------- | ---------------------------------------------------------- |
 | `Issues: Read and write`      | labels, comments, filing dumps — every review control       |
 | `Pull requests: Read`         | shipped list, open work, review state                       |
-| `Actions: Read and write`     | run history; **write** only to dispatch a secrets sync      |
+| `Actions: Read`               | run history, deploy state, gardener runs. **Read only.**    |
 | `Contents: Read`              | gardener sources, allowlists, initiative manifests          |
 | `Metadata: Read`              | mandatory for every fine-grained token                      |
 | `Secrets: Read` *(optional)*  | secret **names** for the matrix; without it the matrix says "allowlist only" |
 
-> **v1 → v2 is a real escalation.** v1's token was read-only. v2's can relabel
-> and comment on every repo in the fleet, and dispatch the secrets sync. Give it
-> the shortest expiry you can live with and keep Cloudflare Access in front.
+**Issues read/write, everything else read — the dashboard can't dispatch a
+workflow by design.** A fine-grained PAT has no per-workflow grant: dispatching
+the secrets sync from the browser would need `Actions: Read and write` on every
+fleet repo, and that token — sitting in `localStorage` — could then fire
+`deploy-to-production.yml`, `deploy-production.yml`, and `deploy-convex.yml`, i.e.
+every production deploy in the fleet. That is a large amount of power to hold in
+order to render one button, so the button is a deep link to GitHub's own dispatch
+form instead, where the run is attributed to a session GitHub authenticated.
+
+> **v1 → v2 is a real escalation, and it is exactly one axis wide.** v1's token
+> was read-only. v2's can relabel and comment on every repo in the fleet — and
+> nothing else. Give it the shortest expiry you can live with and keep
+> Cloudflare Access in front.
 
 The token lives in `localStorage` and is sent only to `api.github.com` — there
 is no backend, nothing is bundled into the build, and nothing is committed.
@@ -58,10 +68,10 @@ plus `frame-ancestors` — keep the two in sync.
 ## Label conventions
 
 The dashboard holds no state of its own beyond one "last reviewed" timestamp.
-Everything it shows and everything it changes is a label, a comment, or a
-workflow dispatch — so these strings are the contract between the dashboard, the
-overnight orchestrator, the Telegram worker, and the watchdog. They are declared
-once in [`src/lib/labels.ts`](src/lib/labels.ts); nothing else may spell them.
+Everything it shows and everything it changes is a label or a comment — so these
+strings are the contract between the dashboard, the overnight orchestrator, the
+Telegram worker, and the watchdog. They are declared once in
+[`src/lib/labels.ts`](src/lib/labels.ts); nothing else may spell them.
 
 ```
 inbox:raw ──(extraction)──► inbox:proposed ──(you keep)──► agent:ready
@@ -88,7 +98,10 @@ agent:ready ──(you approve the plan)──► + plan:approved
 
 Labels must **exist in the repo** before the dashboard can apply them — it
 refuses to create one rather than let a typo'd convention spread across the
-fleet one approval at a time.
+fleet one approval at a time. Every write path enforces this, including the REST
+ones: `POST /issues/:n/labels` and `POST /issues` both *create* a label they
+don't recognize instead of rejecting it, so the names are resolved to node ids
+(one batched query per repo, cached for the session) before either is called.
 
 ### Marker comments
 
@@ -123,9 +136,11 @@ Field lines are `key: value`, key lowercase and **one word** — a key pattern
 allowing spaces would read `see https://example.com/…` as a field and delete the
 sentence from the body.
 
-A marker must **open a line**. A review comment *quoting* the convention
-("we should use `**[decider]**` for this") therefore does not file itself as a
-decision you have to keep or overturn.
+A marker must **open a line** and must sit **outside a fenced code block**. A
+review comment *quoting* the convention — inline, or in the triple-backtick
+block that is how people actually quote one — therefore does not file itself as
+a decision you have to keep or overturn. Field lines inside a fence are content
+too, so a fenced `options:` never becomes an answer button.
 
 ### PR evidence
 
@@ -184,9 +199,15 @@ file, pre-filled when it does not exist yet.
 
 `src/fleet.config.ts` holds the repo list and, per repo: the deploy-workflow
 *filenames*, which one counts as **production**, the secrets allowlist path, and
-the sync workflow to dispatch. Adding a project is one entry in that array. It
-also holds the Telegram bot URL, the watchdog ladder, and the New-app links —
-all static content, because they are decisions rather than observable data.
+the sync workflow (deep-linked, never dispatched). Adding a project is one entry
+in that array. It also holds the Telegram bot URL, the watchdog ladder, and the
+New-app links — all static content, because they are decisions rather than
+observable data.
+
+`telegramUrl` is `null` until the Telegram worker exists. The 🎙 course-correct
+control then renders as a disabled "not wired yet" button rather than a primary
+action pointing at a bot that does not answer; setting the URL is the whole of
+turning it on.
 
 Gardeners are discovered, not configured: any
 `.github/workflows/gardener-*.lock.yml` (a compiled [gh-aw][gh-aw] workflow) is
@@ -230,7 +251,7 @@ sources/github/        the only implementation (REST + GraphQL)
   client.ts              ETag-cached reads, cache-invalidating writes
   queries.ts             the aliased fleet document + the batched label mutation
   githubSource.ts        reads
-  writer.ts              the four write verbs
+  writer.ts              the three write verbs, and the label guard on all of them
 lib/                   pure logic, unit-tested: evidence, markers, select,
                        labels, allowlist, initiativesFile, review, cron, cost,
                        engine, initiative, prState, time
@@ -238,13 +259,30 @@ components/            shell, nav, palette, shared primitives
 views/                 one file per nav destination; presentational + actions
 ```
 
-**What the UI may do.** Four verbs: add/remove a label, post a comment, file an
-issue, dispatch a workflow. It never merges a PR, never edits a workflow, never
+**What the UI may do.** Three verbs: add/remove a label, post a comment, file an
+issue. It never merges a PR, never edits a workflow, never *runs* one, never
 pushes a commit. That is not an oversight — a label change and a comment are
 visible in an issue's timeline forever, while a merge performed by a dashboard
 is one nobody can attribute later. Editing a gardener is a deep link to GitHub's
 own editor, because the prompt must go through gh-aw's compile step to reach the
-`.lock.yml` that Actions actually runs.
+`.lock.yml` that Actions actually runs; running a secrets sync is a deep link
+for the token reason above.
+
+**Every write asks first.** Overturn, Unpark, Reject and free-text Answer take a
+`window.prompt` whose empty/cancel aborts; the option buttons and Keep are a
+deliberate click on a row that names the issue. The ⌘K palette's two writes are a
+**two-step**: ↵ on what you typed navigates and nothing else, and filing requires
+selecting the action and then confirming a row that names the repo, the labels,
+and the title. `test/palette.test.ts` pins that — type anything, press ↵, zero
+writes.
+
+**A batched write reports per issue.** "Approve today's plan" labels many issues
+in one mutation, chunked at 20 aliases. GitHub answers a partially-applied batch
+with `HTTP 200` carrying `data` **and** `errors`, so the row reports "approved 4
+of 5", names the ones that failed, and offers a retry scoped to just those. The
+same 200-with-errors on the read path files each message into `snapshot.errors`,
+which is what the "Partial data" banner renders — a repo the token cannot see
+names itself rather than silently shortening the fleet.
 
 **Rate limits.** One GraphQL call covers every open PR, every merge in the
 review window, every labelled issue, and the cost issues across the whole fleet —
@@ -275,7 +313,8 @@ number of rows fetched, and a truncated list says so.
 - **The secrets matrix has no 1Password column with data in it.** Reading
   1Password needs a service account that does not exist yet; the column says
   "pending service account" rather than showing plausible ticks.
-- **`Secrets: Read` is admin-scoped and usually refused.** A cell then shows
+- **`Secrets: Read` is its own fine-grained permission, and usually refused.**
+  It is not "admin" — it is the token's `Secrets` grant. A cell then shows
   `✓·` (allowlisted, existence unknown) — never `✗`. The "required key with no
   secret" banner fires only on a *confirmed* absence.
 - **Staging is not computed.** Every repo deploys staging on merge, so a merged

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   deciderConfidence,
   findMarker,
+  optionLabel,
   parseMarkers,
   questionOptions,
 } from "../src/lib/markers";
@@ -88,6 +89,58 @@ test("marker names are lowercased and CRLF is tolerated", () => {
   const [block] = parseMarkers("**[Context-Sheet]**\r\ntried: x\r\n");
   assert.equal(block?.marker, "context-sheet");
   assert.equal(block?.fields["tried"], "x");
+});
+
+test("a marker inside a fenced code block is quoted, not filed", () => {
+  // A fence is how someone actually quotes the convention in a GitHub comment,
+  // so the start-of-line rule alone left the common case open.
+  const body = [
+    "**[question]** real?",
+    "options: a | b",
+    "",
+    "```",
+    "**[decider]** fake",
+    "options: x | y",
+    "```",
+  ].join("\n");
+
+  const blocks = parseMarkers(body);
+  assert.deepEqual(
+    blocks.map((block) => block.marker),
+    ["question"],
+  );
+  // The fenced `options:` is sample text, not answer buttons.
+  assert.deepEqual(questionOptions(blocks[0]!), ["a", "b"]);
+  assert.ok(blocks[0]?.body.includes("**[decider]** fake"));
+});
+
+test("a fence closes only on its own character, and tildes work too", () => {
+  const backticks = ["**[decider]** kept", "```md", "~~~", "**[question]** fake", "```"].join("\n");
+  assert.deepEqual(
+    parseMarkers(backticks).map((block) => block.marker),
+    ["decider"],
+  );
+
+  const tildes = ["~~~", "**[decider]** fake", "~~~", "**[question]** real"].join("\n");
+  assert.deepEqual(
+    parseMarkers(tildes).map((block) => block.marker),
+    ["question"],
+  );
+});
+
+test("duplicate options collapse, because the UI keys buttons by value", () => {
+  const [block] = parseMarkers("**[question]** q\noptions: a | a | b");
+  assert.deepEqual(questionOptions(block!), ["a", "b"]);
+});
+
+test("a long option is clamped for the button but never for the answer", () => {
+  const long = "x".repeat(200);
+  const [block] = parseMarkers(`**[question]** q\noptions: ${long}`);
+  const [option] = questionOptions(block!);
+  assert.equal(option, long, "the value posted as the answer stays verbatim");
+  assert.equal(optionLabel(option!).length, 72);
+  assert.ok(optionLabel(option!).endsWith("…"));
+  assert.equal(optionLabel("short"), "short");
 });
 
 test("empty input and no markers yield nothing", () => {

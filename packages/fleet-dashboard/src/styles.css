@@ -722,6 +722,11 @@ a.pf:hover {
   color: var(--muted);
 }
 
+/* A partially-applied batch: "approved 4 of 5", on the row that did it. */
+.row .sm.warn {
+  color: var(--warn);
+}
+
 .row .sm.inline {
   display: inline;
   margin: 0;
@@ -1089,4 +1094,22 @@ select:focus {
   font-size: 0.7rem;
   color: var(--muted-2);
   border-top: 1px solid var(--line);
+}
+
+/* The second step of a palette write: repo, labels, and title, stated before
+   anything is sent. */
+.palette__confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.9rem 1rem;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: var(--raised);
+}
+
+.palette__confirm .sm {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--muted);
 }

@@ -27,9 +27,23 @@ export interface Actions {
   busy: string | null;
   /** Last write failure, cleared when the next one starts. */
   error: string | null;
-  /** Last write that succeeded, for a one-line confirmation. */
+  /**
+   * One-line confirmation of the last write that succeeded, or `null`.
+   *
+   * A sentence, not the write's key: the key is `notify:owner/repo#12`, which is
+   * a debugging aid rather than something to show a person. Callers that pass no
+   * message leave this `null` because they render their own confirmation (the
+   * Inbox paste box, the palette's own close).
+   */
   done: string | null;
-  run(key: string, fn: (writer: FleetWriter) => Promise<void>): void;
+  /**
+   * Perform a write, then refetch.
+   *
+   * `done` is the confirmation to show afterwards. Passing one is the norm: a
+   * label write whose only visible effect is a row quietly changing after a
+   * refresh is indistinguishable from a click that missed.
+   */
+  run(key: string, fn: (writer: FleetWriter) => Promise<void>, done?: string): void;
 }
 
 export interface Ctx {

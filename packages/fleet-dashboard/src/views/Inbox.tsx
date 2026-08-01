@@ -95,17 +95,21 @@ function ProposalRow({ ctx, issue }: { ctx: Ctx; issue: IssueCard }) {
           className="bt pri"
           disabled={busy !== null}
           onClick={() =>
-            ctx.actions.run(keepKey, async (writer) => {
-              // Set the full surviving label set in one call so the `init:*`
-              // labels the extractor wrote are provably still there afterwards,
-              // then drop the proposal marker.
-              await writer.addLabels(
-                issue.repoSlug,
-                issue.number,
-                labelsAfterKeep(issue.labels.map((name) => ({ name }))),
-              );
-              await writer.removeLabel(issue.repoSlug, issue.number, LABELS.inboxProposed);
-            })
+            ctx.actions.run(
+              keepKey,
+              async (writer) => {
+                // Set the full surviving label set in one call so the `init:*`
+                // labels the extractor wrote are provably still there afterwards,
+                // then drop the proposal marker.
+                await writer.addLabels(
+                  issue.repoSlug,
+                  issue.number,
+                  labelsAfterKeep(issue.labels.map((name) => ({ name }))),
+                );
+                await writer.removeLabel(issue.repoSlug, issue.number, LABELS.inboxProposed);
+              },
+              `Kept #${issue.number} — it is on ${LABELS.ready} for the next plan.`,
+            )
           }
         >
           {busy === keepKey ? "…" : "Keep"}
@@ -120,8 +124,15 @@ function ProposalRow({ ctx, issue }: { ctx: Ctx; issue: IssueCard }) {
           onClick={() => {
             const reason = window.prompt(`Reject: ${issue.title}\n\nWhy? (teaches the extractor)`);
             if (reason === null || reason.trim() === "") return;
-            ctx.actions.run(rejectKey, (writer) =>
-              writer.closeIssue(issue.repoSlug, issue.number, `Rejected at inbox: ${reason.trim()}`),
+            ctx.actions.run(
+              rejectKey,
+              (writer) =>
+                writer.closeIssue(
+                  issue.repoSlug,
+                  issue.number,
+                  `Rejected at inbox: ${reason.trim()}`,
+                ),
+              `Rejected #${issue.number} — closed with your reason.`,
             );
           }}
         >

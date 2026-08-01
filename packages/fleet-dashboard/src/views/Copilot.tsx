@@ -38,9 +38,11 @@ export function Copilot({ ctx, onOpenPalette }: { ctx: Ctx; onOpenPalette: () =>
         <Group right="⌘K from anywhere">what the palette does today</Group>
         <Row>
           <span className="grow">
-            <b>File an issue</b> to any app, optionally against an initiative
+            <b>File an issue</b> to any app
             <span className="sm">
-              Creates a real issue with <code>agent:ready</code> and an <code>init:*</code> label.
+              Creates a real issue with <code>agent:ready</code>. Two steps, always: pick the app,
+              then confirm a row naming the repo, the labels, and the title. ↵ on what you typed
+              never files anything.
             </span>
           </span>
         </Row>
@@ -48,7 +50,8 @@ export function Copilot({ ctx, onOpenPalette }: { ctx: Ctx; onOpenPalette: () =>
           <span className="grow">
             <b>Save a dump</b> to the inbox
             <span className="sm">
-              Same path as the Inbox paste box — one <code>inbox:raw</code> issue, verbatim.
+              Same path as the Inbox paste box — one <code>inbox:raw</code> issue, verbatim. Same
+              confirm step.
             </span>
           </span>
         </Row>
@@ -64,7 +67,10 @@ export function Copilot({ ctx, onOpenPalette }: { ctx: Ctx; onOpenPalette: () =>
         <Row>
           <span className="grow">
             <b>Jump to any view</b>
-            <span className="sm">Type a view name and press ↵.</span>
+            <span className="sm">
+              Type a view name and press ↵. That is all ↵ does — if nothing matches what you typed,
+              it does nothing and the actions are one ↓ away.
+            </span>
           </span>
         </Row>
       </Rows>
@@ -72,9 +78,16 @@ export function Copilot({ ctx, onOpenPalette }: { ctx: Ctx; onOpenPalette: () =>
       <p className="foot">
         Course-correcting mid-day is a Telegram message, not a chat window here — that is the
         design, not a limitation of the stub.{" "}
-        <a href={ctx.config.telegramUrl} target="_blank" rel="noreferrer">
-          🎙 course-correct
-        </a>
+        {ctx.config.telegramUrl === null ? (
+          <em>
+            The bot itself is not built yet; set <code>telegramUrl</code> in{" "}
+            <code>fleet.config.ts</code> when it is.
+          </em>
+        ) : (
+          <a href={ctx.config.telegramUrl} target="_blank" rel="noreferrer">
+            🎙 course-correct
+          </a>
+        )}
       </p>
     </>
   );

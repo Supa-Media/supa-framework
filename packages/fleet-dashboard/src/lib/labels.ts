@@ -2,8 +2,8 @@
  * The label vocabulary the whole pipeline speaks.
  *
  * The dashboard holds no state of its own beyond a "last reviewed" timestamp.
- * Everything it shows and everything it changes is a GitHub label, comment, or
- * workflow dispatch — so these strings are the contract between the dashboard,
+ * Everything it shows and everything it changes is a GitHub label or comment —
+ * so these strings are the contract between the dashboard,
  * the overnight orchestrator, the Telegram worker, and the watchdog. They are
  * declared once here and documented in README.md; nothing else may spell them.
  *

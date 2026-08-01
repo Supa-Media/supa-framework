@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 import { buildMatrix, missingRequired, type MatrixCell } from "../lib/allowlist";
 import { Empty, Pill, ViewHeader } from "../components/ui";
 import type { Ctx } from "./context";
@@ -14,8 +12,9 @@ import type { Ctx } from "./context";
  * A cell states two independent things and never conflates them:
  *
  *   ✓✓  the key is in that repo's allowlist AND a GitHub secret of that name exists
- *   ✓·  it is allowlisted, but the secret could not be checked (403 — the
- *       endpoint needs an admin-scoped token, which the read-only PAT is not)
+ *   ✓·  it is allowlisted, but the secret could not be checked (403 — listing
+ *       secret *names* needs the token's own `Secrets: Read` permission, which
+ *       is a separate fine-grained grant rather than anything to do with admin)
  *   ✗   it is allowlisted and there is no secret — the actionable case
  *   n/a the repo does not list this key at all
  *
@@ -24,8 +23,6 @@ import type { Ctx } from "./context";
  * would be a lie about the one hop nobody can otherwise see.
  */
 export function Secrets({ ctx }: { ctx: Ctx }) {
-  const [ran, setRan] = useState<string | null>(null);
-
   const repos = ctx.snapshot.projects.filter((project) => {
     const config = ctx.config.repos.find((repo) => repo.slug.toLowerCase() === project.key);
     return config?.secretsAllowlistPath != null;
@@ -51,7 +48,7 @@ export function Secrets({ ctx }: { ctx: Ctx }) {
       {anyUnknown && (
         <p className="banner err">
           Allowlist only for at least one repo: reading GitHub&apos;s secret <em>names</em> needs a
-          token with <code>Secrets: Read</code> (admin), and this one was refused. Cells show{" "}
+          token with the <code>Secrets: Read</code> permission, and this one was refused. Cells show{" "}
           <code>✓·</code> — allowlisted, existence unknown — rather than guessing.
         </p>
       )}
@@ -62,8 +59,6 @@ export function Secrets({ ctx }: { ctx: Ctx }) {
           secret: {missing.map((row) => row.key).join(", ")}.
         </p>
       )}
-
-      {ran !== null && <p className="banner ok">{ran}</p>}
 
       {rows.length === 0 ? (
         <Empty>
@@ -105,7 +100,10 @@ export function Secrets({ ctx }: { ctx: Ctx }) {
       )}
 
       <div className="rows">
-        <div className="grp">run a sync</div>
+        <div className="grp">
+          run a sync
+          <span className="r">on GitHub</span>
+        </div>
         {ctx.config.repos.map((repo) => {
           if (repo.secretsSyncWorkflow === null) return null;
           const project = ctx.snapshot.projects.find(
@@ -121,45 +119,18 @@ export function Secrets({ ctx }: { ctx: Ctx }) {
                   <code>{repo.secretsAllowlistPath}</code>
                   {project?.allowlist.problem != null && ` · ${project.allowlist.problem}`}
                 </span>
+                <span className="sm">
+                  environment: {repo.secretsSyncEnvironments.join(" · ")}
+                </span>
               </span>
-              <span className="bt-row">
-                {repo.secretsSyncEnvironments.map((environment) => {
-                  const key = `sync:${repo.slug}:${environment}`;
-                  return (
-                    <button
-                      key={environment}
-                      type="button"
-                      className="bt"
-                      disabled={ctx.actions.busy !== null}
-                      onClick={() => {
-                        // A sync overwrites live secrets in a real environment.
-                        // The confirm is the only thing standing between a
-                        // mis-tap on a phone and a production rotation.
-                        if (
-                          !window.confirm(
-                            `Dispatch ${repo.secretsSyncWorkflow} for ${repo.label} (${environment})?\n\nThis re-syncs 1Password → GitHub for that environment.`,
-                          )
-                        ) {
-                          return;
-                        }
-                        ctx.actions.run(key, async (writer) => {
-                          await writer.dispatchWorkflow(
-                            repo.slug,
-                            repo.secretsSyncWorkflow as string,
-                            branch,
-                            { environment },
-                          );
-                          setRan(
-                            `Dispatched ${repo.secretsSyncWorkflow} for ${repo.label} (${environment}). Watch it in the repo's Actions tab.`,
-                          );
-                        });
-                      }}
-                    >
-                      {ctx.actions.busy === key ? "…" : `run sync ▶ ${environment}`}
-                    </button>
-                  );
-                })}
-              </span>
+              <a
+                className="bt"
+                href={`https://github.com/${repo.slug}/actions/workflows/${encodeURIComponent(repo.secretsSyncWorkflow)}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                run sync ▶
+              </a>
             </div>
           );
         })}
@@ -167,7 +138,17 @@ export function Secrets({ ctx }: { ctx: Ctx }) {
 
       <p className="foot">
         Values live in 1Password and change there only. This page never reads a value — GitHub&apos;s
-        API does not expose them, and the sync is a workflow dispatch, not a write from the browser.
+        API does not expose them.
+      </p>
+
+      <p className="foot">
+        <b>The dashboard cannot dispatch a workflow, by design.</b> A fine-grained token has no
+        per-workflow grant: dispatching a sync from here would require{" "}
+        <code>Actions: Read and write</code> on every fleet repo, and a token sitting in this
+        browser&apos;s localStorage with that scope could fire every production deploy in the fleet.
+        Buying one button with that is a bad trade, so <b>run sync ▶</b> opens GitHub&apos;s own
+        dispatch form — where the run is attributed to a session GitHub authenticated, and the
+        environment dropdown is the workflow&apos;s own.
       </p>
     </>
   );

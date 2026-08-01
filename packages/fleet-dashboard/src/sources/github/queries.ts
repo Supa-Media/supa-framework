@@ -304,10 +304,17 @@ export function buildMergedQuery(slug: string, since: string): string {
  * Every issue in the fleet carrying a label the dashboard reads.
  *
  * One search, not one per label: GitHub's `label:"a","b"` is an OR, so the whole
- * vocabulary fits in a single node. Quoted because every label name contains a
- * `:` and an unquoted `label:agent:ready` parses as the qualifier `label` with
- * value `agent` — which silently matches nothing and would render an eternally
- * empty queue.
+ * vocabulary fits in a single node.
+ *
+ * Quoted because a label name may contain a space or a `/`
+ * (`label:"Planning/New feature"` is a real one in the fleet), and unquoted
+ * those terminate the qualifier. **Not** because of the `:` — replayed against
+ * the live API, `label:type:bug` and `label:"type:bug"` both return the same
+ * 32,247, since search takes everything after the first colon as the value. The
+ * rule is still "always quote", but for the reason above; the earlier note here
+ * claimed unquoted silently matched nothing, and someone trusting that rationale
+ * could have "simplified" the quoting away on a fleet whose label names happen
+ * to be colon-only.
  */
 export function buildLabelQuery(slugs: readonly string[]): string {
   const labels = [
@@ -348,8 +355,22 @@ export function buildIssueQuery(slugs: readonly string[]): string {
 }
 
 /**
+ * Aliases per `ApprovePlan` mutation.
+ *
+ * `selectPlan` groups every unapproved `agent:ready` issue and `MAX_ISSUES` is
+ * 100 fleet-wide, so one click could otherwise build a hundred-alias document.
+ * GitHub runs mutation aliases **serially**, which makes that both the slowest
+ * request the app can send and the one most likely to time out half-applied.
+ * Twenty costs one extra round-trip in the rare case; the caller reports per
+ * chunk, so a failure in the third does not erase the first two.
+ */
+export const MAX_APPROVE_BATCH = 20;
+
+/**
  * The batched "approve today's plan" mutation: one label onto many issues, one
- * round-trip. Aliases are positional for the same reason the searches are.
+ * round-trip. Aliases are positional for the same reason the searches are — and
+ * the caller maps a failing `path: ["add3"]` back to the third node id, which is
+ * how a partial failure names the issues it did not label.
  */
 export function buildAddLabelMutation(count: number): string {
   const variables = [
@@ -368,13 +389,33 @@ export function buildAddLabelMutation(count: number): string {
   return `mutation ApprovePlan(${variables}) {${fields}\n  }`;
 }
 
-/** Resolve a label *name* to the node id `addLabelsToLabelable` needs. */
-export const LABEL_ID_QUERY = /* GraphQL */ `
-  query LabelId($owner: String!, $name: String!, $label: String!) {
-    repository(owner: $owner, name: $name) {
-      label(name: $label) {
+/**
+ * Resolve several label *names* to node ids in one round-trip.
+ *
+ * Every write path goes through this, not just the batched approve: the REST
+ * issues endpoint **creates** a label it doesn't recognize, so "the dashboard
+ * refuses to create a label" is only true if the names are checked before the
+ * REST call rather than by it. A missing label answers `null` for its alias
+ * with no `errors` entry, which is what lets one query check a set and report
+ * exactly which member is absent.
+ */
+export function buildLabelIdsQuery(count: number): string {
+  const variables = [
+    "$owner: String!",
+    "$name: String!",
+    ...Array.from({ length: count }, (_, i) => `$label${i}: String!`),
+  ].join(", ");
+
+  const fields = Array.from(
+    { length: count },
+    (_, i) => `
+      l${i}: label(name: $label${i}) {
         id
-      }
+      }`,
+  ).join("");
+
+  return `query LabelIds(${variables}) {
+    repository(owner: $owner, name: $name) {${fields}
     }
-  }
-`;
+  }`;
+}

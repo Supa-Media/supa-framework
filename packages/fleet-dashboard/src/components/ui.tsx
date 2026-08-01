@@ -88,35 +88,47 @@ export function RunDot({ run, fallback }: { run: RunSummary | null; fallback: st
   );
 }
 
+/**
+ * A `div`, not a `p` — two callers nest a `<ul>` of per-repo problems inside a
+ * banner, and a list cannot descend from a paragraph: the browser closes the
+ * `<p>` early, the bullets escape the banner's background and padding, and React
+ * logs a `validateDOMNesting` error. The `role` is what carries the semantics
+ * anyway.
+ */
 export function Banner({ tone, children }: { tone: "err" | "ok"; children: ReactNode }) {
   return (
-    <p className={`banner ${tone}`} role={tone === "err" ? "alert" : "status"}>
+    <div className={`banner ${tone}`} role={tone === "err" ? "alert" : "status"}>
       {children}
-    </p>
+    </div>
   );
 }
 
 /**
  * The ⚡ toggle: add or remove `agent:notify`.
  *
- * Disabled while its own write is in flight rather than optimistically flipped —
- * a label that appears to be set and silently isn't is the failure mode that
- * makes someone stop trusting the interrupt switch.
+ * Never optimistically flipped — a label that appears to be set and silently
+ * isn't is the failure mode that makes someone stop trusting the interrupt
+ * switch. Which is also why `disabled` covers *any* write in flight and not just
+ * this toggle's own: writes are serialized one at a time, so a click landing
+ * during someone else's write used to be dropped by that guard with no feedback
+ * — the same lie, arrived at from the other side.
  */
 export function NotifyToggle({
   on,
   busy,
+  disabled = false,
   onToggle,
 }: {
   on: boolean;
   busy: boolean;
+  disabled?: boolean;
   onToggle: () => void;
 }) {
   return (
     <button
       type="button"
       className={`flag${on ? " on" : ""}`}
-      disabled={busy}
+      disabled={busy || disabled}
       onClick={onToggle}
       title={on ? "Telegram pings you at each milestone" : "Silent — batches to your next review"}
       aria-pressed={on}

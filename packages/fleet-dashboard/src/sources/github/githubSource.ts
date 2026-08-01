@@ -232,6 +232,9 @@ async function fetchAllPulls(
   const query = buildFleetQuery(slugs.length);
   const cursors: Array<string | null> = slugs.map(() => null);
   const done: boolean[] = slugs.map(() => false);
+  // A repo the token can't see fails the same way on every page; reporting it
+  // five times would bury the other four lines of the banner.
+  const reported = new Set<string>();
 
   for (let page = 0; page < MAX_PR_PAGES; page += 1) {
     if (done.every(Boolean)) break;
@@ -246,12 +249,26 @@ async function fetchAllPulls(
       variables[`m${i}`] = buildMergedQuery(slug, since);
     });
 
-    const data = await client
-      .graphql<FleetQueryResult>(query, variables, signal)
+    const result = await client
+      .graphqlRaw<FleetQueryResult>(query, variables, signal)
       .catch((error: unknown) => {
         errors.push({ scope: "github", message: describeError(error) });
         return null;
       });
+    if (result === null) break;
+
+    // A partial answer is `HTTP 200` with `data` AND `errors` — one alias null
+    // beside the rest. It never reaches the `.catch` above, so before this the
+    // fleet just came back quietly short: no banner, no clue which repo was
+    // missing. Every message is filed so the Partial-data banner can name them.
+    for (const error of result.errors) {
+      const message = error.message;
+      if (reported.has(message)) continue;
+      reported.add(message);
+      errors.push({ scope: "github", message });
+    }
+
+    const data = result.data;
     if (data === null) break;
 
     if (page === 0) {

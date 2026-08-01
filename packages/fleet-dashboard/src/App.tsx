@@ -104,7 +104,10 @@ export function App() {
       busy,
       error: writeError,
       done: writeDone,
-      run(key, fn) {
+      run(key, fn, done) {
+        // Every caller also disables its control while `busy` is set, so this is
+        // a backstop rather than the guard — a silent return is only acceptable
+        // for a click that could not have been made in the first place.
         if (writer === null || busy !== null) return;
         setBusy(key);
         setWriteError(null);
@@ -112,7 +115,7 @@ export function App() {
         void (async () => {
           try {
             await fn(writer);
-            setWriteDone(key);
+            setWriteDone(done ?? null);
             // Re-read rather than patching local state: the whole point of the
             // label convention is that GitHub is the state, and a screen that
             // showed a label it had not confirmed would be the first place the
@@ -221,6 +224,7 @@ export function App() {
           </Banner>
         )}
         {writeError !== null && <Banner tone="err">Write failed: {writeError}</Banner>}
+        {writeError === null && writeDone !== null && <Banner tone="ok">{writeDone}</Banner>}
 
         <CurrentView ctx={ctx} view={view} onMarkReviewed={markReviewed} onOpenPalette={() => setPaletteOpen(true)} />
       </Shell>

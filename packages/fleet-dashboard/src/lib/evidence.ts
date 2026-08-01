@@ -99,16 +99,34 @@ function classify(raw: string): EvidenceKind {
   return "note";
 }
 
+/**
+ * `http(s)` only, for every branch below.
+ *
+ * A PR body is the one input on the review screen that the fleet's own tooling
+ * did not author, and its chips become real `<a href>`s. Both layers happen to
+ * block the interesting case already — React 19 rewrites a `javascript:` href to
+ * a thrown error, and the page's `script-src 'self'` CSP blocks it
+ * independently — but `data:` and `blob:` pass through both, the reasoning for
+ * an allowlist was already written for the bare-URL branch three lines down, and
+ * applying it to the markdown branches too costs one function. Hardening, not a
+ * fix.
+ */
+function httpOnly(url: string | undefined): string | null {
+  if (typeof url !== "string") return null;
+  const trimmed = url.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : null;
+}
+
 function firstUrl(raw: string): string | null {
   IMAGE.lastIndex = 0;
   const image = IMAGE.exec(raw);
   IMAGE.lastIndex = 0;
-  if (image) return image[2] ?? null;
+  if (image) return httpOnly(image[2]);
 
   LINK.lastIndex = 0;
   const link = LINK.exec(raw);
   LINK.lastIndex = 0;
-  if (link) return link[2] ?? null;
+  if (link) return httpOnly(link[2]);
 
   // A URL sitting bare in the bullet still deserves to be clickable. Only
   // https — an `http://` chip on a page pinned to https would be a downgrade

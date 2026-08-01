@@ -191,15 +191,30 @@ export class GitHubClient {
   }
 
   /**
-   * GraphQL POST. Not conditionally cached — GitHub doesn't ETag the GraphQL
-   * endpoint — but one GraphQL call replaces dozens of REST ones, which is the
-   * bigger rate-limit win.
+   * GraphQL POST, returning **both** halves of the answer.
+   *
+   * This shape exists because GitHub answers a partially-failed GraphQL request
+   * with `HTTP 200` carrying `data` *and* `errors` — one null alias beside four
+   * good ones. Verified live:
+   *
+   * ```
+   * { "data": { "a": {…}, "b": null },
+   *   "errors": [ { "type": "NOT_FOUND", "path": ["b"], … } ] }   HTTP 200
+   * ```
+   *
+   * Collapsing that to `data` alone (which the previous version did whenever
+   * `data` was non-nullish) means a five-issue approve where one node id is
+   * stale resolves as a success and the screen reports five. Both callers need
+   * the errors and they need them differently — the read path files them as
+   * `snapshot.errors` so the Partial-data banner fires, the write path maps each
+   * `path: ["addN"]` back to the issue it failed on — so neither can be served
+   * by a method that decides on their behalf.
    */
-  async graphql<T>(
+  async graphqlRaw<T>(
     query: string,
     variables: Record<string, unknown>,
     signal?: AbortSignal,
-  ): Promise<T> {
+  ): Promise<GraphQlResult<T>> {
     const response = await fetch(`${API_ROOT}/graphql`, {
       method: "POST",
       headers: {
@@ -216,19 +231,51 @@ export class GitHubClient {
       throw new GitHubError(await describeFailure(response, "/graphql"), response.status);
     }
 
-    const payload = (await response.json()) as { data?: T; errors?: Array<{ message: string }> };
-    if (payload.errors && payload.errors.length > 0) {
-      // Partial data is common (one repo the token can't see); surface the
-      // message but still return whatever came back.
-      if (payload.data === undefined || payload.data === null) {
-        throw new GitHubError(
-          payload.errors.map((error) => error.message).join("; "),
-          response.status,
-        );
-      }
-    }
-    return payload.data as T;
+    const payload = (await response.json()) as {
+      data?: T | null;
+      errors?: GraphQlError[];
+    };
+    return {
+      data: payload.data ?? null,
+      errors: payload.errors ?? [],
+      status: response.status,
+    };
   }
+
+  /**
+   * GraphQL POST for callers that want all-or-nothing: **any** `errors` entry
+   * throws, even alongside usable `data`.
+   *
+   * Used for the label-id lookups, where a partial answer has no useful
+   * interpretation. Anything that batches work over many issues must use
+   * `graphqlRaw` and report per-alias.
+   */
+  async graphql<T>(
+    query: string,
+    variables: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const { data, errors, status } = await this.graphqlRaw<T>(query, variables, signal);
+    if (errors.length > 0) {
+      throw new GitHubError(errors.map((error) => error.message).join("; "), status);
+    }
+    if (data === null) throw new GitHubError("GitHub returned no data for the query.", status);
+    return data;
+  }
+}
+
+/** One entry of a GraphQL `errors` array. `path` names the alias that failed. */
+export interface GraphQlError {
+  message: string;
+  type?: string;
+  path?: Array<string | number>;
+}
+
+export interface GraphQlResult<T> {
+  /** `null` when the whole document failed; partial objects are normal. */
+  data: T | null;
+  errors: GraphQlError[];
+  status: number;
 }
 
 async function describeFailure(response: Response, path: string): Promise<string> {

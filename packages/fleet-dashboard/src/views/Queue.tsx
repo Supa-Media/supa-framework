@@ -55,11 +55,17 @@ export function Queue({ ctx }: { ctx: Ctx }) {
                 <NotifyToggle
                   on={issue.notify}
                   busy={ctx.actions.busy === `notify:${issue.id}`}
+                  disabled={ctx.actions.busy !== null}
                   onToggle={() =>
-                    ctx.actions.run(`notify:${issue.id}`, (writer) =>
+                    ctx.actions.run(
+                      `notify:${issue.id}`,
+                      (writer) =>
+                        issue.notify
+                          ? writer.removeLabel(issue.repoSlug, issue.number, LABELS.notify)
+                          : writer.addLabels(issue.repoSlug, issue.number, [LABELS.notify]),
                       issue.notify
-                        ? writer.removeLabel(issue.repoSlug, issue.number, LABELS.notify)
-                        : writer.addLabels(issue.repoSlug, issue.number, [LABELS.notify]),
+                        ? `#${issue.number} is silent again — it batches to your next review.`
+                        : `#${issue.number} will ping you at each milestone.`,
                     )
                   }
                 />

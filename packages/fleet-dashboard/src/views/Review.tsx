@@ -1,13 +1,19 @@
 import { useState } from "react";
 
 import { LABELS } from "../lib/labels";
-import { questionOptions, deciderConfidence, type MarkerBlock } from "../lib/markers";
+import {
+  optionLabel,
+  questionOptions,
+  deciderConfidence,
+  type MarkerBlock,
+} from "../lib/markers";
 import { prodState } from "../lib/review";
 import {
   selectDecisions,
   selectParked,
   selectPlan,
   selectQuestions,
+  type RepoGroup,
 } from "../lib/select";
 import { absolute, age } from "../lib/time";
 import type { Evidence } from "../lib/evidence";
@@ -60,9 +66,24 @@ export function Review({
         sub={`since ${absolute(since)} — decisions now, then it runs without you`}
         actions={
           <>
-            <a className="bt" href={config.telegramUrl} target="_blank" rel="noreferrer">
-              🎙 course-correct
-            </a>
+            {config.telegramUrl === null ? (
+              // The Telegram worker is a separate, unbuilt workstream. A primary
+              // button linking to a bot that does not answer is worse than a
+              // button that says so — the rest of this app labels its stubs
+              // honestly (Copilot, ＋ New app) and this is no different.
+              <button
+                type="button"
+                className="bt"
+                disabled
+                title="No bot configured yet — set telegramUrl in fleet.config.ts once the Telegram worker exists."
+              >
+                🎙 course-correct — not wired yet
+              </button>
+            ) : (
+              <a className="bt" href={config.telegramUrl} target="_blank" rel="noreferrer">
+                🎙 course-correct
+              </a>
+            )}
             <button
               type="button"
               className="bt pri"
@@ -205,52 +226,9 @@ export function Review({
           {plan.length > 0 && (
             <Rows>
               <Group right="approve and walk away">today&apos;s plan, per app</Group>
-              {plan.map((repoGroup) => {
-                const key = `approve:${repoGroup.repoKey}`;
-                return (
-                  <Row key={repoGroup.repoKey}>
-                    <span className="grow">
-                      <b>{repoGroup.repoLabel}</b> · {repoGroup.issues.length}{" "}
-                      {repoGroup.issues.length === 1 ? "item" : "items"}
-                      <span className="sm">
-                        {repoGroup.issues.map((issue) => issue.title).join(" → ")}
-                      </span>
-                    </span>
-                    <span className="bt-row">
-                      {repoGroup.issues.map((issue) => (
-                        <NotifyToggle
-                          key={issue.id}
-                          on={issue.notify}
-                          busy={actions.busy === `notify:${issue.id}`}
-                          onToggle={() =>
-                            actions.run(`notify:${issue.id}`, (writer) =>
-                              issue.notify
-                                ? writer.removeLabel(issue.repoSlug, issue.number, LABELS.notify)
-                                : writer.addLabels(issue.repoSlug, issue.number, [LABELS.notify]),
-                            )
-                          }
-                        />
-                      ))}
-                    </span>
-                    <button
-                      type="button"
-                      className="bt pri"
-                      disabled={actions.busy !== null}
-                      onClick={() =>
-                        actions.run(key, (writer) =>
-                          writer.addLabelToMany(
-                            repoGroup.repoSlug,
-                            repoGroup.issues.map((issue) => issue.nodeId),
-                            LABELS.planApproved,
-                          ),
-                        )
-                      }
-                    >
-                      {actions.busy === key ? "approving…" : `Approve ${repoGroup.repoLabel}`}
-                    </button>
-                  </Row>
-                );
-              })}
+              {plan.map((repoGroup) => (
+                <ApproveRow key={repoGroup.repoKey} ctx={ctx} group={repoGroup} />
+              ))}
             </Rows>
           )}
 
@@ -274,6 +252,113 @@ export function Review({
 }
 
 /* ── Pieces ─────────────────────────────────────────────────────────────── */
+
+/**
+ * One repo's plan, and the one control on this screen that writes to many
+ * issues at once.
+ *
+ * It reports **per issue**, because the batched mutation can partially succeed:
+ * GitHub answers a five-alias `ApprovePlan` where one node id is stale with
+ * `HTTP 200`, four labels applied, and an `errors` array naming the fifth. The
+ * screen whose whole claim is "approve and walk away" has to be able to say
+ * "approved 4 of 5" and offer the fifth again, or the walking away is the bug.
+ *
+ * A batch where *nothing* landed throws instead, so it surfaces in the page's
+ * write-failed banner rather than as a quiet inline note.
+ *
+ * The confirmation is rendered here rather than passed to `actions.run`, because
+ * how many issues were approved is only known **after** the call — a message
+ * chosen before it would be the same optimistic lie the batching fix is about.
+ */
+function ApproveRow({ ctx, group }: { ctx: Ctx; group: RepoGroup }) {
+  const { actions } = ctx;
+  const [result, setResult] = useState<{ labelled: number; failed: IssueCard[] } | null>(null);
+  const key = `approve:${group.repoKey}`;
+
+  // Retry targets the issues that failed, not the whole group again — relabelling
+  // the ones that worked is harmless but tells the user nothing about whether the
+  // retry fixed anything.
+  const pending = result === null ? group.issues : result.failed;
+
+  const approve = () =>
+    actions.run(key, async (writer) => {
+      const outcome = await writer.addLabelToMany(
+        group.repoSlug,
+        pending.map((issue) => issue.nodeId),
+        LABELS.planApproved,
+      );
+      if (outcome.failed.length === 0) {
+        setResult({ labelled: outcome.labelled.length, failed: [] });
+        return;
+      }
+      if (outcome.labelled.length === 0) {
+        throw new Error(
+          `${group.repoLabel}: none of the ${outcome.failed.length} approved — ${outcome.failed[0]?.message ?? "no reason given"}`,
+        );
+      }
+      const stuck = new Set(outcome.failed.map((failure) => failure.nodeId));
+      setResult({
+        labelled: outcome.labelled.length,
+        failed: pending.filter((issue) => stuck.has(issue.nodeId)),
+      });
+    });
+
+  return (
+    <Row>
+      <span className="grow">
+        <b>{group.repoLabel}</b> · {group.issues.length}{" "}
+        {group.issues.length === 1 ? "item" : "items"}
+        <span className="sm">{group.issues.map((issue) => issue.title).join(" → ")}</span>
+        {result !== null &&
+          (result.failed.length === 0 ? (
+            <span className="sm">
+              Approved {result.labelled} — on <code>{LABELS.planApproved}</code>.
+            </span>
+          ) : (
+            <span className="sm warn">
+              Approved {result.labelled} of {result.labelled + result.failed.length}. Not approved:{" "}
+              {result.failed.map((issue) => `#${issue.number}`).join(", ")} — retry them with the
+              button.
+            </span>
+          ))}
+      </span>
+      <span className="bt-row">
+        {group.issues.map((issue) => (
+          <NotifyToggle
+            key={issue.id}
+            on={issue.notify}
+            busy={actions.busy === `notify:${issue.id}`}
+            disabled={actions.busy !== null}
+            onToggle={() =>
+              actions.run(
+                `notify:${issue.id}`,
+                (writer) =>
+                  issue.notify
+                    ? writer.removeLabel(issue.repoSlug, issue.number, LABELS.notify)
+                    : writer.addLabels(issue.repoSlug, issue.number, [LABELS.notify]),
+                issue.notify
+                  ? `#${issue.number} is silent again — it batches to your next review.`
+                  : `#${issue.number} will ping you at each milestone.`,
+              )
+            }
+          />
+        ))}
+      </span>
+      <button
+        type="button"
+        className="bt pri"
+        disabled={actions.busy !== null || pending.length === 0}
+        onClick={approve}
+      >
+        {actions.busy === key
+          ? "approving…"
+          : result === null || result.failed.length === 0
+            ? `Approve ${group.repoLabel}`
+            : `Retry ${result.failed.length}`}
+      </button>
+    </Row>
+  );
+}
 
 function EvidenceChips({ evidence }: { evidence: Evidence }) {
   if (evidence.items.length === 0) {
@@ -371,14 +456,18 @@ function OverturnButton({
         );
         if (reason === null || reason.trim() === "") return;
 
-        ctx.actions.run(key, async (writer) => {
-          await writer.comment(
-            decision.repoSlug,
-            decision.number,
-            `@overturn: ${reason.trim()}\n\nOverturned at review. The decision above does not stand; re-decide with this constraint.`,
-          );
-          await writer.addLabels(decision.repoSlug, decision.number, [LABELS.ready]);
-        });
+        ctx.actions.run(
+          key,
+          async (writer) => {
+            await writer.comment(
+              decision.repoSlug,
+              decision.number,
+              `@overturn: ${reason.trim()}\n\nOverturned at review. The decision above does not stand; re-decide with this constraint.`,
+            );
+            await writer.addLabels(decision.repoSlug, decision.number, [LABELS.ready]);
+          },
+          `Overturned #${decision.number} — it is back on ${LABELS.ready} with your reason.`,
+        );
       }}
     >
       {busy ? "…" : "Overturn"}
@@ -401,11 +490,15 @@ function UnparkButton({ ctx, issue }: { ctx: Ctx; issue: IssueCard }) {
         );
         if (note === null || note.trim() === "") return;
 
-        ctx.actions.run(key, async (writer) => {
-          await writer.comment(issue.repoSlug, issue.number, note.trim());
-          await writer.addLabels(issue.repoSlug, issue.number, [LABELS.ready]);
-          await writer.removeLabel(issue.repoSlug, issue.number, LABELS.blocked);
-        });
+        ctx.actions.run(
+          key,
+          async (writer) => {
+            await writer.comment(issue.repoSlug, issue.number, note.trim());
+            await writer.addLabels(issue.repoSlug, issue.number, [LABELS.ready]);
+            await writer.removeLabel(issue.repoSlug, issue.number, LABELS.blocked);
+          },
+          `Unparked #${issue.number} — it is back on ${LABELS.ready}.`,
+        );
       }}
     >
       {busy ? "…" : "I fixed it"}
@@ -426,11 +519,15 @@ function QuestionRow({
   const busy = ctx.actions.busy === key;
 
   const answer = (text: string) =>
-    ctx.actions.run(key, async (writer) => {
-      await writer.comment(issue.repoSlug, issue.number, `**[answer]** ${text}`);
-      await writer.addLabels(issue.repoSlug, issue.number, [LABELS.ready]);
-      await writer.removeLabel(issue.repoSlug, issue.number, LABELS.blocked);
-    });
+    ctx.actions.run(
+      key,
+      async (writer) => {
+        await writer.comment(issue.repoSlug, issue.number, `**[answer]** ${text}`);
+        await writer.addLabels(issue.repoSlug, issue.number, [LABELS.ready]);
+        await writer.removeLabel(issue.repoSlug, issue.number, LABELS.blocked);
+      },
+      `Answered #${issue.number} — it is back on ${LABELS.ready}.`,
+    );
 
   return (
     <Row>
@@ -451,9 +548,12 @@ function QuestionRow({
             type="button"
             className="bt"
             disabled={ctx.actions.busy !== null}
+            title={option}
+            // The comment posts the option verbatim; only the button face is
+            // clamped, so answering never truncates what the agent asked about.
             onClick={() => answer(option)}
           >
-            {busy ? "…" : option}
+            {busy ? "…" : optionLabel(option)}
           </button>
         ))}
         <button

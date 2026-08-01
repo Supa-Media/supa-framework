@@ -278,31 +278,49 @@ export interface FleetSource {
 }
 
 /**
+ * What a batched label write actually did.
+ *
+ * Not `void`, because GitHub answers a partially-applied batch with `HTTP 200`
+ * carrying both `data` and `errors` — so "approved five" and "approved four of
+ * five, and here is the one that failed" are the same HTTP outcome and only
+ * differ in what the caller bothers to read. The review screen reports the
+ * difference; a `Promise<void>` could not.
+ */
+export interface LabelBatchOutcome {
+  /** Node ids the label is now on. */
+  labelled: string[];
+  /** Node ids it is not on, each with GitHub's reason. */
+  failed: Array<{ nodeId: string; message: string }>;
+}
+
+/**
  * The write seam.
  *
- * Every method is a label, a comment, an issue, or a workflow dispatch —
- * deliberately the four least powerful things that still let the review screen
- * be a control surface. The dashboard never merges a PR, never edits a
- * workflow, and never pushes a commit; those stay in GitHub's own UI where they
- * have GitHub's own confirmations.
+ * Every method is a label, a comment, or an issue — deliberately the three least
+ * powerful things that still let the review screen be a control surface. The
+ * dashboard never merges a PR, never edits a workflow, never pushes a commit,
+ * and (since the token audit) never **runs** a workflow either; those stay in
+ * GitHub's own UI where they have GitHub's own confirmations and GitHub's own
+ * attribution.
+ *
+ * Label *names* handed to any of these must already exist in the repo. That is
+ * enforced in the implementation rather than assumed here, because the REST
+ * issues endpoints create an unknown label instead of rejecting it.
  */
 export interface FleetWriter {
   addLabels(slug: string, issueNumber: number, labels: string[]): Promise<void>;
   removeLabel(slug: string, issueNumber: number, label: string): Promise<void>;
-  /** One GraphQL mutation for many issues — the "approve today's plan" button. */
-  addLabelToMany(slug: string, nodeIds: string[], label: string): Promise<void>;
+  /**
+   * One label onto many issues — the "approve today's plan" button. Batched in
+   * chunks, and reports per issue: see `LabelBatchOutcome`.
+   */
+  addLabelToMany(slug: string, nodeIds: string[], label: string): Promise<LabelBatchOutcome>;
   comment(slug: string, issueNumber: number, body: string): Promise<void>;
   closeIssue(slug: string, issueNumber: number, comment: string | null): Promise<void>;
   createIssue(
     slug: string,
     issue: { title: string; body: string; labels: string[] },
   ): Promise<{ url: string; number: number }>;
-  dispatchWorkflow(
-    slug: string,
-    workflowFile: string,
-    ref: string,
-    inputs: Record<string, string>,
-  ): Promise<void>;
 }
 
 /** An empty snapshot — the merge identity, and what the UI renders before first fetch. */

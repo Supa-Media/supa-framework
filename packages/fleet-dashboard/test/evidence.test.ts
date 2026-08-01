@@ -87,6 +87,26 @@ test("a bare https URL in a bullet is still clickable; http is not", () => {
   assert.equal(insecure.items[0]?.url, null);
 });
 
+test("a markdown link's scheme is allowlisted too, not just a bare URL's", () => {
+  // A PR body is the one input on the review screen the fleet's own tooling did
+  // not author, and these chips become real hrefs. React and the CSP both block
+  // the `javascript:` case already; `data:` and `blob:` pass both.
+  const cases = [
+    "[proof](javascript:alert(1))",
+    "[proof](data:text/html;base64,PHNjcmlwdD4=)",
+    "[proof](blob:https://example.com/abc)",
+    "[proof](/o/r/pull/1)",
+    "![shot](javascript:alert(1))",
+  ];
+  for (const bullet of cases) {
+    const evidence = parseEvidence(`## Evidence\n- ${bullet}\n`);
+    assert.equal(evidence.items[0]?.url, null, `${bullet} produced a href`);
+  }
+
+  const ok = parseEvidence("## Evidence\n- [proof](http://example.com/a)\n");
+  assert.equal(ok.items[0]?.url, "http://example.com/a");
+});
+
 test("CRLF bodies parse the same as LF ones", () => {
   const evidence = parseEvidence("## Evidence\r\n- tests green\r\n## Notes\r\n- no\r\n");
   assert.deepEqual(

@@ -37,9 +37,15 @@ export interface RepoConfig {
    */
   secretsAllowlistPath: string | null;
   /**
-   * Workflow filename to `workflow_dispatch` from the Secrets view's "run sync"
-   * button, and the `environment` input values it accepts. events-os names this
-   * `sync-github-secrets.yml`; everyone else `sync-secrets.yml`.
+   * The repo's secrets-sync workflow filename, and the `environment` input
+   * values it accepts. events-os names this `sync-github-secrets.yml`; everyone
+   * else `sync-secrets.yml`.
+   *
+   * The Secrets view **deep-links** to this workflow's page on GitHub rather
+   * than dispatching it: dispatch from here would need `Actions: Read and write`
+   * on every repo, which is a token that can fire every production deploy in the
+   * fleet — see the note in `sources/github/writer.ts`. The environments are
+   * listed so the page tells you which value to pick when you get there.
    */
   secretsSyncWorkflow: string | null;
   secretsSyncEnvironments: string[];
@@ -69,11 +75,16 @@ export interface FleetConfig {
    */
   initiativesPath: string;
   /**
-   * `https://t.me/<bot>` — the 🎙 course-correct button on Review. The bot is a
-   * separate workstream (the Telegram worker that files `inbox:proposed`
-   * issues); the dashboard only ever deep-links to it.
+   * `https://t.me/<bot>` — the 🎙 course-correct button on Review and in
+   * Copilot's footer — or `null` when no bot exists yet.
+   *
+   * Nullable on purpose. The Telegram worker (which files `inbox:proposed`
+   * issues from a voice note) is a separate, unbuilt workstream, and a primary
+   * button on the home screen pointing at a bot that does not answer is a dead
+   * end dressed as a feature. `null` renders a "not wired yet" state instead;
+   * putting a URL here is the whole of turning it on.
    */
-  telegramUrl: string;
+  telegramUrl: string | null;
   /** Where the ⌘K palette's "open Claude Code" action points. */
   claudeCodeUrl: string;
   /** Static reference links for the ＋ New app checklist. */
@@ -91,7 +102,9 @@ export const fleetConfig: FleetConfig = {
   gardenerPrefix: "gardener-",
   gardenerSuffix: ".lock.yml",
   initiativesPath: ".fleet/initiatives.json",
-  telegramUrl: "https://t.me/SupaFleetBot",
+  // No bot yet — `t.me/SupaFleetBot` was a placeholder that resolved to nothing.
+  // Set this to the real `https://t.me/<bot>` the day the Telegram worker ships.
+  telegramUrl: null,
   claudeCodeUrl: "https://claude.ai/code",
   repos: [
     {
@@ -102,7 +115,9 @@ export const fleetConfig: FleetConfig = {
       productionWorkflow: "deploy-to-production.yml",
       secretsAllowlistPath: "ee/secrets-allowlist.json",
       secretsSyncWorkflow: "sync-secrets.yml",
-      secretsSyncEnvironments: ["staging", "production"],
+      // `both` is in the workflow's own `choice` options and is the value
+      // togather's CLAUDE.md tells maintainers to use.
+      secretsSyncEnvironments: ["staging", "production", "both"],
     },
     {
       slug: "Supa-Media/events-os",
