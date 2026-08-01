@@ -15,9 +15,16 @@
  * Registered via `node --import ./test/register.mjs --test test/*.test.ts`.
  * No external dependency (ts-node/tsx/etc.) — only `node:module`.
  */
+/**
+ * A *module* extension — not merely a dot in the last segment.
+ * `../src/fleet.config` ends in `.config`, which a naive `\.[a-z]+$` test reads
+ * as "already has an extension" and then fails to resolve at all.
+ */
+const MODULE_EXTENSION = /\.([mc]?[jt]sx?|json|css)$/;
+
 export async function resolve(specifier, context, nextResolve) {
   const isRelative = specifier.startsWith("./") || specifier.startsWith("../");
-  const hasExtension = /\.[a-zA-Z0-9]+$/.test(specifier);
+  const hasExtension = MODULE_EXTENSION.test(specifier);
 
   if (isRelative && !hasExtension) {
     try {

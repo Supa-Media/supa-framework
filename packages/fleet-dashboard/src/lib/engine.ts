@@ -34,6 +34,11 @@ function scalar(raw: string): string | null {
   return value === "" ? null : value;
 }
 
+/** Normalize a gh-aw source: strip the BOM, collapse CRLF. */
+function normalize(markdown: string): string {
+  return markdown.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
+}
+
 /** The YAML frontmatter block, or null when the document has none. */
 export function frontmatter(markdown: string): string | null {
   // Strip the BOM and normalize CRLF. Without the CRLF pass the block extracts
@@ -42,7 +47,7 @@ export function frontmatter(markdown: string): string | null {
   // "no engine" — indistinguishable from a genuinely undeclared one. Reachable
   // through this app's own ✎ path: GitHub's web editor plus a `.gitattributes`
   // `eol=crlf` produces exactly such a file.
-  const normalized = markdown.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
+  const normalized = normalize(markdown);
   if (!normalized.startsWith("---")) return null;
 
   const lines = normalized.split("\n");
@@ -52,9 +57,22 @@ export function frontmatter(markdown: string): string | null {
   return null;
 }
 
+/** A top-level scalar key in the frontmatter, e.g. `model: deepseek-v4-flash`. */
+function topLevel(block: string, key: string): string | null {
+  const match = new RegExp(`^${key}:(.*)$`, "m").exec(block);
+  return match === null ? null : scalar(match[1] as string);
+}
+
 export function parseEngine(markdown: string): EngineConfig {
   const block = frontmatter(markdown);
   if (block === null) return { id: null, model: null };
+
+  // gh-aw accepts `model:` as a TOP-LEVEL key as well as inside the engine
+  // mapping, and every real gardener in this fleet uses the top-level form
+  // (`engine: {id: codex, env: …}` + `model: deepseek-v4-flash`). v1 only
+  // looked inside the mapping, so the column that exists to make an expensive
+  // model obvious rendered `codex` for all of them.
+  const declaredModel = topLevel(block, "model");
 
   const lines = block.split("\n");
   for (let i = 0; i < lines.length; i += 1) {
@@ -64,7 +82,7 @@ export function parseEngine(markdown: string): EngineConfig {
     if (!match) continue;
 
     const inline = scalar(match[1] as string);
-    if (inline !== null) return { id: inline, model: null };
+    if (inline !== null) return { id: inline, model: declaredModel };
 
     // Mapping form: consume the indented block that follows.
     let id: string | null = null;
@@ -80,10 +98,77 @@ export function parseEngine(markdown: string): EngineConfig {
       if (key === "id") id = scalar(entry[2] as string);
       else if (key === "model") model = scalar(entry[2] as string);
     }
-    return { id, model };
+    // The nested model wins when both are declared: it is the more specific
+    // statement, and a disagreement is the author's bug, not ours to average.
+    return { id, model: model ?? declaredModel };
   }
 
-  return { id: null, model: null };
+  return { id: null, model: declaredModel };
+}
+
+/* ── Spend caps ─────────────────────────────────────────────────────────── */
+
+export interface GardenerCaps {
+  /** `max-ai-credits`, converted to USD. */
+  perRunUsd: number | null;
+  /** `max-daily-ai-credits`, converted to USD. */
+  perDayUsd: number | null;
+  /** `max-turns`, straight through. */
+  maxTurns: number | null;
+}
+
+/**
+ * gh-aw meters spend in **AI Credits**, and 1 AIC = $0.01 USD. The gardeners in
+ * this fleet state the conversion in their own comments (`max-ai-credits: 200
+ * # ~$2.00 per run`), so showing the credits raw would make the reader do the
+ * arithmetic the file already did.
+ */
+const USD_PER_AI_CREDIT = 0.01;
+
+function integerKey(block: string, key: string): number | null {
+  const raw = topLevel(block, key);
+  if (raw === null) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+/**
+ * The per-run / per-day spend ceilings a gardener declares.
+ *
+ * Read from the source markdown rather than the compiled lock file because
+ * these are authored values a human edits — and the ✎ deep link beside them
+ * goes to that same file, so what is shown and what is edited are the same
+ * text.
+ */
+export function parseCaps(markdown: string): GardenerCaps {
+  const block = frontmatter(markdown);
+  if (block === null) return { perRunUsd: null, perDayUsd: null, maxTurns: null };
+
+  const perRun = integerKey(block, "max-ai-credits");
+  const perDay = integerKey(block, "max-daily-ai-credits");
+  return {
+    perRunUsd: perRun === null ? null : perRun * USD_PER_AI_CREDIT,
+    perDayUsd: perDay === null ? null : perDay * USD_PER_AI_CREDIT,
+    maxTurns: integerKey(block, "max-turns"),
+  };
+}
+
+/**
+ * Everything below the frontmatter — the instructions the model actually gets.
+ *
+ * Returned verbatim (not rendered) because the point of showing it is to review
+ * what was written, and markdown rendering would quietly hide a stray fence or
+ * a broken heading, which is exactly the class of mistake worth catching here.
+ */
+export function promptBody(markdown: string): string {
+  const normalized = normalize(markdown);
+  const block = frontmatter(normalized);
+  if (block === null) return normalized.trim();
+
+  // Skip the opening `---`, the block itself, and the closing `---`.
+  const lines = normalized.split("\n");
+  const closing = 1 + block.split("\n").length;
+  return lines.slice(closing + 1).join("\n").trim();
 }
 
 /** `claude`, `custom · qwen3-coder:480b`, or `—` when nothing is declared. */
