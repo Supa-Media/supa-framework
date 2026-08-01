@@ -1,0 +1,45 @@
+{
+  // Cloudflare Worker config for the fleet inbox.
+  //
+  // SECRETS ARE NOT HERE AND MUST NEVER BE. `vars` in this file is committed
+  // to git; every value the worker needs is a real secret, so all five are set
+  // with `wrangler secret put` and reach the worker through the `Env` interface
+  // in src/env.ts. See README.md for the list and the commands.
+  //
+  // `kv_namespaces[].id` is a placeholder until the namespace is created with
+  // the owner's Cloudflare account — deployment is a deliberate follow-up, not
+  // part of this change. A namespace id is not a secret (it names a namespace,
+  // it doesn't grant access), so the real one is safe to commit here later.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fleet-inbox-worker",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "observability": {
+    "enabled": true
+  },
+
+  // Workers AI — Whisper transcription. Bound as `env.AI`.
+  "ai": {
+    "binding": "AI"
+  },
+
+  // Holds `learnings.md`: the running list of rejected proposals that gets
+  // injected into later extraction prompts. Create with:
+  //   npx wrangler kv namespace create INBOX_KV
+  // then paste the returned id below.
+  "kv_namespaces": [
+    {
+      "binding": "INBOX_KV",
+      "id": "REPLACE_WITH_KV_NAMESPACE_ID"
+    }
+  ]
+
+  // Secrets (set with `wrangler secret put <NAME>`, never committed):
+  //   TELEGRAM_BOT_TOKEN       BotFather token for the inbox bot
+  //   TELEGRAM_WEBHOOK_SECRET  echoed by Telegram in X-Telegram-Bot-Api-Secret-Token
+  //   TELEGRAM_CHAT_ID         the ONE chat allowed to drive this worker
+  //   ANTHROPIC_API_KEY        extraction only
+  //   GH_TOKEN                 fine-grained PAT, 4 repos, issues:write
+}

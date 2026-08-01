@@ -144,6 +144,15 @@ importers:
         specifier: ^6.0.11
         version: 6.4.3(@types/node@22.19.21)(lightningcss@1.32.0)(terser@5.46.1)(yaml@2.8.3)
 
+  packages/fleet-inbox-worker:
+    devDependencies:
+      '@types/node':
+        specifier: ^22
+        version: 22.19.21
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   packages/linter:
     dependencies:
       eslint:

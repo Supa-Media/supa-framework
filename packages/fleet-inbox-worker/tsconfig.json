@@ -1,0 +1,14 @@
+{
+  // The worker runs on workerd, not Node — `DOM` supplies the fetch/Request/
+  // Response/Headers/atob globals the runtime actually provides. `types: []`
+  // keeps Node's globals out of `src`, so a `process.env` or `Buffer` that
+  // can't exist at runtime fails here rather than at 3am in production.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"],
+    "types": []
+  },
+  "include": ["src"],
+  "exclude": ["node_modules"]
+}

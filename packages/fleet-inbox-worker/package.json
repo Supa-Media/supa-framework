@@ -1,0 +1,22 @@
+{
+  "name": "@supa-media/fleet-inbox-worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Telegram in, proposed GitHub issues out — a voice note becomes reviewed, routed work items across the Supa fleet, and nothing executes without approval",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "test": "tsc -p tsconfig.typecheck.json && node --import ./test/register.mjs --test test/*.test.ts",
+    "clean": "rm -rf dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Supa-Media/supa-framework.git",
+    "directory": "packages/fleet-inbox-worker"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "5.9.3"
+  },
+  "license": "MIT"
+}
