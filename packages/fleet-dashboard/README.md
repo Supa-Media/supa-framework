@@ -19,8 +19,18 @@ true blockers reach Telegram; everything else waits on that screen.
 | 🔐 Secrets      | Which key is allowlisted where, and does the GitHub secret exist?        |
 | ＋ New app      | What does standing up a new app actually take?                           |
 
-There is no backend. Everything is the GitHub REST + GraphQL API, called
-directly from the browser with fine-grained PATs you supply at runtime.
+Everything you see is the GitHub REST + GraphQL API, called directly from the
+browser with fine-grained PATs you supply at runtime. **GitHub is the source of
+truth for work state and nothing mirrors it.**
+
+There is one **optional** backend — [`apps/fleet-backend`](../../apps/fleet-backend),
+a small Convex app holding the two things GitHub cannot: your "since last
+reviewed" marker (so it follows you from the phone you did the morning review on
+to the laptop you do the evening one on) and run telemetry the fleet's own jobs
+post about themselves — watchdog wakes, respawns, decider decisions. It is off
+by default: with no `backend.url` in `fleet.config.ts` and nothing entered in
+the gate, no request leaves for anywhere but `api.github.com`, the marker stays
+in localStorage, and the page behaves exactly as it did before it existed.
 
 ## Running it
 
@@ -88,22 +98,39 @@ form instead, where the run is attributed to a session GitHub authenticated.
 > nothing else. Give each the shortest expiry you can live with and keep
 > Cloudflare Access in front.
 
-The tokens live in `localStorage` and are sent only to `api.github.com` — there
-is no backend, nothing is bundled into the build, and nothing is committed.
-**"Sign out all"** clears every owner's token **and** the ETag response cache,
+The GitHub tokens live in `localStorage` and are sent only to `api.github.com` —
+nothing is bundled into the build and nothing is committed. The optional
+backend's **read token** is stored the same way, in the same gate, and is sent
+only to the one `.convex.site` URL configured for it.
+**"Sign out all"** clears every owner's token, the backend settings, **and** the ETag response cache,
 which holds full REST bodies including private workflow file contents. Saving
 tokens clears the cache too, so replacing one owner's PAT never inherits the
 previous identity's cached data. If a v2 single token is still in the browser
 under `fleet-dashboard:token`, it is applied to every owner once, on first load,
 and the old key is deleted; the owners it doesn't actually cover then say so in
 the banner rather than leaving a blank page. A
-`Content-Security-Policy` meta tag pins `connect-src` to `api.github.com`;
-`public/_headers` carries the same policy as a real header for Cloudflare Pages
-plus `frame-ancestors` — keep the two in sync.
+`Content-Security-Policy` meta tag pins `connect-src` to `api.github.com` plus
+`https://*.convex.site` (the backend's domain — the exact subdomain is a runtime
+setting, so the wildcard is as narrow as this can be stated, and it is why a
+backend URL must be `https`); `public/_headers` carries the same policy as a
+real header for Cloudflare Pages plus `frame-ancestors` — keep the two in sync.
+
+## Where state lives
+
+| State | Where | Why there |
+|---|---|---|
+| Everything about work — issues, labels, PRs, runs, ⚡ | GitHub | One answer, visible to every agent in the pipeline. |
+| GitHub PATs, backend URL + read token | this browser's `localStorage` | Credentials, and a setting that is per-browser by nature. |
+| "Since last reviewed" marker | `localStorage`, mirrored to the backend when one is configured | It is about *you*, and a label saying "seen" would be a public write on every glance. Last write wins by `updatedAt`; a failed sync costs a banner line, never the window. |
+| Run telemetry — watchdog wakes, respawns, decisions | the backend | GitHub records a run's outcome, not the watchdog's reasoning about it. |
+
+The backend never holds work state. See
+[`apps/fleet-backend/README.md`](../../apps/fleet-backend/README.md) for the
+trust model (one write secret, one read token, no PII).
 
 ## Label conventions
 
-The dashboard holds no state of its own beyond one "last reviewed" timestamp.
+The dashboard's own state is one "last reviewed" marker.
 Everything it shows and everything it changes is a label or a comment — so these
 strings are the contract between the dashboard, the overnight orchestrator, the
 Telegram worker, and the watchdog. They are declared once in
@@ -141,7 +168,8 @@ don't recognize instead of rejecting it, so the names are resolved to node ids
 
 ### Marker comments
 
-Agents cannot call the dashboard; there is no backend to call. They write GitHub
+Agents cannot call the dashboard — the backend takes telemetry, not work state.
+They write GitHub
 comments, and a comment earns a place on the review screen by opening with a
 **marker**: a bolded bracketed word at the start of a line. Parser and rules in
 [`src/lib/markers.ts`](src/lib/markers.ts).
@@ -341,9 +369,10 @@ number of rows fetched, and a truncated list says so.
 
 ## Notes and limitations
 
-- **Copilot is a stub and says so.** A brainstorm partner needs a model, which
-  needs a backend, which this app does not have — and its CSP allows exactly one
-  host. The ⌘K palette is the honest subset: file, dump, open Claude Code, jump.
+- **Copilot is a stub and says so.** A brainstorm partner needs a model behind
+  it. `apps/fleet-backend` is deliberately not that yet — v1 is schema and
+  telemetry, and chat was left out on purpose. The ⌘K palette is the honest
+  subset: file, dump, open Claude Code, jump.
 - **The paste box files one `inbox:raw` issue, not N proposals.** Splitting a
   dump client-side would mean either a regex pretending to be comprehension or
   an LLM call the CSP forbids. One honest issue beats five confident wrong ones.
@@ -387,5 +416,5 @@ number of rows fetched, and a truncated list says so.
   and the **decider** that writes `**[decider]**` comments during your absent
   hours. Both are separate workstreams; this dashboard already renders their
   output.
-- **Copilot with a model behind it**, which is the point at which a backend
-  stops being optional.
+- **Copilot with a model behind it.** `apps/fleet-backend` is the foundation it
+  would sit on; v1 deliberately ships no chat.

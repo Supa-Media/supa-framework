@@ -8,9 +8,12 @@
  * one implementation (`sources/github/githubSource.ts`, REST + GraphQL against
  * api.github.com with a user-supplied PAT).
  *
- * A future source — most likely a `@supa-media/dev-assistant` Convex source that
- * knows about contributions/bugs the GitHub API can't see — implements this
- * same interface and gets merged into the snapshot. Rules for that seam:
+ * The second source landed: `sources/convex/convexSource.ts` reads the fleet's
+ * own Convex backend (`apps/fleet-backend`) for run telemetry the GitHub API
+ * cannot see — watchdog wakes, respawns, decider decisions. It contributes
+ * `runEvents` and nothing else; every other field on the snapshot still comes
+ * from GitHub, because GitHub is the source of truth for work state. Rules for
+ * that seam:
  *
  *   1. A source returns a `FleetSnapshot`; it never touches the DOM and never
  *      reads config other than what's handed to `createXSource(...)`.
@@ -19,7 +22,8 @@
  *      a status board, and one dead repo must not blank the page.
  *   3. Merging is by `ProjectSnapshot.key`. When two sources describe the same
  *      project, the later source in `fleet.config.ts`'s source list wins for
- *      scalar fields and appends to list fields.
+ *      scalar fields and appends to list fields. `sources/merge.ts` implements
+ *      exactly this rule and is the only place it is spelled out in code.
  *
  * Writes are a separate seam (`FleetWriter`, below) so a read-only deployment
  * can simply not construct one.
@@ -239,6 +243,37 @@ export interface ProjectSnapshot {
   secretNames: string[] | null;
 }
 
+/** Which fleet job reported a `RunEvent`. Mirrors the backend's schema. */
+export type RunEventSource = "overnight" | "watchdog" | "decider" | "gardener";
+
+/**
+ * One thing a fleet job saw while running.
+ *
+ * The distinction from `RunSummary` is what GitHub knows. GitHub knows a
+ * workflow run failed; it does not know the watchdog woke at 03:12, decided the
+ * agent was looping, and respawned it. That is what lands here — operational
+ * telemetry with no GitHub object to hang off, posted by the job itself.
+ *
+ * Never authoritative about work state. If a `RunEvent` and a GitHub label
+ * disagree about whether an item is blocked, the label is right.
+ */
+export interface RunEvent {
+  /** Stable across refreshes: the backend row id. */
+  id: string;
+  source: RunEventSource;
+  /** `owner/name`, lowercased — the same key `ProjectSnapshot.key` uses. */
+  repoKey: string;
+  /** The issue or PR it is about, or `null` when it is about the run itself. */
+  issueNumber: number | null;
+  /** Writer-defined, e.g. `wake`, `respawn`, `parked`, `decision`. */
+  kind: string;
+  /** ISO-8601. */
+  at: string;
+  url: string | null;
+  /** Whatever detail the writer attached. Rendered as text, never trusted as HTML. */
+  payload: Record<string, unknown> | null;
+}
+
 export interface SourceError {
   /** `owner/name` when the failure is repo-scoped, else the source id. */
   scope: string;
@@ -264,6 +299,12 @@ export interface FleetSnapshot {
   shipped: ShippedPr[];
   /** Every issue carrying a label the dashboard reads, across the fleet. */
   issues: IssueCard[];
+  /**
+   * Run telemetry inside the window, newest first. Always empty when no Convex
+   * backend is configured — which is the default, and is why every consumer
+   * treats an empty list as "nothing to say" rather than "nothing happened".
+   */
+  runEvents: RunEvent[];
   /**
    * Total spend across the fleet's most recent cost reports, or `null` when
    * unknown. Deliberately not called month-to-date — see `costReportedUsd`.
@@ -345,6 +386,7 @@ export function emptySnapshot(): FleetSnapshot {
     needsYou: [],
     shipped: [],
     issues: [],
+    runEvents: [],
     spendReportedUsd: null,
     spendReportedAt: null,
     errors: [],

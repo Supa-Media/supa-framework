@@ -5,8 +5,23 @@ import { Shell, type NavEntry } from "./components/Shell";
 import { Banner } from "./components/ui";
 import { TokenGate } from "./components/TokenGate";
 import { fleetConfig } from "./fleet.config";
+import {
+  clearBackendSettings,
+  loadBackendSettings,
+  NO_BACKEND,
+  resolveBackend,
+  saveBackendSettings,
+  type StoredBackend,
+} from "./lib/backend";
 import { LABELS } from "./lib/labels";
-import { readLastReviewed, writeLastReviewed } from "./lib/review";
+import {
+  describeDevice,
+  readLocalMark,
+  reconcileMarks,
+  windowFrom,
+  writeLocalMark,
+  type ReviewMark,
+} from "./lib/review";
 import { selectParked, selectPlan, selectProposed, selectQueue } from "./lib/select";
 import {
   clearTokens,
@@ -17,10 +32,18 @@ import {
   saveTokens,
   type TokenMap,
 } from "./lib/tokens";
+import { createConvexSource } from "./sources/convex/convexSource";
+import { createConvexReviewStore } from "./sources/convex/reviewStore";
 import { clearResponseCache } from "./sources/github/client";
 import { createGitHubSource } from "./sources/github/githubSource";
 import { createGitHubWriter } from "./sources/github/writer";
-import { emptySnapshot, type FleetSnapshot, type FleetWriter } from "./sources/types";
+import { mergeSnapshots } from "./sources/merge";
+import {
+  emptySnapshot,
+  type FleetSnapshot,
+  type FleetSource,
+  type FleetWriter,
+} from "./sources/types";
 import { AppsIndex, AppView } from "./views/AppView";
 import type { Actions, Ctx, ViewId } from "./views/context";
 import { Copilot } from "./views/Copilot";
@@ -50,17 +73,49 @@ export function App() {
   const [fatal, setFatal] = useState<string | null>(null);
   const [view, setView] = useState<ViewId>("review");
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [since, setSince] = useState(() => readLastReviewed());
+  const [mark, setMark] = useState<ReviewMark | null>(() => readLocalMark());
   const [busy, setBusy] = useState<string | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
   const [writeDone, setWriteDone] = useState<string | null>(null);
+  const [backendSettings, setBackendSettings] = useState<StoredBackend>(() =>
+    loadBackendSettings(),
+  );
+  /** Set when the marker could not reach the backend. Never fatal — see below. */
+  const [syncNote, setSyncNote] = useState<string | null>(null);
   const inFlight = useRef<AbortController | null>(null);
 
-  // Another source (a `@supa-media/dev-assistant` Convex source) would join
-  // here and merge into the snapshot by project key.
-  const source = useMemo(
-    () => (hasAnyToken(tokens) ? createGitHubSource(fleetConfig, tokens) : null),
-    [tokens],
+  // Memoized, not computed inline: with no mark yet, `windowFrom` returns "one
+  // window before *now*", which is a different string on every render — and
+  // `since` is a dependency of `refresh`, so an inline call would re-fetch the
+  // entire fleet in a loop.
+  const since = useMemo(() => windowFrom(mark), [mark]);
+
+  /** `null` when no backend is configured, which is the default. */
+  const backend = useMemo(
+    () => resolveBackend(fleetConfig.backend.url, backendSettings),
+    [backendSettings],
+  );
+
+  /**
+   * Sources in merge order: GitHub first, then the fleet's own backend.
+   *
+   * Order is the merge rule (`sources/merge.ts`) — the later source wins scalar
+   * fields. The Convex source contributes only `runEvents`, so today the order
+   * is a statement of intent rather than a tiebreak that fires: GitHub stays
+   * authoritative for work state, and anything the backend ever starts claiming
+   * about a project would have to be a deliberate override, not an accident of
+   * array position.
+   */
+  const sources = useMemo(() => {
+    const list: FleetSource[] = [];
+    if (hasAnyToken(tokens)) list.push(createGitHubSource(fleetConfig, tokens));
+    if (backend !== null) list.push(createConvexSource(backend));
+    return list;
+  }, [backend, tokens]);
+
+  const reviewStore = useMemo(
+    () => (backend === null ? null : createConvexReviewStore(backend)),
+    [backend],
   );
   const writer: FleetWriter | null = useMemo(
     () => (hasAnyToken(tokens) ? createGitHubWriter(tokens) : null),
@@ -68,7 +123,7 @@ export function App() {
   );
 
   const refresh = useCallback(async () => {
-    if (!source) return;
+    if (sources.length === 0) return;
     inFlight.current?.abort();
     const controller = new AbortController();
     inFlight.current = controller;
@@ -76,15 +131,21 @@ export function App() {
     setLoading(true);
     setFatal(null);
     try {
-      const next = await source.fetchFleet({ since, signal: controller.signal });
-      if (!controller.signal.aborted) setSnapshot(next);
+      // `all`, not `allSettled`: a source that fails partially is contractually
+      // required to report it in `snapshot.errors` and return, so a rejection
+      // here is a source breaking its own contract and deserves the fatal
+      // banner rather than being quietly folded into a half-empty page.
+      const results = await Promise.all(
+        sources.map((source) => source.fetchFleet({ since, signal: controller.signal })),
+      );
+      if (!controller.signal.aborted) setSnapshot(mergeSnapshots(results));
     } catch (error) {
       if (controller.signal.aborted) return;
       setFatal(error instanceof Error ? error.message : String(error));
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [source, since]);
+  }, [sources, since]);
 
   // Fetch once when a token appears. No polling on purpose: the fleet is
   // checked twice a day, and a background timer would burn the API budget
@@ -93,6 +154,40 @@ export function App() {
     void refresh();
     return () => inFlight.current?.abort();
   }, [refresh]);
+
+  /**
+   * Reconcile the review marker with the backend, once, when one is configured.
+   *
+   * localStorage stays authoritative until this answers, so a slow or dead
+   * backend costs a line in a banner and never the review window itself. If the
+   * local mark is the newer of the two it is pushed — that is the first load
+   * after turning the backend on, and the marker you already had is the one you
+   * meant.
+   */
+  useEffect(() => {
+    if (reviewStore === null) {
+      setSyncNote(null);
+      return;
+    }
+    const controller = new AbortController();
+    void (async () => {
+      const outcome = await reviewStore.read(controller.signal);
+      if (controller.signal.aborted) return;
+      if (!outcome.ok) {
+        setSyncNote(outcome.message);
+        return;
+      }
+      setSyncNote(null);
+      const { mark: winner, push } = reconcileMarks(readLocalMark(), outcome.mark);
+      if (winner === null) return;
+      writeLocalMark(winner);
+      setMark(winner);
+      if (!push) return;
+      const pushed = await reviewStore.write(winner);
+      if (!controller.signal.aborted && !pushed.ok) setSyncNote(pushed.message);
+    })();
+    return () => controller.abort();
+  }, [reviewStore]);
 
   // ⌘K / Ctrl-K from anywhere. Registered on the document rather than on a
   // focusable element so it works while reading, which is the state the palette
@@ -141,13 +236,15 @@ export function App() {
     [busy, refresh, writeDone, writeError, writer],
   );
 
-  const acceptTokens = useCallback((next: TokenMap) => {
+  const acceptTokens = useCallback((next: TokenMap, nextBackend: StoredBackend) => {
     // Start cold: the response cache is keyed by request path with no reference
     // to the credential that fetched it, so swapping *any* owner's token must
     // not inherit the previous identity's cached bodies.
     clearResponseCache();
     saveTokens(next);
     setTokens(next);
+    saveBackendSettings(nextBackend);
+    setBackendSettings(nextBackend);
     setGateOpen(false);
   }, []);
 
@@ -160,19 +257,50 @@ export function App() {
     // file contents. Clearing only the tokens would leave the fleet's private
     // data sitting in sessionStorage after "Sign out".
     clearResponseCache();
+    // The backend read token is a credential like any other, so it goes too.
+    // The URL goes with it because they are stored together and a URL with no
+    // token is the "feature off" state anyway — re-entering both is the same
+    // one visit to the gate that re-entering the PATs already is.
+    clearBackendSettings();
+    setBackendSettings(NO_BACKEND);
     inFlight.current?.abort();
     setTokens({});
     setGateOpen(false);
     setSnapshot(emptySnapshot());
     setFatal(null);
+    setSyncNote(null);
     setLoading(false);
   }, []);
 
+  /**
+   * Local first, always. Marking reviewed has to work with no backend and no
+   * network — the backend is a mirror of this browser's mark, not the other way
+   * round — so the push happens after the screen has already moved on.
+   */
   const markReviewed = useCallback(() => {
-    const now = new Date().toISOString();
-    writeLastReviewed(now);
-    setSince(now);
-  }, []);
+    const next: ReviewMark = {
+      lastReviewedAt: new Date().toISOString(),
+      updatedAt: Date.now(),
+      device: describeDevice(typeof navigator === "undefined" ? null : navigator.userAgent),
+    };
+    writeLocalMark(next);
+    setMark(next);
+    if (reviewStore === null) return;
+    void (async () => {
+      const outcome = await reviewStore.write(next);
+      if (!outcome.ok) {
+        setSyncNote(outcome.message);
+        return;
+      }
+      setSyncNote(null);
+      // The backend refused because it already held a newer mark — another
+      // device reviewed after this one. Its answer is the one to keep.
+      if (outcome.mark !== null && outcome.mark.updatedAt > next.updatedAt) {
+        writeLocalMark(outcome.mark);
+        setMark(outcome.mark);
+      }
+    })();
+  }, [reviewStore]);
 
   // The gate is both the sign-in screen and the "one PAT expired" screen, so it
   // is reachable mid-session from the header rather than only via a sign-out.
@@ -181,6 +309,8 @@ export function App() {
       <TokenGate
         owners={OWNERS}
         saved={tokens}
+        backend={backendSettings}
+        configuredBackendUrl={fleetConfig.backend.url}
         onSubmit={acceptTokens}
         onCancel={hasAnyToken(tokens) ? () => setGateOpen(false) : null}
       />
@@ -249,6 +379,11 @@ export function App() {
                 </li>
               ))}
             </ul>
+          </Banner>
+        )}
+        {syncNote !== null && (
+          <Banner tone="err">
+            Review marker is local to this browser — {syncNote}
           </Banner>
         )}
         {writeError !== null && <Banner tone="err">Write failed: {writeError}</Banner>}
