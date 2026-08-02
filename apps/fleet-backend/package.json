@@ -6,10 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "convex dev",
-    "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "tsc -p tsconfig.json && vitest run"
   },
   "repository": {
     "type": "git",

@@ -26,6 +26,14 @@ wins by `updatedAt`**, which is the *client's* clock — so an offline phone tha
 marked reviewed at 07:00 and syncs at 09:00 does not overwrite the laptop's real
 08:00 mark. Ties keep the stored row, so a retry is not a change.
 
+That clock is trusted **backwards only**. A write more than `MAX_CLOCK_SKEW_MS`
+(5 minutes) ahead of the server is refused with a 400 saying the device's clock
+looks wrong. Tolerating the future bought the offline-phone requirement nothing
+— that case is past-dated — and cost everything: `Date.now() * 1000` is an
+ordinary unit slip, and absorbing one pinned the marker at the year 58554, after
+which every later honest write was ignored forever, because a sane clock
+produces a *smaller* number. There was no API path back.
+
 `prefs` is a flat string map with room for cross-device preferences that are
 genuinely about the person. It is empty in v1. **An issue's ⚡ does not go here**
 — ⚡ is the `agent:notify` GitHub label, the whole pipeline already agrees on it
@@ -40,6 +48,14 @@ that a workflow run failed; it does not record that the watchdog woke at 03:12,
 diagnosed a stall, and respawned the agent. Nothing updates or deletes a row.
 Reads are windowed — 24 hours by default, 30 days maximum, 500 rows per page —
 so a table that grows every night never becomes a query that scans forever.
+
+`at` carries the same future ceiling, and is **rejected rather than clamped**.
+`by_at` is read newest-first, so a year-3000 row would sort above everything in
+every window forever and no `since` could exclude it — one panel permanently
+wrong because one shell script emitted nanoseconds. Clamping would hide that by
+silently re-dating the row, and a telemetry log whose timestamps we quietly
+rewrite is worth less than one that refuses the row and names the field. The
+past needs no ceiling: an old `at` simply ages out of the window.
 
 That is the whole schema. There is no chat table and no copilot state: v1 is a
 foundation for those, not an implementation of them.
@@ -131,9 +147,14 @@ curl -sS -X POST "$FLEET_BACKEND_URL/fleet/events" \
 
 ```bash
 pnpm --filter @supa-media/fleet-backend dev        # convex dev, watching
-pnpm --filter @supa-media/fleet-backend test       # convex-test, no deployment needed
-pnpm --filter @supa-media/fleet-backend typecheck
+pnpm --filter @supa-media/fleet-backend test       # tsc, then convex-test — no deployment needed
+pnpm --filter @supa-media/fleet-backend typecheck  # the tsc half on its own
 ```
+
+There is deliberately **no `build` task**: Convex bundles its own functions, so a
+`tsc --noEmit` named "build" would produce no `dist/**`, which makes turbo warn
+about missing outputs and re-run it uncached forever. The compiler runs as the
+first half of `test` instead, exactly as `packages/fleet-dashboard` does it.
 
 `convex/_generated/` is **committed** so CI can type-check without a Convex
 login or a deployment. Regenerate it with `npx convex codegen` after changing

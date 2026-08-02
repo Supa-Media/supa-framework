@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 
+import { MAX_CLOCK_SKEW_MS } from "../convex/lib/auth";
 import { MAX_BATCH, MAX_KIND_LENGTH, parseEventsBody } from "../convex/lib/parseEvents";
 
 const NOW = 1_800_000_000_000;
@@ -98,6 +99,20 @@ describe("parseEventsBody", () => {
     expect(why({ ...MINIMAL, at: "when I woke up" })).toContain("at must be");
     expect(why({ ...MINIMAL, at: Number.POSITIVE_INFINITY })).toContain("at must be");
     expect(why({ ...MINIMAL, at: {} })).toContain("at must be");
+  });
+
+  test("rejects a future `at` — it would sort above everything in every window", () => {
+    expect(why({ ...MINIMAL, at: 32_500_000_000_000 })).toContain("not in the future");
+    expect(why({ ...MINIMAL, at: NOW + MAX_CLOCK_SKEW_MS + 1 })).toContain("not in the future");
+    expect(why({ ...MINIMAL, at: "3000-01-01T00:00:00.000Z" })).toContain("not in the future");
+  });
+
+  test("accepts an `at` inside the skew the signature layer already allows", () => {
+    expect(ok({ ...MINIMAL, at: NOW + MAX_CLOCK_SKEW_MS })[0]?.at).toBe(NOW + MAX_CLOCK_SKEW_MS);
+  });
+
+  test("the past has no ceiling — an old event simply ages out of the window", () => {
+    expect(ok({ ...MINIMAL, at: 0 })[0]?.at).toBe(0);
   });
 
   test("rejects a non-positive or fractional issueNumber", () => {

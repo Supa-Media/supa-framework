@@ -199,8 +199,10 @@ export function TokenGate({
       </p>
       {urlLooksWrong && (
         <p className="gate__note">
-          That is not an https URL. The value wanted is the deployment&apos;s HTTP actions origin —
-          the <code>.convex.site</code> one, not <code>.convex.cloud</code>.
+          That is not a backend URL. The value wanted is the deployment&apos;s HTTP actions origin,{" "}
+          <code>https://&lt;name&gt;.convex.site</code> — not the <code>.convex.cloud</code> one,
+          which is the other hostname every Convex deployment has and the easier of the two to
+          paste by mistake.
         </p>
       )}
 

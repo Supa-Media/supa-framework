@@ -2,7 +2,8 @@ import { httpRouter } from "convex/server";
 
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { verifyReadToken, verifySignedRequest } from "./lib/auth";
+import { MAX_CLOCK_SKEW_MS, verifyReadToken, verifySignedRequest } from "./lib/auth";
+import { CLOCK_AHEAD_MESSAGE } from "./reviewState";
 import { MAX_BODY_BYTES, parseEventsBody } from "./lib/parseEvents";
 import { RUN_EVENT_SOURCES, type RunEventSource } from "./schema";
 
@@ -179,8 +180,13 @@ http.route({
     // Defaulted rather than required: a client that knows when it marked but not
     // what clock we wanted is still telling the truth, and `now` is the honest
     // reading of "as far as this request knows, just now".
-    const updatedAt = record.updatedAt === undefined ? Date.now() : Number(record.updatedAt);
+    const now = Date.now();
+    const updatedAt = record.updatedAt === undefined ? now : Number(record.updatedAt);
     if (!Number.isFinite(updatedAt)) return fail(400, "updatedAt must be unix milliseconds");
+    // A clock ahead of ours wins the last-write-wins comparison against every
+    // *future* write too, permanently. Refused here rather than absorbed — the
+    // long version is on `reviewState.set`.
+    if (updatedAt > now + MAX_CLOCK_SKEW_MS) return fail(400, CLOCK_AHEAD_MESSAGE);
     const device = typeof record.device === "string" ? record.device.slice(0, 64) : "unknown";
 
     let prefs: Record<string, string> | undefined;
@@ -199,6 +205,7 @@ http.route({
       lastReviewedAt,
       updatedAt,
       device,
+      now,
       ...(prefs === undefined ? {} : { prefs }),
     });
     return json(result);

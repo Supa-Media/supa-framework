@@ -1,7 +1,10 @@
 {
-  // Convex bundles its own functions, so there is nothing here to emit — `build`
-  // and `typecheck` are the same `tsc --noEmit` pass, and the compiler is this
-  // package's only static gate besides the tests.
+  // Convex bundles its own functions, so there is nothing here to emit — and so
+  // this package declares no `build` task at all. A `tsc --noEmit` named "build"
+  // writes no `dist/**`, which makes turbo warn about missing outputs and re-run
+  // it uncached on every invocation. The compiler runs as the first half of
+  // `test` instead, exactly as `packages/fleet-dashboard` does it, so a type
+  // error still fails the suite.
   //
   // `convex/_generated` is committed (see README) so CI can type-check without a
   // deployment or a Convex login.

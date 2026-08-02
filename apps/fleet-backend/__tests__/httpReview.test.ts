@@ -2,6 +2,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import schema from "../convex/schema";
+import { MAX_CLOCK_SKEW_MS } from "../convex/lib/auth";
 import { modules } from "../test.setup";
 
 /**
@@ -12,6 +13,7 @@ import { modules } from "../test.setup";
 const READ_TOKEN = "test-read-token";
 const MORNING = "2026-08-01T07:00:00.000Z";
 const EVENING = "2026-08-01T19:00:00.000Z";
+const DAY = 24 * 60 * 60 * 1000;
 
 beforeEach(() => {
   process.env.FLEET_READ_TOKEN = READ_TOKEN;
@@ -144,6 +146,76 @@ describe("POST /fleet/review", () => {
     const t = convexTest(schema, modules);
     const response = await put(t, { lastReviewedAt: MORNING, updatedAt: 1 });
     expect((await response.json()).state.device).toBe("unknown");
+  });
+
+  /**
+   * The clock wedge, and the reviewer's probe that proved the old remedy could
+   * not work.
+   *
+   * `Date.now() * 1000` is an ordinary unit slip. It used to be accepted and
+   * pinned the marker at the year 58554, after which every honest write — the
+   * "mark reviewed again from a device with a sane clock" the code itself
+   * documented — returned `applied: false` forever, because a sane clock
+   * produces a *smaller* number. Recovery was editing the row by hand.
+   */
+  test("a wedged clock is refused, and a sane clock still works afterwards", async () => {
+    const t = convexTest(schema, modules);
+
+    const wedge = await put(t, {
+      lastReviewedAt: MORNING,
+      updatedAt: Date.now() * 1000,
+      device: "phone-with-a-bad-clock",
+    });
+    expect(wedge.status).toBe(400);
+    expect((await wedge.json()).error).toContain("clock looks wrong");
+
+    // The probe itself: with the wedge absorbed, every one of these came back
+    // `applied: false`. The first two must now apply; the third is a year out
+    // and is refused for the same honest reason as the wedge.
+    const now = Date.now();
+    for (const updatedAt of [now, now + 60_000]) {
+      const response = await put(t, { lastReviewedAt: EVENING, updatedAt, device: "MacBook" });
+      expect(await response.json()).toMatchObject({ applied: true });
+    }
+    expect((await put(t, { lastReviewedAt: EVENING, updatedAt: now + 365 * DAY })).status).toBe(400);
+
+    expect((await (await get(t)).json()).state).toMatchObject({ lastReviewedAt: EVENING });
+  });
+
+  /** Omitting `updatedAt` was the other half of the probe: the server defaults it. */
+  test("the documented recovery — mark reviewed again — works after a refused write", async () => {
+    const t = convexTest(schema, modules);
+    await put(t, { lastReviewedAt: MORNING, updatedAt: Date.now() * 1000, device: "bad-clock" });
+    const response = await put(t, { lastReviewedAt: EVENING, device: "MacBook" });
+    expect(await response.json()).toMatchObject({ applied: true });
+  });
+
+  test("the ceiling is the same skew the signature layer allows a request", async () => {
+    const t = convexTest(schema, modules);
+    const edge = await put(t, {
+      lastReviewedAt: MORNING,
+      updatedAt: Date.now() + MAX_CLOCK_SKEW_MS - 5_000,
+      device: "slightly-fast",
+    });
+    expect(await edge.json()).toMatchObject({ applied: true });
+
+    const beyond = await put(t, {
+      lastReviewedAt: EVENING,
+      updatedAt: Date.now() + MAX_CLOCK_SKEW_MS + 5_000,
+      device: "too-fast",
+    });
+    expect(beyond.status).toBe(400);
+  });
+
+  /** The requirement the client clock exists for is past-dated, and is untouched. */
+  test("an offline phone's past-dated mark is still accepted", async () => {
+    const t = convexTest(schema, modules);
+    const response = await put(t, {
+      lastReviewedAt: MORNING,
+      updatedAt: Date.now() - 2 * 60 * 60 * 1000,
+      device: "iPhone",
+    });
+    expect(await response.json()).toMatchObject({ applied: true });
   });
 
   test.each([

@@ -61,9 +61,49 @@ test("normalizeBackendUrl refuses plain http, on localhost too", () => {
 });
 
 test("normalizeBackendUrl rejects junk", () => {
-  for (const raw of ["", "   ", "x.convex.site", "javascript:alert(1)", null, undefined, 3 as never]) {
+  for (const raw of [
+    "",
+    "   ",
+    "x.convex.site",
+    "javascript:alert(1)",
+    "//x.convex.site",
+    null,
+    undefined,
+    3 as never,
+  ]) {
     assert.equal(normalizeBackendUrl(raw as string), null, `expected null for ${String(raw)}`);
   }
+});
+
+/**
+ * The CSP allows `https://*.convex.site` and nothing else, so the host is part
+ * of "a URL the browser will actually open" — and `.convex.cloud` is the single
+ * likeliest paste there is, being the *other* hostname every Convex deployment
+ * has. Accepting it here produced exactly the silent console failure this
+ * function exists to prevent.
+ */
+test("normalizeBackendUrl rejects the .convex.cloud typo the docs warn about", () => {
+  assert.equal(normalizeBackendUrl("https://x.convex.cloud"), null);
+  assert.equal(normalizeBackendUrl("https://glad-poodle-598.convex.cloud/"), null);
+});
+
+test("normalizeBackendUrl rejects a host the CSP would block, hostile or merely wrong", () => {
+  for (const raw of [
+    "https://evil.example.com",
+    "https://attacker.io/collect",
+    "https://convex.site",
+    "https://x.convex.site.evil.com",
+  ]) {
+    assert.equal(normalizeBackendUrl(raw), null, `expected null for ${raw}`);
+  }
+});
+
+test("normalizeBackendUrl keeps https localhost as the preview escape hatch", () => {
+  assert.equal(normalizeBackendUrl("https://localhost:8000"), "https://localhost:8000");
+});
+
+test("normalizeBackendUrl is case-insensitive about the host", () => {
+  assert.equal(normalizeBackendUrl("https://X.CONVEX.SITE"), "https://x.convex.site");
 });
 
 test("resolveBackend is null with no config and no stored settings — the default is off", () => {

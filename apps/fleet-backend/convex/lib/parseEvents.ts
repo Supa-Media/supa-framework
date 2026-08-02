@@ -1,4 +1,5 @@
 import { RUN_EVENT_SOURCES, type RunEventSource } from "../schema";
+import { MAX_CLOCK_SKEW_MS } from "./auth";
 
 /**
  * Turning an untrusted POST body into rows, or into one sentence saying why not.
@@ -42,13 +43,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * `at` accepts unix milliseconds or an ISO-8601 string.
+ * `at` accepts unix milliseconds or an ISO-8601 string, and may not sit further
+ * in the future than the request itself is allowed to.
  *
- * Both, because the writers are shell scripts and TypeScript in roughly equal
- * measure, and `date -u +%s` versus `new Date().toISOString()` should not be a
- * thing anyone has to look up to file an event.
+ * Both formats, because the writers are shell scripts and TypeScript in roughly
+ * equal measure, and `date -u +%s` versus `new Date().toISOString()` should not
+ * be a thing anyone has to look up to file an event.
+ *
+ * **Rejected, not clamped.** `by_at` is read newest-first, so an event dated in
+ * the year 3000 sorts above everything in *every* window forever and no `since`
+ * can exclude it — one panel permanently wrong because one shell script emitted
+ * nanoseconds. Clamping to `now` would hide that by silently re-dating the row,
+ * and a telemetry log whose timestamps we quietly rewrite is worth less than one
+ * that refuses the row and names the field. The request is already
+ * timestamp-bound by its signature; this is the same rule applied to what the
+ * request carries.
+ *
+ * The past needs no ceiling: an old `at` simply falls outside the 30-day window
+ * and disappears, which is the right behaviour.
  */
 function parseAt(value: unknown, now: number): number | null {
+  const at = readAt(value, now);
+  if (at === null || at > now + MAX_CLOCK_SKEW_MS) return null;
+  return at;
+}
+
+function readAt(value: unknown, now: number): number | null {
   if (value === undefined || value === null) return now;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value === "string") {
@@ -74,7 +94,9 @@ function parseEvent(raw: unknown, index: number, now: number): ParsedEvent | str
   }
 
   const at = parseAt(raw.at, now);
-  if (at === null) return `${where}.at must be unix milliseconds or an ISO-8601 string`;
+  if (at === null) {
+    return `${where}.at must be unix milliseconds or an ISO-8601 string, and not in the future`;
+  }
 
   const event: ParsedEvent = {
     source: source as RunEventSource,

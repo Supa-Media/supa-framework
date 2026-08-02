@@ -42,13 +42,23 @@ export interface BackendStore {
 /**
  * Trim a pasted URL into an origin, or reject it.
  *
- * **`https://` only, including on localhost.** Two reasons, and the second is
- * the one that matters: a URL typed into a settings field is about to receive a
- * bearer token on every request, and the page's own CSP (`index.html`,
- * `public/_headers`) allows `connect-src https://*.convex.site` and nothing
- * else. Accepting a URL the browser will then refuse to open would turn a typo
- * into a feature that fails silently in the console. `convex dev` hands out an
- * `https://<name>.convex.site` URL, so there is nothing this costs.
+ * **`https://`, and a host the CSP will actually allow.** A URL typed into this
+ * settings field is about to receive a bearer token on every request, and the
+ * page's own CSP (`index.html`, `public/_headers`) allows
+ * `connect-src https://*.convex.site` and nothing else. Accepting a URL the
+ * browser will then refuse to open turns a typo into a feature that fails
+ * silently in a console nobody reads.
+ *
+ * That argument is about the whole URL, so it is applied to the whole URL. It
+ * used to stop at the scheme, which let through the single likeliest paste
+ * there is: `https://<name>.convex.cloud` — the wrong one of the two hostnames
+ * every Convex deployment has, warned about in `DEPLOY.md`, in
+ * `fleet.config.ts`, and right here — accepted at entry and then blocked at the
+ * network, which is precisely the failure this function exists to prevent.
+ *
+ * `localhost` stays allowed as a preview escape hatch, still https-only:
+ * `convex dev` hands out an `https://<name>.convex.site` URL, so no ordinary
+ * workflow needs http.
  */
 export function normalizeBackendUrl(raw: string | null | undefined): string | null {
   if (typeof raw !== "string") return null;
@@ -61,6 +71,8 @@ export function normalizeBackendUrl(raw: string | null | undefined): string | nu
     return null;
   }
   if (parsed.protocol !== "https:") return null;
+  const host = parsed.hostname.toLowerCase();
+  if (!host.endsWith(".convex.site") && host !== "localhost") return null;
   return `${parsed.origin}${parsed.pathname.replace(/\/+$/, "")}`;
 }
 

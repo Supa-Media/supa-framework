@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 
 import { internalMutation, internalQuery } from "./_generated/server";
+import { MAX_CLOCK_SKEW_MS } from "./lib/auth";
 import { SINGLE_USER_KEY } from "./schema";
 
 /**
@@ -40,16 +41,31 @@ export const get = internalQuery({
 });
 
 /**
+ * What a caller is told when its clock is ahead of ours. Spelled once, because
+ * `convex/http.ts` turns it into a 400 and this mutation throws it, and a second
+ * wording would be a second thing to keep true.
+ */
+export const CLOCK_AHEAD_MESSAGE =
+  "updatedAt is more than 5 minutes in the future — this device's clock looks wrong";
+
+/**
  * Move the marker, last-write-wins by `updatedAt`.
  *
- * **Why the writer's clock is allowed to decide.** `updatedAt` comes from the
- * browser, and a browser with a wrong clock could pin the marker into the
- * future. That is survivable here and nowhere else: the marker only widens or
- * narrows *your own* "since last review" window, nothing in the fleet acts on
- * it, and the fix is to mark reviewed again from a device with a sane clock.
- * Using the server clock instead would break the actual requirement — an
- * offline phone that marked reviewed at 07:00 and syncs at 09:00 must not
- * overwrite the laptop's genuine 08:00 mark.
+ * **Why the writer's clock is allowed to decide, in one direction only.**
+ * `updatedAt` comes from the browser, and the requirement it exists for is
+ * *past*-dated: an offline phone that marked reviewed at 07:00 and syncs at
+ * 09:00 must not overwrite the laptop's genuine 08:00 mark. Using the server
+ * clock would break that. Tolerating the *future* buys that requirement nothing
+ * and costs everything — `Date.now() * 1000` is an ordinary unit slip, and it
+ * used to be accepted, pinning the marker at the year 58554 and making every
+ * later honest write `applied: false` forever. The remedy this comment used to
+ * suggest ("mark reviewed again from a device with a sane clock") is the one
+ * thing that provably could not work, because a sane clock produces a
+ * *smaller* number. Recovery meant editing the row by hand.
+ *
+ * So the future is bounded by the same `MAX_CLOCK_SKEW_MS` the signature layer
+ * already allows a request, and a caller past it is told which of the two
+ * clocks we think is wrong.
  *
  * Equal timestamps keep the stored row. A tie is a duplicate of a write we
  * already have, and preferring the newcomer would make retrying a request
@@ -62,6 +78,8 @@ export const set = internalMutation({
     updatedAt: v.number(),
     device: v.string(),
     prefs: v.optional(v.record(v.string(), v.string())),
+    /** The server's clock, supplied by the caller so this stays deterministic. */
+    now: v.number(),
   },
   returns: v.object({ applied: v.boolean(), state: reviewStateValidator }),
   handler: async (ctx, args) => {
@@ -70,6 +88,12 @@ export const set = internalMutation({
     }
     if (!Number.isFinite(args.updatedAt)) {
       throw new ConvexError("updatedAt must be unix milliseconds");
+    }
+    // The HTTP layer checks this too, and answers 400 rather than 500. This one
+    // is the invariant: the table must not be able to hold an unreachable
+    // `updatedAt` no matter which door a future caller comes through.
+    if (args.updatedAt > args.now + MAX_CLOCK_SKEW_MS) {
+      throw new ConvexError(CLOCK_AHEAD_MESSAGE);
     }
 
     const userKey = args.userKey ?? SINGLE_USER_KEY;

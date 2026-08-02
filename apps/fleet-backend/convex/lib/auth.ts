@@ -49,8 +49,16 @@ export const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
  *
  * Not `crypto.timingSafeEqual`: the Convex runtime is a V8 isolate with no
  * `node:crypto`. Every character is compared regardless of where a mismatch
- * occurs; the length check ahead of it leaks only the length, which for a
- * fixed-width hex digest is already public.
+ * occurs.
+ *
+ * The early length check leaks a length, and this function has two callers, so
+ * the digest argument only covers one of them. For `verifySignedRequest` it
+ * leaks nothing: the comparand is always a 64-character hex digest, public by
+ * construction. For `verifyReadToken` it is one integer about an
+ * operator-chosen secret. Stated rather than waved at — though the token
+ * DEPLOY.md tells you to generate is `openssl rand -hex 32`, whose length is
+ * already known to anyone reading that file. Hashing both sides to a fixed
+ * width first would close it if a token ever stops being fixed-width.
  */
 export function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
