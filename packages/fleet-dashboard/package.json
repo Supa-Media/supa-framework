@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/fleet-dashboard",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "One phone-friendly page showing agent work, gardener workflows, and review queues across the Supa fleet",
   "type": "module",

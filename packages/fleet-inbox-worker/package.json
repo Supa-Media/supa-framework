@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/fleet-inbox-worker",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Telegram in, proposed GitHub issues out — a voice note becomes reviewed, routed work items across the Supa fleet, and nothing executes without approval",
   "type": "module",
