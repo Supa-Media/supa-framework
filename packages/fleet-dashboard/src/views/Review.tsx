@@ -9,6 +9,7 @@ import {
 } from "../lib/markers";
 import { prodState } from "../lib/review";
 import {
+  countTriageByRepo,
   selectDecisions,
   selectParked,
   selectPlan,
@@ -47,6 +48,15 @@ export function Review({
   const questions = selectQuestions(snapshot.issues);
   const plan = selectPlan(snapshot.issues);
 
+  // Untriaged work per repo, and the fleet total. Not a list here on purpose:
+  // triaging is per-app work with a per-app initiative picker, so this band's
+  // job is to say the number out loud and hand you to the app view.
+  const untriagedByRepo = countTriageByRepo(snapshot.issues);
+  const untriaged = snapshot.projects
+    .map((project) => ({ project, count: untriagedByRepo.get(project.key) ?? 0 }))
+    .filter((entry) => entry.count > 0);
+  const untriagedTotal = untriaged.reduce((sum, entry) => sum + entry.count, 0);
+
   const prodByRepo = new Map(
     snapshot.projects.map((project) => [project.key, project.lastProdDeploy?.at ?? null]),
   );
@@ -57,7 +67,8 @@ export function Review({
     decisions.length === 0 &&
     parked.length === 0 &&
     questions.length === 0 &&
-    plan.length === 0;
+    plan.length === 0 &&
+    untriagedTotal === 0;
 
   return (
     <>
@@ -228,6 +239,32 @@ export function Review({
               <Group right="approve and walk away">today&apos;s plan, per app</Group>
               {plan.map((repoGroup) => (
                 <ApproveRow key={repoGroup.repoKey} ctx={ctx} group={repoGroup} />
+              ))}
+            </Rows>
+          )}
+
+          {untriagedTotal > 0 && (
+            <Rows>
+              <Group right={`${untriagedTotal} untriaged across the fleet`}>
+                filed, but nothing is managing it
+              </Group>
+              {untriaged.map(({ project, count }) => (
+                <Row key={project.key}>
+                  <span className="grow">
+                    <b>{project.label}</b>
+                    <span className="sm">
+                      {count} open {count === 1 ? "issue carries" : "issues carry"} none of the
+                      fleet&apos;s labels — no agent will ever pick {count === 1 ? "it" : "them"} up.
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    className="bt"
+                    onClick={() => ctx.navigate(`app:${project.key}`)}
+                  >
+                    Triage {project.label}
+                  </button>
+                </Row>
               ))}
             </Rows>
           )}

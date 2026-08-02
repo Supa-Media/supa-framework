@@ -17,6 +17,69 @@
 
 export const MISC_INITIATIVE = "misc";
 
+/**
+ * Conventional-commit prefixes. `feat/thread-replies` is a commit convention
+ * wearing a slash, not a project — and a fleet that names branches this way was
+ * rendering seven cards called `chore`, `feat`, `fix`, `perf`… each announcing
+ * that it had no manifest entry.
+ */
+export const CONVENTIONAL_PREFIXES: readonly string[] = [
+  "feat",
+  "fix",
+  "chore",
+  "docs",
+  "test",
+  "tests",
+  "refactor",
+  "perf",
+  "ci",
+  "build",
+  "style",
+  "revert",
+  "release",
+  "hotfix",
+];
+
+/** Prefixes an agent harness or a bot generates. Never a human naming a project. */
+export const HARNESS_PREFIXES: readonly string[] = [
+  "claude",
+  "cursor",
+  "codex",
+  "agents",
+  "agent-workflow",
+  "worktree-agent",
+  "dependabot",
+  "renovate",
+  "gardener",
+  "aw",
+];
+
+const CONVENTIONAL = new Set(CONVENTIONAL_PREFIXES);
+const HARNESS = new Set(HARNESS_PREFIXES);
+
+/**
+ * Is this inferred key noise rather than an initiative?
+ *
+ * The two lists are matched differently, and the asymmetry is the point:
+ *
+ *   - a **conventional** prefix is noise only when it is the *whole* key. `feat`
+ *     names nothing, but `feat/finance` names finance — and the manifest may well
+ *     have an entry for it. Collapsing both would throw away the one case where
+ *     a conventional prefix carries real information.
+ *   - a **harness** prefix is noise at any depth. `claude/…`, `worktree-agent/…`
+ *     and `dependabot/npm_and_yarn/…` are machine-generated all the way down;
+ *     there is no second segment at which one of them becomes a project.
+ *
+ * Applies only to keys inferred from a branch. A manifest entry or an `init:*`
+ * label named `fix` is a human saying so, and a human outranks this list.
+ */
+export function isNoisyInitiative(name: string): boolean {
+  const key = name.trim().toLowerCase();
+  if (key === "" || key === MISC_INITIATIVE) return true;
+  if (CONVENTIONAL.has(key)) return true;
+  return HARNESS.has(key.split("/")[0] ?? "");
+}
+
 export function initiativeFromBranch(branch: string): string {
   const trimmed = branch.trim().replace(/^\/+|\/+$/g, "");
   if (trimmed === "") return MISC_INITIATIVE;

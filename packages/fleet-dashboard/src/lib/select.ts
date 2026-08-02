@@ -7,9 +7,11 @@
  * can honestly appear in two panels without a `kind` field having to pick one.
  */
 
-import { LABELS } from "./labels";
+import { isNoisyInitiative } from "./initiative";
+import { indexInitiatives, type InitiativeEntry, type InitiativesManifest } from "./initiativesFile";
+import { AGENTIC_WORKFLOWS_LABEL, AUTOMATION_AUTHORS, isManaged, LABELS } from "./labels";
 import { findMarker, parseMarkers, type MarkerBlock } from "./markers";
-import type { IssueCard } from "../sources/types";
+import type { Initiative, IssueCard, PullRequestCard } from "../sources/types";
 
 export const MARKER_DECIDER = "decider";
 export const MARKER_CONTEXT_SHEET = "context-sheet";
@@ -198,4 +200,154 @@ export function selectByInitiative(
     }
   }
   return byName;
+}
+
+/* ── Initiatives, per app ───────────────────────────────────────────────── */
+
+export interface InitiativeCardModel {
+  name: string;
+  /** The manifest entry, or `null` when the repo has none for this name. */
+  entry: InitiativeEntry | null;
+  issues: IssueCard[];
+  prs: PullRequestCard[];
+  /**
+   * Nobody named this: no manifest entry and no `init:*` label, only a branch
+   * prefix. Still a card — it survived the stoplist, so it looks like a project —
+   * but the card says where it came from and asks to be written down.
+   */
+  inferred: boolean;
+}
+
+export interface AppInitiatives {
+  live: InitiativeCardModel[];
+  archived: InitiativeCardModel[];
+  /**
+   * Branch prefixes that are conventions or harness noise, folded into one row.
+   *
+   * A row rather than cards, and one rather than seven, because the answer to
+   * "what is `chore`?" is "nothing" — and seven cards each saying that is the
+   * junk this bucket exists to absorb.
+   */
+  misc: { prefixes: string[]; prs: PullRequestCard[] };
+}
+
+/** The minimum of a `ProjectSnapshot` this needs. Structural, to keep `lib/` light. */
+export interface InitiativeSources {
+  key: string;
+  manifest: InitiativesManifest;
+  initiatives: readonly Initiative[];
+}
+
+/**
+ * One app's initiative cards, its archive, and its misc bucket.
+ *
+ * A card is a claim that a project exists, so only a human may make one: a
+ * `.fleet/initiatives.json` entry, or an `init:*` label somebody applied. Branch
+ * prefixes still contribute — that is how work is found before anyone writes it
+ * down — but only after the stoplist has taken out the ones that are conventions
+ * (`feat`, `chore`) or harness output (`claude`, `cursor`).
+ */
+export function selectAppInitiatives(
+  issues: readonly IssueCard[],
+  project: InitiativeSources,
+): AppInitiatives {
+  const manifest = indexInitiatives(project.manifest);
+  const byLabel = selectByInitiative(issues, project.key);
+  const byBranch = new Map(
+    project.initiatives.map((initiative) => [initiative.name, initiative.prs]),
+  );
+
+  // Named by a human, either in the manifest or with a label.
+  const named = new Set<string>([...manifest.keys(), ...byLabel.keys()]);
+  const cards: InitiativeCardModel[] = [];
+  const misc: AppInitiatives["misc"] = { prefixes: [], prs: [] };
+
+  for (const name of new Set<string>([...named, ...byBranch.keys()])) {
+    const prs = byBranch.get(name) ?? [];
+    const inferred = !named.has(name);
+    if (inferred && isNoisyInitiative(name)) {
+      misc.prefixes.push(name);
+      misc.prs.push(...prs);
+      continue;
+    }
+    cards.push({
+      name,
+      entry: manifest.get(name) ?? null,
+      issues: byLabel.get(name) ?? [],
+      prs,
+      inferred,
+    });
+  }
+
+  cards.sort((a, b) => a.name.localeCompare(b.name));
+  misc.prefixes.sort((a, b) => a.localeCompare(b));
+
+  return {
+    live: cards.filter((card) => card.entry?.archived !== true),
+    archived: cards.filter((card) => card.entry?.archived === true),
+    misc,
+  };
+}
+
+/* ── Triage ─────────────────────────────────────────────────────────────── */
+
+export interface Triage {
+  /** Untriaged issues that look like product work — the list you act on. */
+  work: IssueCard[];
+  /**
+   * Untriaged issues the automation filed about itself. Still shown, because an
+   * invisible report is the same as no report, but folded away: queueing a
+   * gardener's own weekly summary as agent work is not what anyone means.
+   */
+  automation: IssueCard[];
+}
+
+/** An issue the Actions bot filed about a gh-aw run, not about the product. */
+function isAutomationReport(issue: IssueCard): boolean {
+  const author = issue.author?.toLowerCase() ?? "";
+  return (
+    AUTOMATION_AUTHORS.includes(author) && issue.labels.includes(AGENTIC_WORKFLOWS_LABEL)
+  );
+}
+
+/**
+ * Open issues the fleet is not managing.
+ *
+ * Defined by label **absence**, which is why it lives here and not in the
+ * GraphQL: the search can only exclude names it knows, and `init:*` is an open
+ * set. The query narrows the bandwidth; this decides.
+ *
+ * Newest first — a triage list read top-down should start where the filing did.
+ */
+export function selectTriage(
+  issues: readonly IssueCard[],
+  repoKey: string | null = null,
+): Triage {
+  const triage: Triage = { work: [], automation: [] };
+  for (const issue of issues) {
+    if (repoKey !== null && issue.repoKey !== repoKey) continue;
+    if (isManaged(issue.labels)) continue;
+    if (isAutomationReport(issue)) triage.automation.push(issue);
+    else triage.work.push(issue);
+  }
+  const newestFirst = (a: IssueCard, b: IssueCard) => b.createdAt.localeCompare(a.createdAt);
+  triage.work.sort(newestFirst);
+  triage.automation.sort(newestFirst);
+  return triage;
+}
+
+/**
+ * repoKey → untriaged **work** count, for the nav badges and the Review count.
+ *
+ * Automation reports are excluded on purpose. They are visible on the app view
+ * in their own collapsed row; badging them too would put a permanent number
+ * beside every app for something nobody is going to action, which is precisely
+ * the noise a badge is supposed to cut through.
+ */
+export function countTriageByRepo(issues: readonly IssueCard[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const issue of selectTriage(issues).work) {
+    counts.set(issue.repoKey, (counts.get(issue.repoKey) ?? 0) + 1);
+  }
+  return counts;
 }

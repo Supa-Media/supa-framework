@@ -156,8 +156,25 @@ agent:ready ──(you approve the plan)──► + plan:approved
 | `inbox:proposed`     | An extracted item awaiting keep/reject.                               |
 | `inbox:raw`          | A dump awaiting extraction.                                           |
 | `watchdog:report`    | A watchdog intervention report. Drives **🐕 Watchdog**.               |
+| `fleet:triaged`      | You looked and said "not now". The only label whose job is to make an issue stop appearing. |
 | `init:<name>`        | The initiative this item belongs to. An item may carry several.       |
 | `size:<S\|M\|L\|XL>` | T-shirt size, shown as a pill in the queue.                           |
+
+**Triage is the absence of all of them.** An open issue carrying none of the
+labels above — and no `init:*` — is untriaged: filed, and then nothing in the
+pipeline ever picked it up. Every other screen selects *by* a label, so before
+the Triage surface these were invisible to the fleet no matter how many there
+were. `size:*` deliberately does not count as managed: an issue somebody
+measured and then dropped is exactly the shape triage exists to surface.
+
+Triage lives on each app view (above environments), is counted per app in the
+nav badge, and totalled on **☀️ Review** as "N untriaged across the fleet".
+Two actions, one label write each, both undoable from the row while it is
+visible: **Queue** adds `agent:ready` (plus an `init:<name>` if you pick an
+initiative), **Not now** adds `fleet:triaged`. Issues the Actions bot filed
+carrying `agentic-workflows` are split into a collapsed *automation reports*
+subsection — visible, because an invisible report is the same as no report, but
+never badged and never offered as agent work.
 
 Labels must **exist in the repo** before the dashboard can apply them — it
 refuses to create one rather than let a typo'd convention spread across the
@@ -234,6 +251,25 @@ from branch prefixes on open PRs. What discovery cannot supply is the two things
 a human writes down: what **phase** the work is in, and that it is **archived**.
 Hence an optional file, in the repo, changed by a normal commit. Schema in
 [`src/lib/initiativesFile.ts`](src/lib/initiativesFile.ts).
+
+A branch prefix may not mint a **card** on its own if it is a conventional-commit
+prefix (`feat`, `fix`, `chore`, `docs`, `test`, `refactor`, `perf`, `ci`,
+`build`, `style`, `revert`, `release`, `hotfix`) or an agent-harness one
+(`claude`, `cursor`, `codex`, `agents`, `agent-workflow`, `worktree-agent`,
+`dependabot`, `renovate`, `gardener`, `aw`). Those group work; they do not name
+it, and a fleet that names branches this way was rendering seven cards called
+`chore`, `feat`, `perf`… each announcing it had no phase. They collapse into one
+quiet **misc** row instead. The two lists are matched differently and the
+asymmetry is deliberate: a conventional prefix is noise only as the *whole* key
+(`feat` names nothing, `feat/finance` names finance), while a harness prefix is
+noise at any depth. A name a human wrote down — a manifest entry or an `init:*`
+label — always outranks the stoplist. Rules and rationale in
+[`src/lib/initiative.ts`](src/lib/initiative.ts).
+
+A card that came only from a surviving branch prefix says **inferred — add to
+manifest**. A card from an `init:*` label does not: somebody already named that
+one. When nothing qualifies, the view is one line — *No initiatives yet* — and
+the ＋ initiative button, rather than a grid of junk.
 
 ```json
 {
@@ -350,10 +386,19 @@ which is what the "Partial data" banner renders — a repo a token cannot see na
 itself, scoped to the **owner** whose token was used, rather than silently
 shortening the fleet.
 
+**A label write needs no confirmation; creating an object does.** Queue and
+Not now are single clicks, because a label is the one write this app can take
+straight back — and the row stays put afterwards with an **undo** that removes
+exactly the labels the click added. (It has to stay put: the refetch drops a
+queued issue out of triage immediately, and an action you cannot see is an
+action you cannot take back.) The two-step is reserved for the palette, where
+the write *files an issue* — a new object somebody would then have to close.
+
 **Rate limits.** One GraphQL call **per owner** covers every open PR, every merge
-in the review window, every labelled issue, and the cost issues for that owner's
-repos — one aliased search node per repo, so each repo also reports an exact
-`issueCount` and paginates on its own cursor. Three requests instead of one is
+in the review window, every labelled issue, every **untriaged** issue, and the
+cost issues for that owner's repos — one aliased search node per repo, so each
+repo also reports an exact `issueCount` and paginates on its own cursor. Triage
+added one search node to that document and zero HTTP requests. Three requests instead of one is
 the price of the credential, not of the query shape. The rest is REST with
 `If-None-Match` conditional requests, and a `304` costs no budget. There is no
 polling: the page fetches once, and again after a write or a Refresh. Each token
@@ -363,9 +408,12 @@ whole read cache** — the cache is keyed by path with no notion of what a write
 touched, so total invalidation is the only safe kind. It costs one cold refresh.
 
 **Caps.** Open PRs page to 5 × 100 per repo; merges cap at 50 per repo per
-window; labelled issues cap at 100 across the fleet; issue comments at the last
-20. The project card always shows the exact count from `issueCount`, never the
-number of rows fetched, and a truncated list says so.
+window; labelled issues cap at 100 across the fleet; untriaged issues at 100 per
+owner; issue comments at the last 20. The project card always shows the exact
+count from `issueCount`, never the number of rows fetched, and a truncated list
+says so. Triage is the one count that shows the **filtered** number rather than
+the search's `issueCount`: the search cannot exclude `init:*`, so its count is a
+superset of the definition and printing it would overstate the backlog.
 
 ## Notes and limitations
 

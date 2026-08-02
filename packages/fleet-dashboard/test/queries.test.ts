@@ -6,6 +6,7 @@ import {
   buildIssueQuery,
   buildPrQuery,
   MAX_PR_PAGES,
+  MAX_UNTRIAGED,
 } from "../src/sources/github/queries";
 
 test("each repo gets its own aliased, cursored search node", () => {
@@ -40,6 +41,29 @@ test("PR search is scoped to one repo and sorted by recency", () => {
   assert.ok(query.includes("is:open"));
   // So that if the page cap is ever hit, the PRs kept are the active ones.
   assert.ok(query.includes("sort:updated-desc"));
+});
+
+test("triage rides inside the owner's document as one more aliased search", () => {
+  const query = buildFleetQuery(2);
+
+  // One node, one variable — so the whole triage surface costs zero extra HTTP
+  // requests, and one extra search per owner rather than one per repo.
+  assert.ok(query.includes("untriaged: search(query: $untriagedQuery, type: ISSUE"));
+  assert.ok(query.includes("$untriagedQuery: String!"));
+  assert.equal(query.split("untriaged: search").length - 1, 1, "one search, not one per repo");
+  assert.ok(query.includes(`first: ${MAX_UNTRIAGED}`));
+});
+
+test("the untriaged node asks for issueCount, like every other search since #40", () => {
+  // Same convention as `labelled`: unpaginated, but the exact count is asked for
+  // so a caller can never mistake a capped node list for a total.
+  const untriaged = buildFleetQuery(1).slice(buildFleetQuery(1).indexOf("untriaged: search"));
+  assert.ok(untriaged.slice(0, 200).includes("issueCount"));
+});
+
+test("issue fields carry the author, which is what splits automation reports out", () => {
+  assert.ok(buildFleetQuery(1).includes("fragment IssueFields on Issue"));
+  assert.ok(/fragment IssueFields on Issue \{[\s\S]*?author \{\s*login/.test(buildFleetQuery(1)));
 });
 
 test("the cost-issue search excludes closed and stale reports", () => {

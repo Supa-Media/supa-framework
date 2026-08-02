@@ -17,7 +17,7 @@
  *     accepts, which was previously a documented-but-unenforced cap.
  */
 
-import { LABELS } from "../../lib/labels";
+import { LABELS, MANAGED_LABELS } from "../../lib/labels";
 
 /** Hard ceiling on pages fetched per repo. 100 PRs a page — 500 is plenty. */
 export const MAX_PR_PAGES = 5;
@@ -35,6 +35,15 @@ export const MAX_MERGED = 50;
  * scroll. The UI shows the true `issueCount` beside the rows.
  */
 export const MAX_ISSUES = 100;
+
+/**
+ * Untriaged issues fetched per owner. Same reasoning as `MAX_ISSUES`, and the
+ * same shape: one unpaginated search node inside each owner's document, so the
+ * whole surface costs zero extra HTTP requests. A fleet with more than a hundred
+ * untriaged issues under one owner has a backlog, not a list — and the rows are
+ * newest-first so the hundred you get are the ones you would have started with.
+ */
+export const MAX_UNTRIAGED = 100;
 
 /**
  * Comments read per issue, newest last. Markers (`**[decider]**`, context
@@ -110,6 +119,9 @@ const ISSUE_FIELDS = /* GraphQL */ `
     body
     createdAt
     updatedAt
+    author {
+      login
+    }
     repository {
       nameWithOwner
     }
@@ -142,6 +154,7 @@ export function buildFleetQuery(repoCount: number): string {
     ...Array.from({ length: repoCount }, (_, i) => `$m${i}: String!`),
     "$issueQuery: String!",
     "$labelQuery: String!",
+    "$untriagedQuery: String!",
   ].join(", ");
 
   const searches = Array.from(
@@ -170,6 +183,12 @@ export function buildFleetQuery(repoCount: number): string {
   ${ISSUE_FIELDS}
   query FleetPulse(${variables}) {${searches}
     labelled: search(query: $labelQuery, type: ISSUE, first: ${MAX_ISSUES}) {
+      issueCount
+      nodes {
+        ...IssueFields
+      }
+    }
+    untriaged: search(query: $untriagedQuery, type: ISSUE, first: ${MAX_UNTRIAGED}) {
       issueCount
       nodes {
         ...IssueFields
@@ -235,6 +254,7 @@ export interface GqlIssueNode {
   body: string | null;
   createdAt: string;
   updatedAt: string;
+  author: { login: string } | null;
   repository: { nameWithOwner: string };
   labels: { nodes: Array<{ name: string } | null> };
   comments: {
@@ -274,6 +294,7 @@ export interface GqlIssuePage {
 /** Positional aliases (`repo0`, `merged0`…) plus the three shared searches. */
 export type FleetQueryResult = Record<string, GqlSearchPage | GqlMergedPage | undefined> & {
   labelled?: GqlIssuePage;
+  untriaged?: GqlIssuePage;
   costIssues?: { nodes: Array<GqlIssue | null> };
 };
 
@@ -332,6 +353,32 @@ export function buildLabelQuery(slugs: readonly string[]): string {
     "is:issue",
     "is:open",
     `label:${labels}`,
+    "sort:updated-desc",
+    ...slugs.map((slug) => `repo:${slug}`),
+  ].join(" ");
+}
+
+/**
+ * Every **open issue** in the owner's repos carrying none of the fleet's labels.
+ *
+ * One `-label:` per name rather than one negated comma-list. `-label:"a","b"` is
+ * a negated OR whose behaviour is undocumented at the qualifier level, while
+ * repeated qualifiers AND — and "carries none of them" is exactly an AND of
+ * negations. Same quoting rule as `buildLabelQuery`, for the same reason.
+ *
+ * `is:issue` is what keeps pull requests out: GitHub's ISSUE search type covers
+ * both, and a PR carrying no `agent:*` label is every PR ever opened by hand.
+ *
+ * This narrows the bandwidth; it does not define the surface. `init:*` is an open
+ * set that no search qualifier can exclude, so an issue labelled only
+ * `init:giving` still comes back here and is dropped by `selectTriage`. The
+ * definition lives in one place and it is that selector.
+ */
+export function buildUntriagedQuery(slugs: readonly string[]): string {
+  return [
+    "is:issue",
+    "is:open",
+    ...MANAGED_LABELS.map((label) => `-label:"${label}"`),
     "sort:updated-desc",
     ...slugs.map((slug) => `repo:${slug}`),
   ].join(" ");

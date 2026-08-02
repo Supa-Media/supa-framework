@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 
 import { fleetConfig } from "../src/fleet.config";
+import { selectTriage } from "../src/lib/select";
 import { fleetOwners, type TokenMap } from "../src/lib/tokens";
 import { createGitHubSource } from "../src/sources/github/githubSource";
 
@@ -205,6 +206,64 @@ test("an owner with no token costs its own repos and nothing else", async () => 
     snapshot.errors.filter((error) => error.scope === "shyoh"),
     [],
   );
+});
+
+test("untriaged issues arrive in snapshot.issues beside the labelled ones", async () => {
+  const untriagedQueries: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (!String(input).endsWith("/graphql")) {
+      return new Response(JSON.stringify({ message: "Not Found" }), { status: 404 });
+    }
+    const owner = ownerOfCall(init);
+    const body = JSON.parse(String(init?.body)) as { variables: Record<string, string> };
+    const untriagedQuery = body.variables["untriagedQuery"];
+    if (untriagedQuery !== undefined) untriagedQueries.push(untriagedQuery);
+
+    const group = OWNERS.find((entry) => entry.owner === owner);
+    const repo = group?.repos[0];
+    const payload = ownerPayload(group?.repos.length ?? 0, false) as {
+      data: Record<string, unknown>;
+    };
+    if (repo !== undefined) {
+      payload.data["untriaged"] = {
+        issueCount: 1,
+        nodes: [
+          {
+            id: `node-${owner}`,
+            number: 7,
+            title: "a bug nobody picked up",
+            url: `https://github.com/${repo.slug}/issues/7`,
+            body: "",
+            createdAt: "2026-07-20T00:00:00Z",
+            updatedAt: "2026-07-20T00:00:00Z",
+            author: { login: "lilseyi" },
+            repository: { nameWithOwner: repo.slug },
+            labels: { nodes: [{ name: "bug" }] },
+            comments: { nodes: [] },
+          },
+        ],
+      };
+    }
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  const snapshot = await createGitHubSource(fleetConfig, allTokens()).fetchFleet({
+    since: "2026-08-01T00:00:00.000Z",
+  });
+
+  // One untriaged search per owner, not per repo — the rate budget this adds is
+  // one search node inside a request that was already going out.
+  assert.equal(untriagedQueries.length, OWNERS.length);
+
+  const untriaged = selectTriage(snapshot.issues);
+  assert.equal(untriaged.work.length, OWNERS.length, "one per owner reached the snapshot");
+  assert.equal(untriaged.work[0]?.author, "lilseyi", "the author survives the mapping");
+  // Deduped: two searches feed one list, and a row rendered twice reads as a
+  // data problem rather than a query one.
+  assert.equal(new Set(snapshot.issues.map((issue) => issue.id)).size, snapshot.issues.length);
 });
 
 test("togather's sync workflow offers every environment the workflow accepts", () => {

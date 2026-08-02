@@ -4,13 +4,15 @@ import { test } from "node:test";
 import { LABELS, labelsAfterKeep, initiativeLabels, sizeLabel } from "../src/lib/labels";
 import { prodState } from "../src/lib/review";
 import {
+  selectAppInitiatives,
   selectDecisions,
   selectParked,
   selectPlan,
   selectQuestions,
   selectQueue,
+  type InitiativeSources,
 } from "../src/lib/select";
-import type { IssueCard, IssueComment } from "../src/sources/types";
+import type { Initiative, IssueCard, IssueComment, PullRequestCard } from "../src/sources/types";
 
 function issue(partial: Partial<IssueCard> & { number: number }): IssueCard {
   const labels = partial.labels ?? [];
@@ -25,6 +27,7 @@ function issue(partial: Partial<IssueCard> & { number: number }): IssueCard {
     body: "",
     createdAt: "2026-08-01T00:00:00Z",
     updatedAt: "2026-08-01T00:00:00Z",
+    author: null,
     labels,
     initiatives: initiativeLabels(labels.map((name) => ({ name }))),
     size: sizeLabel(labels.map((name) => ({ name }))),
@@ -162,6 +165,143 @@ test("keeping is idempotent", () => {
 test("size labels normalize case; initiative labels keep theirs", () => {
   assert.equal(sizeLabel([{ name: "size:m" }]), "M");
   assert.deepEqual(initiativeLabels([{ name: "init:WA-Parity" }, { name: "init:" }]), ["WA-Parity"]);
+});
+
+/* ── Initiatives, per app ───────────────────────────────────────────────── */
+
+function pr(branch: string): PullRequestCard {
+  return {
+    id: `o/r#${branch}`,
+    repoKey: "o/r",
+    repoLabel: "Repo",
+    number: 1,
+    title: branch,
+    url: "https://github.com/o/r/pull/1",
+    branch,
+    initiative: branch.slice(0, branch.lastIndexOf("/")),
+    state: "review",
+    isDraft: false,
+    createdAt: "2026-08-01T00:00:00Z",
+    updatedAt: "2026-08-01T00:00:00Z",
+    requestedReviewers: [],
+    needsYouReason: null,
+  };
+}
+
+/** A project whose only initiatives are the branch prefixes given. */
+function project(
+  branchPrefixes: readonly string[],
+  manifestNames: readonly string[] = [],
+): InitiativeSources {
+  const initiatives: Initiative[] = branchPrefixes.map((name) => ({
+    name,
+    prs: [pr(`${name}/work`)],
+  }));
+  return {
+    key: "o/r",
+    manifest: {
+      entries: manifestNames.map((name) => ({
+        name,
+        phase: null,
+        spec: null,
+        archived: false,
+      })),
+      problems: [],
+    },
+    initiatives,
+  };
+}
+
+test("conventional and harness branch prefixes never become cards", () => {
+  // Exactly what the owner's Togather view was showing: seven cards named after
+  // commit conventions and agent harnesses, each announcing it had no phase.
+  const app = selectAppInitiatives(
+    [],
+    project(["agents", "chore", "claude", "cursor", "feat", "fix", "perf", "wa-parity"]),
+  );
+
+  assert.deepEqual(
+    app.live.map((card) => card.name),
+    ["wa-parity"],
+  );
+  assert.deepEqual(app.misc.prefixes, [
+    "agents",
+    "chore",
+    "claude",
+    "cursor",
+    "feat",
+    "fix",
+    "perf",
+  ]);
+  // The work itself is not thrown away — it is one row's worth of PRs.
+  assert.equal(app.misc.prs.length, 7);
+});
+
+test("branches with no prefix at all land in misc, not in a card called misc", () => {
+  const app = selectAppInitiatives([], project(["misc", "giving"]));
+  assert.deepEqual(
+    app.live.map((card) => card.name),
+    ["giving"],
+  );
+  assert.deepEqual(app.misc.prefixes, ["misc"]);
+});
+
+test("a human naming a stoplisted word outranks the stoplist", () => {
+  // A manifest entry and an `init:` label are both somebody saying so. The
+  // stoplist only ever judges a name nobody wrote down.
+  const byManifest = selectAppInitiatives([], project(["fix"], ["fix"]));
+  assert.deepEqual(
+    byManifest.live.map((card) => card.name),
+    ["fix"],
+  );
+  assert.deepEqual(byManifest.misc.prefixes, []);
+
+  const byLabel = selectAppInitiatives(
+    [issue({ number: 1, labels: ["init:chore"] })],
+    project(["chore"]),
+  );
+  assert.deepEqual(
+    byLabel.live.map((card) => card.name),
+    ["chore"],
+  );
+  assert.deepEqual(byLabel.misc.prefixes, []);
+});
+
+test("only a branch-only name is marked inferred", () => {
+  const app = selectAppInitiatives(
+    [issue({ number: 1, labels: ["init:giving"] })],
+    project(["wa-parity"], ["rostering"]),
+  );
+
+  const inferred = Object.fromEntries(app.live.map((card) => [card.name, card.inferred]));
+  // A manifest entry and an `init:` label are both a human's word for it; only
+  // the branch prefix was guessed.
+  assert.deepEqual(inferred, { giving: false, rostering: false, "wa-parity": true });
+});
+
+test("nothing but noise is an empty state, not a page of junk cards", () => {
+  const app = selectAppInitiatives([], project(["feat", "fix", "claude"]));
+  assert.equal(app.live.length, 0, "the empty state renders when live is empty");
+  assert.equal(app.archived.length, 0);
+  assert.equal(app.misc.prefixes.length, 3);
+});
+
+test("archived initiatives leave the card grid without leaving the app", () => {
+  const sources = project(["giving"], []);
+  sources.manifest.entries = [
+    { name: "giving", phase: "done", spec: null, archived: true },
+    { name: "rostering", phase: "building", spec: null, archived: false },
+  ];
+  const app = selectAppInitiatives([], sources);
+
+  assert.deepEqual(
+    app.live.map((card) => card.name),
+    ["rostering"],
+  );
+  assert.deepEqual(
+    app.archived.map((card) => card.name),
+    ["giving"],
+  );
 });
 
 test("production state never guesses when there is no deploy to compare", () => {
