@@ -12,7 +12,7 @@
       'unsafe-inline' because Vite injects the stylesheet inline; no script is
       inline, so 'self' is enough there.
 
-      `https://*.convex.site` is the fleet's own backend (`apps/fleet-backend`),
+      `https://exuberant-robin-705.convex.site` is the fleet's own backend (`apps/fleet-backend`),
       which holds the cross-device review marker and run telemetry. Every Convex
       HTTP-actions deployment lives on that domain and the exact subdomain is a
       runtime setting, so the wildcard is as narrow as this can be stated. It is
@@ -26,7 +26,7 @@
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; connect-src https://api.github.com https://*.convex.site; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
+      content="default-src 'self'; connect-src https://api.github.com https://exuberant-robin-705.convex.site; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
     />
     <title>Fleet</title>
   </head>

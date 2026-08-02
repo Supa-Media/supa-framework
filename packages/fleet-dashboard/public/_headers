@@ -6,7 +6,7 @@
 # which a <meta> tag cannot deliver. Keep the two in sync; the meta tag is the
 # fallback for hosts that don't serve custom headers.
 /*
-  Content-Security-Policy: default-src 'self'; connect-src https://api.github.com https://*.convex.site; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'
+  Content-Security-Policy: default-src 'self'; connect-src https://api.github.com https://exuberant-robin-705.convex.site; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
