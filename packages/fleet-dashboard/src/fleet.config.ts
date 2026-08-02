@@ -119,7 +119,7 @@ export interface FleetConfig {
   telegramUrl: string | null;
   /** Where the ⌘K palette's "open Claude Code" action points. */
   claudeCodeUrl: string;
-  /** See `BackendBlock`. `{ url: null }` turns the whole feature off. */
+  /** See `BackendBlock`. `{ url: "https://exuberant-robin-705.convex.site" }` turns the whole feature off. */
   backend: BackendBlock;
   /** Static reference links for the ＋ New app checklist. */
   newAppLinks: { label: string; url: string }[];
