@@ -130,6 +130,15 @@ export interface IssueCard {
   createdAt: string;
   /** ISO-8601. */
   updatedAt: string;
+  /**
+   * Login of whoever filed it, or `null` for a deleted account.
+   *
+   * Read for one reason: separating the gh-aw bot's own operational reports from
+   * product work in Triage. An untriaged issue is defined by what it lacks, and
+   * "filed by `github-actions`" is the only signal that distinguishes a weekly
+   * cost report nobody needs to queue from a bug nobody has looked at.
+   */
+  author: string | null;
   labels: string[];
   /** `init:*` labels, prefix stripped. */
   initiatives: string[];
@@ -297,7 +306,16 @@ export interface FleetSnapshot {
   needsYou: PullRequestCard[];
   /** PRs merged since `since`, newest first. */
   shipped: ShippedPr[];
-  /** Every issue carrying a label the dashboard reads, across the fleet. */
+  /**
+   * Every open issue the dashboard fetched, across the fleet: those carrying a
+   * label it reads, **and** those carrying none of them at all.
+   *
+   * The second half is what the Triage surface is made of, and it lives in the
+   * same list rather than a `untriaged` field of its own because "is this
+   * managed?" is a question about labels — exactly the kind of question the
+   * views already answer with a selector. A separate field would move the
+   * definition into the GraphQL, where `init:*` cannot be expressed.
+   */
   issues: IssueCard[];
   /**
    * Run telemetry inside the window, newest first. Always empty when no Convex

@@ -38,12 +38,70 @@ export const LABELS = {
   inboxProposed: "inbox:proposed",
   /** A watchdog intervention report. */
   watchdogReport: "watchdog:report",
+  /**
+   * You looked at it and said "not now".
+   *
+   * The only label whose job is to make an issue **stop** appearing. Triage asks
+   * "is the fleet managing this?", and without a way to answer "no, deliberately"
+   * the same twenty issues would be offered every morning forever — which is how
+   * a triage list becomes another thing you ignore.
+   */
+  triaged: "fleet:triaged",
 } as const;
 
 /** Prefix for the initiative a label assigns, e.g. `init:giving`. */
 export const INIT_PREFIX = "init:";
 /** Prefix for a t-shirt size, e.g. `size:M`. */
 export const SIZE_PREFIX = "size:";
+
+/**
+ * Every label that means "the fleet has an opinion about this issue".
+ *
+ * An open issue carrying **none** of these — and no `init:*` — is untriaged: it
+ * was filed and then nothing in the pipeline ever picked it up. That is the whole
+ * definition behind the Triage surface, and it is stated here once so the
+ * GraphQL exclusion and the client-side selector cannot drift apart.
+ *
+ * `size:*` is deliberately absent. It is a description, not a decision: an issue
+ * labelled only `size:M` has been measured by someone and then dropped, which is
+ * exactly the shape triage exists to surface.
+ */
+export const MANAGED_LABELS: readonly string[] = [
+  LABELS.ready,
+  LABELS.inProgress,
+  LABELS.blocked,
+  LABELS.automerge,
+  LABELS.notify,
+  LABELS.planApproved,
+  LABELS.inboxProposed,
+  LABELS.inboxRaw,
+  LABELS.watchdogReport,
+  LABELS.triaged,
+];
+
+/**
+ * gh-aw stamps every issue its workflows file with this. Paired with the
+ * `github-actions` author it identifies an operational report rather than
+ * product work — see `selectTriage`.
+ */
+export const AGENTIC_WORKFLOWS_LABEL = "agentic-workflows";
+
+/**
+ * How GitHub spells the Actions bot. Two entries because GraphQL's `author.login`
+ * says `github-actions` while REST and the web UI say `github-actions[bot]`, and
+ * an issue's provenance must not depend on which API happened to fetch it.
+ */
+export const AUTOMATION_AUTHORS: readonly string[] = ["github-actions", "github-actions[bot]"];
+
+/**
+ * Whether the fleet is managing this issue at all.
+ *
+ * `init:*` counts even on its own: naming an initiative is a human saying where
+ * the work belongs, which is more triage than most issues ever get.
+ */
+export function isManaged(labels: readonly string[]): boolean {
+  return labels.some((name) => MANAGED_LABELS.includes(name) || name.startsWith(INIT_PREFIX));
+}
 
 export interface LabelLike {
   name: string;

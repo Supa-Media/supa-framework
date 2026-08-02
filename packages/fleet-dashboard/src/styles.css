@@ -525,6 +525,25 @@ code,
   flex-wrap: wrap;
 }
 
+/* A select sitting in a button row (the triage initiative picker). The base
+   `select` rule is `width: 100%` for the stacked forms in Inbox and ＋ New app,
+   which inside a row would push every button onto its own line. */
+.pick {
+  width: auto;
+  max-width: 9rem;
+  padding: 0.28em 0.5em;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border-color: var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+
+.pick:hover {
+  color: var(--ink);
+}
+
 /* ⚡ toggle. Off is a dashed ghost; on is the one amber thing in a row. */
 .flag {
   padding: 0.16em 0.5em;

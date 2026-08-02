@@ -1,9 +1,9 @@
 import { useState } from "react";
 
-import { indexInitiatives, type InitiativeEntry } from "../lib/initiativesFile";
-import { selectByInitiative } from "../lib/select";
+import { INIT_PREFIX, LABELS } from "../lib/labels";
+import { selectAppInitiatives, selectTriage, type InitiativeCardModel } from "../lib/select";
 import { absolute, age } from "../lib/time";
-import type { ProjectSnapshot } from "../sources/types";
+import type { IssueCard, ProjectSnapshot } from "../sources/types";
 import {
   Banner,
   Empty,
@@ -27,7 +27,7 @@ const PHASE_TONE: Record<string, Tone> = {
 };
 
 /**
- * One app — its initiatives, its environments, its archive.
+ * One app — its initiatives, its triage, its environments, its archive.
  *
  * An initiative is discovered two ways and neither is authoritative alone:
  *
@@ -40,30 +40,17 @@ const PHASE_TONE: Record<string, Tone> = {
  * The two are merged, not ranked: an initiative in the manifest but with no
  * open work still shows (it may be in `quiet`), and an initiative with work but
  * no manifest entry shows with no phase chip rather than a guessed one.
+ *
+ * What a branch prefix may *not* do is mint a card on its own if it is a
+ * conventional-commit or harness prefix — `feat`, `chore`, `claude`, `cursor`.
+ * Those are one quiet misc row. See `isNoisyInitiative`.
  */
 export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }) {
   const [showArchived, setShowArchived] = useState(false);
 
   if (project.tokenMissing) return <NoToken ctx={ctx} project={project} />;
 
-  const manifest = indexInitiatives(project.manifest);
-  const byLabel = selectByInitiative(ctx.snapshot.issues, project.key);
-  const byBranch = new Map(
-    project.initiatives.map((initiative) => [initiative.name, initiative.prs]),
-  );
-
-  const names = new Set<string>([...manifest.keys(), ...byLabel.keys(), ...byBranch.keys()]);
-  const cards = [...names]
-    .map((name) => ({
-      name,
-      entry: manifest.get(name) ?? null,
-      issues: byLabel.get(name) ?? [],
-      prs: byBranch.get(name) ?? [],
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  const live = cards.filter((card) => card.entry?.archived !== true);
-  const archived = cards.filter((card) => card.entry?.archived === true);
+  const { live, archived, misc } = selectAppInitiatives(ctx.snapshot.issues, project);
 
   const manifestUrl = `https://github.com/${project.slug}/edit/${encodeURIComponent(
     project.defaultBranch,
@@ -110,21 +97,26 @@ export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }
       )}
 
       {live.length === 0 ? (
+        // One line, and the affordance that fixes it. The old copy explained the
+        // whole discovery heuristic here, which was three sentences of theory in
+        // the exact spot where the answer is "there aren't any yet".
         <Empty>
-          <b>No initiatives found.</b> They are discovered from <code>init:*</code> labels on open
-          issues and from branch prefixes on open PRs — neither of which this repo has right now.
-          Adding <code>{ctx.config.initiativesPath}</code> lets you name them (and give each a
-          phase) before the work starts.
+          <b>No initiatives yet.</b>{" "}
+          <a
+            className="bt pri"
+            href={hasManifest ? manifestUrl : newManifestUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            ＋ initiative
+          </a>
         </Empty>
       ) : (
         <div className="cards">
           {live.map((card) => (
             <InitiativeCard
               key={card.name}
-              name={card.name}
-              entry={card.entry}
-              issueCount={card.issues.length}
-              prCount={card.prs.length}
+              card={card}
               slug={project.slug}
               branch={project.defaultBranch}
               manifestPath={ctx.config.initiativesPath}
@@ -132,6 +124,25 @@ export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }
           ))}
         </div>
       )}
+
+      {misc.prefixes.length > 0 && (
+        <Rows>
+          <Group right={`${misc.prs.length} open ${misc.prs.length === 1 ? "PR" : "PRs"}`}>
+            misc
+          </Group>
+          <Row>
+            <span className="grow">
+              {misc.prefixes.join(" · ")}
+              <span className="sm">
+                Conventional-commit and agent-harness branch prefixes. They group work, they do not
+                name it — so they get one row rather than a card each.
+              </span>
+            </span>
+          </Row>
+        </Rows>
+      )}
+
+      <TriageSection ctx={ctx} project={project} initiatives={live} />
 
       {archived.length > 0 && (
         <Rows>
@@ -244,22 +255,19 @@ function NoToken({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }) {
 }
 
 function InitiativeCard({
-  name,
-  entry,
-  issueCount,
-  prCount,
+  card,
   slug,
   branch,
   manifestPath,
 }: {
-  name: string;
-  entry: InitiativeEntry | null;
-  issueCount: number;
-  prCount: number;
+  card: InitiativeCardModel;
   slug: string;
   branch: string;
   manifestPath: string;
 }) {
+  const { name, entry, inferred } = card;
+  const issueCount = card.issues.length;
+  const prCount = card.prs.length;
   const specUrl =
     entry?.spec == null ? null : `https://github.com/${slug}/blob/${branch}/${entry.spec}`;
 
@@ -276,12 +284,15 @@ function InitiativeCard({
         {issueCount === 0 && prCount === 0
           ? "no open work"
           : `${issueCount} open ${issueCount === 1 ? "issue" : "issues"} · ${prCount} open ${prCount === 1 ? "PR" : "PRs"}`}
-        {entry === null && (
+        {/*
+          Only for a name nobody wrote down. An `init:` label with no manifest
+          entry is already a human's word for it — the old copy called that
+          "inferred" too, and said so on every card in the fleet.
+        */}
+        {inferred && (
           <>
             <br />
-            <span className="muted">
-              inferred from labels and branches — no manifest entry, so no phase
-            </span>
+            <span className="muted">inferred — add to manifest</span>
           </>
         )}
       </span>
@@ -301,6 +312,242 @@ function InitiativeCard({
         </a>
       </span>
     </div>
+  );
+}
+
+/* ── Triage ─────────────────────────────────────────────────────────────── */
+
+/** What a row did, kept just long enough that the row can undo it. */
+interface Acted {
+  issue: IssueCard;
+  /** Every label the click added, so undo removes exactly those. */
+  added: string[];
+  verb: string;
+}
+
+/**
+ * Triage — open issues the fleet is not managing.
+ *
+ * These are the bugs somebody filed and nothing ever picked up: no `agent:*`, no
+ * `plan:approved`, no `inbox:*`, no `init:*`. They were invisible to every other
+ * screen in this app, because every other screen selects **by** those labels.
+ *
+ * Two buttons, one label write each, and both undoable from the row. No confirm
+ * step: the palette's two-step is for *filing an issue* (a new object, with a
+ * typo'd title, that someone then has to close), while a label is the one write
+ * this app can take straight back — which is what the undo row does.
+ */
+function TriageSection({
+  ctx,
+  project,
+  initiatives,
+}: {
+  ctx: Ctx;
+  project: ProjectSnapshot;
+  initiatives: InitiativeCardModel[];
+}) {
+  const [acted, setActed] = useState<Acted[]>([]);
+  const [showAutomation, setShowAutomation] = useState(false);
+
+  const triage = selectTriage(ctx.snapshot.issues, project.key);
+  const handled = new Set(acted.map((row) => row.issue.id));
+  const work = triage.work.filter((issue) => !handled.has(issue.id));
+  const automation = triage.automation.filter((issue) => !handled.has(issue.id));
+
+  if (work.length === 0 && automation.length === 0 && acted.length === 0) return null;
+
+  const remember = (row: Acted) => setActed((rows) => [...rows, row]);
+  const forget = (id: string) => setActed((rows) => rows.filter((row) => row.issue.id !== id));
+
+  return (
+    <Rows>
+      <Group right={work.length === 0 ? "clear" : `${work.length} untriaged`}>
+        triage — filed, but nothing is managing it
+      </Group>
+
+      {work.map((issue) => (
+        <TriageRow
+          key={issue.id}
+          ctx={ctx}
+          issue={issue}
+          initiatives={initiatives}
+          onActed={remember}
+        />
+      ))}
+
+      {acted.map((row) => (
+        <UndoRow key={`undo:${row.issue.id}`} ctx={ctx} row={row} onUndone={forget} />
+      ))}
+
+      {automation.length > 0 && (
+        <>
+          <Group
+            right={
+              <button
+                type="button"
+                className="bt quiet"
+                onClick={() => setShowAutomation((value) => !value)}
+              >
+                {showAutomation ? "hide" : `show ${automation.length}`}
+              </button>
+            }
+          >
+            automation reports — operational, not product work
+          </Group>
+          {showAutomation &&
+            automation.map((issue) => (
+              <TriageRow
+                key={issue.id}
+                ctx={ctx}
+                issue={issue}
+                initiatives={initiatives}
+                onActed={remember}
+              />
+            ))}
+        </>
+      )}
+    </Rows>
+  );
+}
+
+function TriageRow({
+  ctx,
+  issue,
+  initiatives,
+  onActed,
+}: {
+  ctx: Ctx;
+  issue: IssueCard;
+  initiatives: InitiativeCardModel[];
+  onActed: (row: Acted) => void;
+}) {
+  const [initiative, setInitiative] = useState("");
+  const queueKey = `queue:${issue.id}`;
+  const laterKey = `later:${issue.id}`;
+  const busy = ctx.actions.busy;
+
+  // The `init:` label is added in the same call as `agent:ready`, so the
+  // known-labels guard checks both before either lands: an initiative named only
+  // in the manifest has no label yet, and the write is refused by name rather
+  // than creating one. That refusal is the correct answer — see writer.ts.
+  // `onActed` is called from **inside** the write, after it lands. Calling it
+  // beside `run` would flip the row to "✓ queued · undo" whether or not GitHub
+  // accepted the label — and an undo button for a write that never happened is
+  // worse than no feedback at all.
+  const queue = () => {
+    const added = initiative === "" ? [LABELS.ready] : [LABELS.ready, `${INIT_PREFIX}${initiative}`];
+    ctx.actions.run(
+      queueKey,
+      async (writer) => {
+        await writer.addLabels(issue.repoSlug, issue.number, added);
+        onActed({ issue, added, verb: "queued" });
+      },
+      `Queued #${issue.number} on ${LABELS.ready}${initiative === "" ? "" : ` in ${initiative}`}.`,
+    );
+  };
+
+  const notNow = () => {
+    ctx.actions.run(
+      laterKey,
+      async (writer) => {
+        await writer.addLabels(issue.repoSlug, issue.number, [LABELS.triaged]);
+        onActed({ issue, added: [LABELS.triaged], verb: "set aside" });
+      },
+      `#${issue.number} is on ${LABELS.triaged} — it stops asking.`,
+    );
+  };
+
+  return (
+    <Row>
+      <span className="grow">
+        <a href={issue.url} target="_blank" rel="noreferrer">
+          {issue.title}
+        </a>
+        <span className="sm">
+          #{issue.number} · filed {age(issue.createdAt)} ago
+          {issue.author !== null && ` · ${issue.author}`}
+          {issue.labels.length > 0 && ` · ${issue.labels.join(", ")}`}
+        </span>
+      </span>
+      <span className="bt-row">
+        {initiatives.length > 0 && (
+          <select
+            className="pick"
+            value={initiative}
+            aria-label={`Initiative for #${issue.number}`}
+            onChange={(event) => setInitiative(event.target.value)}
+          >
+            <option value="">no initiative</option>
+            {initiatives.map((card) => (
+              <option key={card.name} value={card.name}>
+                {card.name}
+              </option>
+            ))}
+          </select>
+        )}
+        <button type="button" className="bt pri" disabled={busy !== null} onClick={queue}>
+          {busy === queueKey ? "…" : "Queue"}
+        </button>
+        <button type="button" className="bt quiet" disabled={busy !== null} onClick={notNow}>
+          {busy === laterKey ? "…" : "Not now"}
+        </button>
+      </span>
+    </Row>
+  );
+}
+
+/**
+ * The row a triaged issue leaves behind.
+ *
+ * It exists because the write works: the moment `agent:ready` lands, the refetch
+ * drops the issue out of `selectTriage` and the row would vanish mid-blink. An
+ * action you cannot see is an action you cannot take back, so the row stays —
+ * with the one button that reverses exactly what was written — until the view
+ * is left.
+ */
+function UndoRow({
+  ctx,
+  row,
+  onUndone,
+}: {
+  ctx: Ctx;
+  row: Acted;
+  onUndone: (id: string) => void;
+}) {
+  const key = `undo:${row.issue.id}`;
+  const busy = ctx.actions.busy;
+
+  return (
+    <Row>
+      <span className="tick">✓</span>
+      <span className="grow">
+        <a href={row.issue.url} target="_blank" rel="noreferrer">
+          {row.issue.title}
+        </a>
+        <span className="sm">
+          #{row.issue.number} · {row.verb} · {row.added.join(", ")}
+        </span>
+      </span>
+      <button
+        type="button"
+        className="bt"
+        disabled={busy !== null}
+        onClick={() => {
+          ctx.actions.run(
+            key,
+            async (writer) => {
+              for (const label of row.added) {
+                await writer.removeLabel(row.issue.repoSlug, row.issue.number, label);
+              }
+              onUndone(row.issue.id);
+            },
+            `#${row.issue.number} is untriaged again.`,
+          );
+        }}
+      >
+        {busy === key ? "…" : "undo"}
+      </button>
+    </Row>
   );
 }
 

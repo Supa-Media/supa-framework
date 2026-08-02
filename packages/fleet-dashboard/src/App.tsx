@@ -22,7 +22,13 @@ import {
   writeLocalMark,
   type ReviewMark,
 } from "./lib/review";
-import { selectParked, selectPlan, selectProposed, selectQueue } from "./lib/select";
+import {
+  countTriageByRepo,
+  selectParked,
+  selectPlan,
+  selectProposed,
+  selectQueue,
+} from "./lib/select";
 import {
   clearTokens,
   fleetOwners,
@@ -335,6 +341,10 @@ export function App() {
   const working = snapshot.issues.filter((issue) =>
     issue.labels.includes(LABELS.inProgress),
   ).length;
+  // Not `alert`: untriaged work is a backlog, not a blocker. A red badge on
+  // every app would say "something is wrong here" about issues whose only
+  // problem is that nobody has read them yet.
+  const untriagedByRepo = countTriageByRepo(snapshot.issues);
 
   const entries: NavEntry[] = [
     { id: "review", label: "☀️ Review", count: planned + parked, alert: parked > 0 },
@@ -346,6 +356,7 @@ export function App() {
       id: `app:${project.key}` as ViewId,
       label: project.label,
       sub: true,
+      count: untriagedByRepo.get(project.key) ?? null,
       ...(index === 0 ? { section: "Apps" } : {}),
     })),
     { id: "watchdog", label: "🐕 Watchdog", section: "Fleet" },

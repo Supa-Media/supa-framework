@@ -35,6 +35,7 @@ import {
   buildLabelQuery,
   buildMergedQuery,
   buildPrQuery,
+  buildUntriagedQuery,
   MAX_PR_PAGES,
   type FleetQueryResult,
   type GqlIssue,
@@ -168,6 +169,7 @@ function toIssue(node: GqlIssueNode, repo: RepoConfig): IssueCard {
     body: node.body ?? "",
     createdAt: node.createdAt,
     updatedAt: node.updatedAt,
+    author: node.author?.login ?? null,
     labels: names,
     initiatives: initiativeLabels(labels),
     size: sizeLabel(labels),
@@ -192,6 +194,7 @@ interface FleetSearch {
   countsByRepo: Map<string, number>;
   /** repoKey → PRs merged inside the review window. */
   mergedByRepo: Map<string, GqlMerged[]>;
+  /** Labelled issues and untriaged ones alike — see `FleetSnapshot.issues`. */
   issues: GqlIssueNode[];
   costIssues: Array<GqlIssue | null>;
 }
@@ -275,6 +278,7 @@ async function fetchOwnerPulls(
     const variables: Record<string, unknown> = {
       issueQuery: buildIssueQuery(slugs),
       labelQuery: buildLabelQuery(slugs),
+      untriagedQuery: buildUntriagedQuery(slugs),
     };
     slugs.forEach((slug, i) => {
       variables[`q${i}`] = buildPrQuery(slug);
@@ -308,8 +312,11 @@ async function fetchOwnerPulls(
       // Appended, not assigned: these two are fleet-wide lists assembled from
       // every owner's request.
       search.costIssues.push(...(data.costIssues?.nodes ?? []));
+      // Two searches, one list. They are disjoint by construction — `untriaged`
+      // excludes every label `labelled` requires — so nothing is deduped here;
+      // which panel an issue lands in stays a question the selectors answer.
       search.issues.push(
-        ...(data.labelled?.nodes ?? []).filter(
+        ...[...(data.labelled?.nodes ?? []), ...(data.untriaged?.nodes ?? [])].filter(
           (node): node is GqlIssueNode => node !== null && typeof node.number === "number",
         ),
       );
@@ -410,12 +417,22 @@ export function createGitHubSource(config: FleetConfig, tokens: TokenMap): Fleet
         )
         .sort((a, b) => b.mergedAt.localeCompare(a.mergedAt));
 
+      // Deduped by id: two searches feed this list, and while they are disjoint
+      // by construction, a row rendered twice is the kind of failure a reader
+      // blames on the data rather than on the query — the pagination bug in #40
+      // looked exactly like that.
+      const seenIssues = new Set<string>();
       const issues = search.issues
         .map((node) => {
           const repo = byKey.get(node.repository.nameWithOwner.toLowerCase());
           return repo === undefined ? null : toIssue(node, repo);
         })
         .filter((issue): issue is IssueCard => issue !== null)
+        .filter((issue) => {
+          if (seenIssues.has(issue.id)) return false;
+          seenIssues.add(issue.id);
+          return true;
+        })
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
       const spendValues = [...costByRepo.values()]
