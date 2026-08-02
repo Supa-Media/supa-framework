@@ -64,6 +64,25 @@ export interface RepoConfig {
   secretsSyncEnvironments: string[];
 }
 
+/**
+ * The fleet's own Convex backend (`apps/fleet-backend` in this repo), which
+ * holds the two things GitHub cannot: your cross-device review marker, and run
+ * telemetry the fleet's jobs post about themselves.
+ *
+ * `url` is the deployment's **HTTP actions** origin — the `.convex.site` one,
+ * not `.convex.cloud`. It is public in the same way a repo slug is: it ships in
+ * the bundle and grants nothing on its own, because every route wants a
+ * credential. The read token is NOT here — it is entered in the gate and kept
+ * in that browser's localStorage, like the PATs.
+ *
+ * `null` means the feature is off: no request is made, the review marker stays
+ * in localStorage, and the page behaves exactly as it did before the backend
+ * existed. A browser can still opt in on its own by entering a URL in the gate.
+ */
+export interface BackendBlock {
+  url: string | null;
+}
+
 export interface FleetConfig {
   name: string;
   /** GitHub login whose review requests populate the NEEDS YOU row. */
@@ -100,6 +119,8 @@ export interface FleetConfig {
   telegramUrl: string | null;
   /** Where the ⌘K palette's "open Claude Code" action points. */
   claudeCodeUrl: string;
+  /** See `BackendBlock`. `{ url: null }` turns the whole feature off. */
+  backend: BackendBlock;
   /** Static reference links for the ＋ New app checklist. */
   newAppLinks: { label: string; url: string }[];
   /** The watchdog ladder, rendered as static content on the 🐕 view. */
@@ -119,6 +140,11 @@ export const fleetConfig: FleetConfig = {
   // Set this to the real `https://t.me/<bot>` the day the Telegram worker ships.
   telegramUrl: null,
   claudeCodeUrl: "https://claude.ai/code",
+  // Off until `apps/fleet-backend` has a production deployment. Set this to
+  // that deployment's `.convex.site` origin (see apps/fleet-backend/DEPLOY.md)
+  // and the review marker starts following you between devices. Until then a
+  // single browser can point itself at one from the gate's settings row.
+  backend: { url: null },
   repos: [
     {
       slug: "togathernyc/togather",

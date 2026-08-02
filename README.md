@@ -41,6 +41,15 @@ Published to **GitHub Packages** (private registry — requires `GITHUB_TOKEN` w
 | [`@supa-media/claude`](packages/claude) | Claude Code configuration templates |
 | `create-supa-app` | Interactive CLI scaffolder (private, run locally via the framework repo) |
 
+## Apps
+
+Not published — these are the framework's own deployed surfaces, which is why
+they live in `apps/` rather than `packages/`.
+
+| App | Description |
+|-----|-------------|
+| [`apps/fleet-backend`](apps/fleet-backend) | Convex backend for the fleet dashboard: cross-device review marker + run telemetry. Holds no work state — GitHub stays the source of truth. |
+
 ## Reusable GitHub Workflows
 
 Consumer apps call these instead of writing their own CI/CD:

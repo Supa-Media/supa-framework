@@ -1,2 +1,6 @@
 packages:
   - "packages/*"
+  # The framework is a package repo, but the fleet's own backend is a deployed
+  # app rather than something anyone installs — so it lives under apps/, not
+  # packages/, and is `private: true`.
+  - "apps/*"

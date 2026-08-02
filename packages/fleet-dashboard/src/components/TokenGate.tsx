@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { normalizeBackendUrl, type StoredBackend } from "../lib/backend";
 import {
   hasAnyToken,
   mergeTokens,
@@ -41,31 +42,59 @@ import {
  * button is a deep link now and the scope is gone. The list below is what to
  * mint, identically for each owner, and the last line is what it deliberately
  * cannot do.
+ *
+ * **The backend row is optional and starts empty.** It points this browser at
+ * the fleet's own Convex backend (`apps/fleet-backend`) so the review marker
+ * follows you between devices and the run telemetry the fleet's jobs post
+ * becomes visible. Left blank, no request is made anywhere but api.github.com
+ * and the marker stays in this browser — which is exactly how the dashboard
+ * behaved before the backend existed. The read token is stored like the PATs
+ * are, and **"Sign out all" forgets it too**.
  */
 export function TokenGate({
   owners,
   saved,
+  backend,
+  configuredBackendUrl,
   onSubmit,
   onCancel,
 }: {
   owners: Array<OwnerGroup>;
   /** What is already stored. Values are never rendered — only their presence. */
   saved: TokenMap;
-  onSubmit: (tokens: TokenMap) => void;
+  /** The optional Convex backend's stored URL + read token, if this browser has one. */
+  backend: StoredBackend;
+  /** `fleet.config.ts`'s URL, shown as the default this browser would otherwise use. */
+  configuredBackendUrl: string | null;
+  onSubmit: (tokens: TokenMap, backend: StoredBackend) => void;
   /** `null` on first load, when there is nothing to go back to. */
   onCancel: (() => void) | null;
 }) {
   const [entered, setEntered] = useState<Record<string, string>>({});
+  const [backendUrl, setBackendUrl] = useState(backend.url ?? "");
+  const [readToken, setReadToken] = useState("");
 
   const merged = mergeTokens(saved, entered);
   const missing = owners.filter((group) => tokenForOwner(merged, group.owner) === null);
+
+  const trimmedUrl = backendUrl.trim();
+  // Only complain about a URL someone actually typed. An empty field is the
+  // supported "no backend" state, not a mistake to nag about.
+  const urlLooksWrong = trimmedUrl !== "" && normalizeBackendUrl(trimmedUrl) === null;
 
   return (
     <form
       className="gate"
       onSubmit={(event) => {
         event.preventDefault();
-        if (hasAnyToken(merged)) onSubmit(merged);
+        if (!hasAnyToken(merged) || urlLooksWrong) return;
+        onSubmit(merged, {
+          url: trimmedUrl === "" ? null : trimmedUrl,
+          // Blank keeps the stored token, exactly as a blank PAT field does —
+          // the common visit here is "one credential expired", not "re-enter
+          // everything I have".
+          readToken: readToken.trim() === "" ? backend.readToken : readToken.trim(),
+        });
       }}
     >
       <h2>supa fleet</h2>
@@ -135,6 +164,46 @@ export function TokenGate({
         link to GitHub&apos;s own dispatch form.
       </p>
 
+      <div className="gate__field">
+        <label htmlFor="backend-url">
+          fleet backend <span className="gate__repos">optional — review marker + run telemetry</span>
+        </label>
+        <input
+          id="backend-url"
+          type="url"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={configuredBackendUrl ?? "https://<deployment>.convex.site"}
+          aria-label="Fleet backend URL"
+          value={backendUrl}
+          onChange={(event) => setBackendUrl(event.target.value)}
+        />
+        <input
+          id="backend-token"
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={backend.readToken === null ? "read token" : "saved — paste to replace"}
+          aria-label="Fleet backend read token"
+          value={readToken}
+          onChange={(event) => setReadToken(event.target.value)}
+        />
+      </div>
+      <p className="gate__note">
+        Leave both blank and nothing changes: the review marker stays in this browser and no request
+        leaves for anywhere but api.github.com. Fill them in and the marker follows you between
+        devices, and the ◉ views gain what the fleet&apos;s own jobs reported while running —
+        watchdog wakes, respawns, decisions — which the GitHub API cannot see.{" "}
+        <b>GitHub stays the source of truth for work state</b>; the backend only holds what GitHub
+        has nowhere to put.
+      </p>
+      {urlLooksWrong && (
+        <p className="gate__note">
+          That is not an https URL. The value wanted is the deployment&apos;s HTTP actions origin —
+          the <code>.convex.site</code> one, not <code>.convex.cloud</code>.
+        </p>
+      )}
+
       {missing.length > 0 && hasAnyToken(merged) && (
         <p className="gate__note">
           Loading without {missing.map((group) => group.owner).join(" and ")} —{" "}
@@ -144,7 +213,7 @@ export function TokenGate({
       )}
 
       <div className="gate__foot">
-        <button type="submit" className="bt pri" disabled={!hasAnyToken(merged)}>
+        <button type="submit" className="bt pri" disabled={!hasAnyToken(merged) || urlLooksWrong}>
           {onCancel === null ? "Load fleet" : "Save tokens"}
         </button>
         {onCancel !== null && (

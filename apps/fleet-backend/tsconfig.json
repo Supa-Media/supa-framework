@@ -1,0 +1,27 @@
+{
+  // Convex bundles its own functions, so there is nothing here to emit — `build`
+  // and `typecheck` are the same `tsc --noEmit` pass, and the compiler is this
+  // package's only static gate besides the tests.
+  //
+  // `convex/_generated` is committed (see README) so CI can type-check without a
+  // deployment or a Convex login.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    // The Convex runtime is a V8 isolate with Web APIs (fetch, crypto.subtle,
+    // TextEncoder) but no Node built-ins. DOM is what types those globals;
+    // `node` is here only for the test suite's `process.env`.
+    "lib": ["ES2022", "DOM"],
+    // `vite/client` types `import.meta.glob`, which `test.setup.ts` uses to hand
+    // convex-test this app's modules. Vitest resolves it at run time; without
+    // the types here the compiler alone would reject the one line that makes
+    // the whole suite possible.
+    "types": ["node", "vite/client"],
+    "skipLibCheck": true
+  },
+  "include": ["convex", "__tests__", "vitest.config.ts"],
+  "exclude": ["node_modules"]
+}

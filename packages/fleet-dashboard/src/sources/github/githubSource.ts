@@ -430,6 +430,10 @@ export function createGitHubSource(config: FleetConfig, tokens: TokenMap): Fleet
         needsYou,
         shipped,
         issues,
+        // GitHub has no run telemetry to give: a workflow run's outcome is a
+        // `RunSummary`, and the watchdog's reasoning about it lives only in the
+        // Convex source. See `sources/convex/convexSource.ts`.
+        runEvents: [],
         spendReportedUsd: spendValues.length > 0 ? spendValues.reduce((a, b) => a + b, 0) : null,
         spendReportedAt: reportTimes[reportTimes.length - 1] ?? null,
         errors,

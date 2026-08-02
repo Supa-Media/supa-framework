@@ -1,0 +1,31 @@
+{
+  "name": "@supa-media/fleet-backend",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Supa Fleet dashboard's Convex backend: cross-device review state and run-event telemetry",
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev",
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Supa-Media/supa-framework.git",
+    "directory": "apps/fleet-backend"
+  },
+  "dependencies": {
+    "convex": "^1.43.0"
+  },
+  "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
+    "@types/node": "^22",
+    "convex-test": "^0.0.54",
+    "typescript": "5.9.3",
+    "vite": "^6.0.11",
+    "vitest": "^2.1.9"
+  },
+  "license": "MIT"
+}
