@@ -62,7 +62,7 @@ Four things hold that line. Three are enforced in code; one is you.
 | --- | --- | --- |
 | 1 | **Single-chat allowlist** — only `TELEGRAM_CHAT_ID` is answered, so the transcript is normally your own voice | `isAllowedChat`, `src/index.ts` |
 | 2 | **Labels are never model-controlled** — `size:` is a validated enum and `init:` passes a `[^a-z0-9/]` filter that cannot emit a colon, so no transcript can label its own issue `agent:ready` | `issueLabels`, `src/issue.ts` |
-| 3 | **Dictated spans are fenced** — criteria and the source quote are wrapped in `<!-- untrusted-transcript -->` markers, so an agent reading the issue can tell content from instruction | `renderIssueBody`, `src/issue.ts` |
+| 3 | **Dictated spans are fenced** — criteria and the source quote are wrapped in `<!-- untrusted-transcript -->` markers, so an agent reading the issue can tell content from instruction; comment delimiters *inside* a span are escaped, so no span can close its own fence | `renderIssueBody`, `src/issue.ts` |
 | 4 | **You press ✅** — and the summary shows each item's acceptance criteria, so you approve text you have actually seen rather than an 80-character title | `renderSummary`, `src/callback.ts` |
 
 Control 2 is the one to protect in review: it is what makes "a human presses ✅"
