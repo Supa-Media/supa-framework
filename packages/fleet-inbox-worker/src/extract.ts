@@ -151,6 +151,10 @@ export function buildSystemPrompt(
     [
       "- One item per distinct piece of work. Do not merge two asks into one item, and do not split one ask into implementation steps — steps are the implementer's job.",
       "- `title` is an imperative one-liner. No preamble, no \"we should\".",
+      // NOTE: this rule lets the model AUTHOR a criterion the owner only
+      // implied, and that is safe only because `renderSummary` shows the
+      // criteria in the Telegram message before ✅. If that ever changes, this
+      // rule has to change with it, in the same PR.
       "- `acceptance_criteria` states what done looks like. Cutting ambiguity is your job, so make the checkable outcome explicit even when he stated it loosely — but never invent scope he didn't ask for. An empty list is correct when the ask genuinely has no checkable outcome.",
       `- Route to the app whose domain vocabulary matches. When two apps fit equally, or none does, use \`${UNASSIGNED}\` — a wrong repo costs more than an unrouted item.`,
       "- Prefer an existing initiative. Only set `new_initiative` when nothing existing fits.",

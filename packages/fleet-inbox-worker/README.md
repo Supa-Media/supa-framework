@@ -60,9 +60,9 @@ Four things hold that line. Three are enforced in code; one is you.
 
 | # | Control | Where |
 | --- | --- | --- |
-| 1 | **Single-chat allowlist** — only `TELEGRAM_CHAT_ID` is answered, so the transcript is normally your own voice | `isAllowedChat`, `src/index.ts` |
+| 1 | **Single-chat, single-sender allowlist** — only `TELEGRAM_CHAT_ID` is answered, and only that same id may *send* or press a button, so the transcript is your own voice | `isAllowedChat` / `isAllowedSender`, `src/index.ts` |
 | 2 | **Labels are never model-controlled** — `size:` is a validated enum and `init:` passes a `[^a-z0-9/]` filter that cannot emit a colon, so no transcript can label its own issue `agent:ready` | `issueLabels`, `src/issue.ts` |
-| 3 | **Dictated spans are fenced** — criteria and the source quote are wrapped in `<!-- untrusted-transcript -->` markers, so an agent reading the issue can tell content from instruction | `renderIssueBody`, `src/issue.ts` |
+| 3 | **Dictated spans are fenced** — criteria and the source quote are wrapped in `<!-- untrusted-transcript -->` markers, so an agent reading the issue can tell content from instruction; comment delimiters *inside* a span are escaped, so no span can close its own fence | `renderIssueBody`, `src/issue.ts` |
 | 4 | **You press ✅** — and the summary shows each item's acceptance criteria, so you approve text you have actually seen rather than an 80-character title | `renderSummary`, `src/callback.ts` |
 
 Control 2 is the one to protect in review: it is what makes "a human presses ✅"
@@ -90,11 +90,14 @@ genuinely useful), but it is marked at every layer:
   forge updates that look like they came from your chat — the chat-id check
   reads the forged payload, not a signature over it. Rotate both if either
   leaks.
-- **Pointing `TELEGRAM_CHAT_ID` at a group** means any group member can press
-  the buttons: the callback gate checks the chat the bot's message lives in, not
-  `callback_query.from.id`. In a 1:1 chat those coincide. Use a 1:1 chat.
+- **Pointing `TELEGRAM_CHAT_ID` at a group** no longer lets other members drive
+  the bot, but it doesn't work either: messages and button presses are checked
+  against the sender's user id as well as the chat, and in a group those differ
+  from the chat id, so nothing anyone sends there is answered. Use a 1:1 chat —
+  there the two ids are the same number, which is why this needs no extra
+  secret. (A `channel_post` has no sender to check and stays chat-gated only.)
 
-The blast radius for a secret-holder is bounded by the PAT and by the
+The blast radius for a secret-holder is bounded by the PATs and by the
 `inbox:proposed` precondition on the keep path. They can file proposals, and
 they can comment on or close issues in the four repos. They **cannot** promote
 an arbitrary issue to `agent:ready`: that path refuses any issue not currently
@@ -126,8 +129,8 @@ practice this only ever bites the video path.
 1. Message [@BotFather](https://t.me/BotFather) → `/newbot` → name it → copy the
    token it gives you. That's `TELEGRAM_BOT_TOKEN`.
 2. `/setprivacy` → select the bot → leave privacy **Enabled** and use the bot in
-   a **1:1 chat**. See the Trust model above for why a group chat weakens the
-   approval gate.
+   a **1:1 chat**. A group does not work: the sender check compares `from.id`
+   against `TELEGRAM_CHAT_ID`, and only in a 1:1 chat are those the same number.
 3. Message your new bot once, then find your chat id:
    ```bash
    curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getUpdates" | jq '.result[0].message.chat.id'
@@ -137,7 +140,7 @@ practice this only ever bites the video path.
 
 ### 2. Secrets
 
-Five, all set with `wrangler secret put`. None of them appear in
+Six, all set with `wrangler secret put`. None of them appear in
 `wrangler.jsonc`, and none are ever committed:
 
 ```bash
@@ -145,8 +148,22 @@ npx wrangler secret put TELEGRAM_BOT_TOKEN       # from BotFather
 npx wrangler secret put TELEGRAM_WEBHOOK_SECRET  # you invent this: openssl rand -hex 32
 npx wrangler secret put TELEGRAM_CHAT_ID         # your chat id, digits only
 npx wrangler secret put ANTHROPIC_API_KEY        # extraction only
-npx wrangler secret put GH_TOKEN                 # see "The token" below
+
+# One GitHub token per resource owner — see "The tokens" below for why.
+npx wrangler secret put GH_TOKEN_TOGATHERNYC     # togathernyc/togather
+npx wrangler secret put GH_TOKEN_SUPA_MEDIA      # Supa-Media/events-os, Supa-Media/supa-framework
+npx wrangler secret put GH_TOKEN_SHYOH           # shyoh/fount-studios
 ```
+
+The secret name is derived, not configured: `GH_TOKEN_` plus the owner
+uppercased, with every non-alphanumeric character an underscore. Add a repo
+under a fourth owner to `src/fleet.ts` and its secret name follows from the
+slug.
+
+A single `GH_TOKEN` is still read as the fallback for any owner without its own
+— which is all a **classic** PAT needs, since one of those already spans every
+owner your account can reach. Fine-grained tokens cannot do that, so prefer the
+three above.
 
 ### 3. KV namespace
 
@@ -188,26 +205,34 @@ curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
 This worker is **the one place in the fleet that holds power**. Everything else
 reads. So the scope is as small as it can be while still doing the job:
 
-**The token.** `GH_TOKEN` is a GitHub **fine-grained personal access token**,
-scoped to exactly four repositories:
+**The tokens.** A GitHub **fine-grained personal access token** is scoped to
+exactly one *resource owner*, and the fleet's four repos span three of them — so
+there is no single fine-grained token that reaches them all, and the worker
+holds one per owner, routing every request by the owner half of the repo slug:
 
-- `togathernyc/togather`
-- `Supa-Media/events-os`
-- `shyoh/fount-studios`
-- `Supa-Media/supa-framework`
+| Secret | Resource owner | Repositories |
+| --- | --- | --- |
+| `GH_TOKEN_TOGATHERNYC` | `togathernyc` | `togathernyc/togather` |
+| `GH_TOKEN_SUPA_MEDIA` | `Supa-Media` | `Supa-Media/events-os`, `Supa-Media/supa-framework` |
+| `GH_TOKEN_SHYOH` | `shyoh` | `shyoh/fount-studios` |
 
-with exactly two repository permissions:
+Each with exactly two repository permissions:
 
 - **Issues: Read and write** — file proposals, label, comment, close
 - **Contents: Read** — read `.fleet/initiatives.json`, nothing more
 - (Metadata: Read is mandatory on every fine-grained token)
 
-It cannot push a commit, open a pull request, merge anything, or touch a repo
-outside that list. Give it the shortest expiry you'll tolerate re-issuing.
-Everything the token is used for lives in one file, `src/github.ts` — that's
+None of them can push a commit, open a pull request, merge anything, or touch a
+repo outside its list. Give them the shortest expiry you'll tolerate re-issuing.
+Everything the tokens are used for lives in one file, `src/github.ts` — that's
 deliberate, so "what can the inbox actually do to my repos" has a short answer.
 
-**Who can talk to it.** Two gates, both before any work happens:
+An owner with no token configured is not silently skipped: the first request for
+one of its repos fails with `No GitHub token for <owner> — set GH_TOKEN_<OWNER>`,
+which arrives as a Telegram DM. A 404 from GitHub, which is what a wrongly-scoped
+token would produce, would send you hunting the wrong problem.
+
+**Who can talk to it.** Three gates, all before any work happens:
 
 1. **Secret-token verification.** Telegram echoes
    `X-Telegram-Bot-Api-Secret-Token` on every delivery; a request without the
@@ -216,6 +241,11 @@ deliberate, so "what can the inbox actually do to my repos" has a short answer.
 2. **Single-chat allowlist.** Even a correctly-signed update from any chat other
    than `TELEGRAM_CHAT_ID` is dropped with a silent 200 and a log line that
    records only `chat_not_allowed` — no id, no message text.
+3. **Single-sender allowlist.** The sender's user id (`from.id`, on the message
+   and on the button press alike) must equal `TELEGRAM_CHAT_ID` too. In a 1:1
+   chat the two ids are the same number, so this costs no extra secret; in a
+   group it is what stops another member from approving work in your name.
+   Dropped the same way, logged as `sender_not_allowed`.
 
 **What this does *not* protect against.** See the "What this does not protect
 against" list under Trust model above — bot token, webhook secret, and group
@@ -227,16 +257,38 @@ forged `callback_query` updates:
 | File proposals in the four repos | Yes |
 | Comment on any issue in the four repos | Yes |
 | Close any issue in the four repos | Yes |
+| Seed `learnings.md` from **any** issue title in the four repos | Yes — a forged ❌ records the title of whatever issue it names, and that line is injected into every later extraction prompt |
 | Remove `inbox:proposed` from / add `agent:ready` to an **arbitrary** issue | **No** — the keep path refuses any issue not currently carrying `inbox:proposed` |
-| Push, merge, or open a pull request | No — not in the PAT's permissions |
+| Push, merge, or open a pull request | No — not in any of the PATs' permissions |
 
 `agent:ready` is the label the fleet acts on, so that row is the one that
 matters. The precondition is in `handleCallback` (`src/index.ts`) and is
 covered by tests; it is what keeps this table's last two rows honest.
 
+The `learnings.md` row is the one write path that outlives the request. ❌ is
+not gated on `inbox:proposed` (closing something already handled is harmless and
+is what ❌ means), so a forged reject can name any issue number and put that
+issue's title — or a title someone with write access to one of the four repos
+chose — into the next thirty extraction prompts. It is bounded rather than
+prevented: `formatRejectionLearning` collapses whitespace so a title cannot forge
+extra lines or a fake `##` header, strips backticks and quotes so it cannot close
+the quoting around it, and caps the span at 120 characters; the file itself is
+30 lines, FIFO. The blast radius is prompt *noise* in a prompt that only ever
+proposes `inbox:proposed` issues — it cannot reach `agent:ready`. Clear it with
+`wrangler kv key delete` (see "Extraction learnings" below).
+
 **What never gets logged.** No transcript, no message text, no chat id. Log
-lines carry an event name, a repo slug, and an issue number. Cloudflare's log
-tail is not a place the fleet's contents should end up.
+lines carry an event name, a repo slug, an issue number, and an error's *class
+name* — never its message, which can quote input. Cloudflare's log tail is not a
+place the fleet's contents should end up.
+
+Two of those events are worth an alert, because both mean a repo is routing
+worse than it should and nothing else says so: `initiatives.file_unreadable`
+(that repo's `.fleet/initiatives.json` is unreachable or malformed — routing
+fell back to its `init:*` labels) and `initiatives.unavailable` (the labels
+failed too, so the extraction prompt is told the repo has no initiatives at
+all). An ordinary 404 for a repo with no `.fleet/` directory is the normal case
+and is not logged.
 
 **Cost.** Extraction runs on `claude-sonnet-5` at `low` effort — this is reading
 what you said, not deciding how to build it. The hard reasoning happens later,
@@ -311,5 +363,5 @@ a trade worth making. Use `npx wrangler` when the time comes.
 ## Not deployed
 
 This ships the worker; it does not run it. Deploying needs the owner's
-Cloudflare account for the KV namespace, the Workers AI binding, the five
+Cloudflare account for the KV namespace, the Workers AI binding, the six
 secrets, and the webhook registration above.

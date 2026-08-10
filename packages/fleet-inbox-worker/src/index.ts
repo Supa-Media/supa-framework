@@ -12,9 +12,10 @@
  * the owner presses ✅ and the label flips to `agent:ready`. That is the whole
  * safety model, and it is deliberately boring.
  *
- * The security posture is in README.md; the two enforcement points are
- * `secretMatches` (Telegram is who it claims) and `isAllowedChat` (and it's
- * the right chat) — both below, before anything else runs.
+ * The security posture is in README.md; the three enforcement points are
+ * `secretMatches` (Telegram is who it claims), `isAllowedChat` (and it's the
+ * right chat) and `isAllowedSender` (and the right person sent it) — all
+ * below, before anything else runs.
  */
 
 import {
@@ -28,7 +29,7 @@ import {
 } from "./callback";
 import { callExtraction, type FleetContext } from "./extract";
 import { FLEET_APPS, UNASSIGNED, labelForApp, slugForApp } from "./fleet";
-import { GitHubClient } from "./github";
+import { GitHubClient, githubTokens } from "./github";
 import {
   clampTitle,
   isThirdPartyContent,
@@ -42,6 +43,7 @@ import {
   type SourceRef,
 } from "./issue";
 import { appendLearning, formatRejectionLearning, readLearnings } from "./learnings";
+import { errorName, log } from "./log";
 import { routeApp } from "./routing";
 import { describeMessage, TelegramClient, type TelegramUpdate } from "./telegram";
 import { transcribe } from "./transcribe";
@@ -82,12 +84,21 @@ export function isAllowedChat(chatId: number | undefined, expected: string): boo
 }
 
 /**
- * Structured log line. Deliberately carries no message text, chat id, or
- * transcript — Cloudflare's log tail is a place the fleet's contents should
- * never end up.
+ * The single-sender allowlist, checked against the same `TELEGRAM_CHAT_ID`.
+ *
+ * In a 1:1 Telegram chat the chat id and the sender's user id are the same
+ * number, so pinning the sender needs no sixth secret — and the chat-only gate
+ * was too loose: it checked the chat a message lives in, not who sent it, so
+ * pointing `TELEGRAM_CHAT_ID` at a group let every member of that group press
+ * ✅ on the bot's proposals. That was documented as a warning; it is now
+ * enforced, and a group simply stops working rather than quietly widening who
+ * can authorize work.
+ *
+ * `undefined` is refused. Telegram always sends `from` on a message and on a
+ * callback query, so an update without one is not an update it sent.
  */
-function log(event: string, fields: Record<string, string | number> = {}): void {
-  console.log(JSON.stringify({ event, ...fields }));
+export function isAllowedSender(userId: number | undefined, expected: string): boolean {
+  return userId !== undefined && String(userId) === expected;
 }
 
 export default {
@@ -128,9 +139,7 @@ export default {
     // waitUntil promise can never reject silently.
     ctx.waitUntil(
       handleUpdate(update, env).catch((error: unknown) => {
-        log("update.unreported", {
-          error: error instanceof Error ? error.name : "unknown",
-        });
+        log("update.unreported", { error: errorName(error) });
       }),
     );
     return new Response("ok");
@@ -157,9 +166,20 @@ export async function handleUpdate(update: TelegramUpdate, env: Env): Promise<vo
       return;
     }
 
+    // A channel post has no individual author, so there is no sender to pin —
+    // it stays chat-gated only, which is what the `channel_post` branch has
+    // always been.
+    if (
+      update.message !== undefined &&
+      !isAllowedSender(message.from?.id, env.TELEGRAM_CHAT_ID)
+    ) {
+      log("update.ignored", { reason: "sender_not_allowed" });
+      return;
+    }
+
     await handleMessage(message, env, telegram);
   } catch (error) {
-    log("update.failed", { error: error instanceof Error ? error.name : "unknown" });
+    log("update.failed", { error: errorName(error) });
     try {
       await telegram.sendMessage(
         env.TELEGRAM_CHAT_ID,
@@ -182,7 +202,7 @@ async function handleMessage(
   telegram: TelegramClient,
 ): Promise<void> {
   const described = describeMessage(message);
-  const github = new GitHubClient(env.GH_TOKEN);
+  const github = new GitHubClient(githubTokens(env));
   const source: SourceRef = {
     messageId: message.message_id,
     kind: described.kind,
@@ -278,6 +298,11 @@ async function handleMessage(
  * do with that repo. A repo that fails contributes an empty initiative list,
  * which the prompt renders as "no initiatives declared yet" — degraded routing
  * for that one app, not a dead pipeline.
+ *
+ * Because that function cannot throw, the rejection branch below is unreachable
+ * in practice and logs under its own event name. The degraded-routing signal
+ * operators actually watch (`initiatives.unavailable`) is emitted from inside
+ * `listInitiatives`, where the failure is.
  */
 async function loadFleetContext(github: GitHubClient): Promise<FleetContext[]> {
   const settled = await Promise.allSettled(
@@ -287,7 +312,7 @@ async function loadFleetContext(github: GitHubClient): Promise<FleetContext[]> {
   return FLEET_APPS.map((app, index) => {
     const result = settled[index];
     if (result === undefined || result.status === "rejected") {
-      log("initiatives.unavailable", { repo: app.slug });
+      log("initiatives.fanout_rejected", { repo: app.slug });
       return { appKey: app.key, label: app.label, slug: app.slug, initiatives: [] };
     }
     return {
@@ -384,6 +409,13 @@ export async function handleCallback(
     return;
   }
 
+  // ✅ is the approval gate the whole safety model rests on, so the presser is
+  // checked as well as the chat the button lives in.
+  if (!isAllowedSender(query.from?.id, env.TELEGRAM_CHAT_ID)) {
+    log("callback.ignored", { reason: "sender_not_allowed" });
+    return;
+  }
+
   const payload = parseCallback(query.data);
   if (payload === null) {
     log("callback.ignored", { reason: "unparseable" });
@@ -392,7 +424,7 @@ export async function handleCallback(
   }
 
   const slug = slugForApp(payload.appKey);
-  const github = new GitHubClient(env.GH_TOKEN);
+  const github = new GitHubClient(githubTokens(env));
   const issue = await github.getIssue(slug, payload.issueNumber);
 
   // The precondition that makes ✅ mean what it says.
