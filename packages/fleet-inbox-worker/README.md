@@ -60,7 +60,7 @@ Four things hold that line. Three are enforced in code; one is you.
 
 | # | Control | Where |
 | --- | --- | --- |
-| 1 | **Single-chat allowlist** — only `TELEGRAM_CHAT_ID` is answered, so the transcript is normally your own voice | `isAllowedChat`, `src/index.ts` |
+| 1 | **Single-chat, single-sender allowlist** — only `TELEGRAM_CHAT_ID` is answered, and only that same id may *send* or press a button, so the transcript is your own voice | `isAllowedChat` / `isAllowedSender`, `src/index.ts` |
 | 2 | **Labels are never model-controlled** — `size:` is a validated enum and `init:` passes a `[^a-z0-9/]` filter that cannot emit a colon, so no transcript can label its own issue `agent:ready` | `issueLabels`, `src/issue.ts` |
 | 3 | **Dictated spans are fenced** — criteria and the source quote are wrapped in `<!-- untrusted-transcript -->` markers, so an agent reading the issue can tell content from instruction; comment delimiters *inside* a span are escaped, so no span can close its own fence | `renderIssueBody`, `src/issue.ts` |
 | 4 | **You press ✅** — and the summary shows each item's acceptance criteria, so you approve text you have actually seen rather than an 80-character title | `renderSummary`, `src/callback.ts` |
@@ -90,9 +90,12 @@ genuinely useful), but it is marked at every layer:
   forge updates that look like they came from your chat — the chat-id check
   reads the forged payload, not a signature over it. Rotate both if either
   leaks.
-- **Pointing `TELEGRAM_CHAT_ID` at a group** means any group member can press
-  the buttons: the callback gate checks the chat the bot's message lives in, not
-  `callback_query.from.id`. In a 1:1 chat those coincide. Use a 1:1 chat.
+- **Pointing `TELEGRAM_CHAT_ID` at a group** no longer lets other members drive
+  the bot, but it doesn't work either: messages and button presses are checked
+  against the sender's user id as well as the chat, and in a group those differ
+  from the chat id, so nothing anyone sends there is answered. Use a 1:1 chat —
+  there the two ids are the same number, which is why this needs no extra
+  secret. (A `channel_post` has no sender to check and stays chat-gated only.)
 
 The blast radius for a secret-holder is bounded by the PAT and by the
 `inbox:proposed` precondition on the keep path. They can file proposals, and
@@ -126,8 +129,8 @@ practice this only ever bites the video path.
 1. Message [@BotFather](https://t.me/BotFather) → `/newbot` → name it → copy the
    token it gives you. That's `TELEGRAM_BOT_TOKEN`.
 2. `/setprivacy` → select the bot → leave privacy **Enabled** and use the bot in
-   a **1:1 chat**. See the Trust model above for why a group chat weakens the
-   approval gate.
+   a **1:1 chat**. A group does not work: the sender check compares `from.id`
+   against `TELEGRAM_CHAT_ID`, and only in a 1:1 chat are those the same number.
 3. Message your new bot once, then find your chat id:
    ```bash
    curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getUpdates" | jq '.result[0].message.chat.id'
@@ -207,7 +210,7 @@ outside that list. Give it the shortest expiry you'll tolerate re-issuing.
 Everything the token is used for lives in one file, `src/github.ts` — that's
 deliberate, so "what can the inbox actually do to my repos" has a short answer.
 
-**Who can talk to it.** Two gates, both before any work happens:
+**Who can talk to it.** Three gates, all before any work happens:
 
 1. **Secret-token verification.** Telegram echoes
    `X-Telegram-Bot-Api-Secret-Token` on every delivery; a request without the
@@ -216,6 +219,11 @@ deliberate, so "what can the inbox actually do to my repos" has a short answer.
 2. **Single-chat allowlist.** Even a correctly-signed update from any chat other
    than `TELEGRAM_CHAT_ID` is dropped with a silent 200 and a log line that
    records only `chat_not_allowed` — no id, no message text.
+3. **Single-sender allowlist.** The sender's user id (`from.id`, on the message
+   and on the button press alike) must equal `TELEGRAM_CHAT_ID` too. In a 1:1
+   chat the two ids are the same number, so this costs no extra secret; in a
+   group it is what stops another member from approving work in your name.
+   Dropped the same way, logged as `sender_not_allowed`.
 
 **What this does *not* protect against.** See the "What this does not protect
 against" list under Trust model above — bot token, webhook secret, and group

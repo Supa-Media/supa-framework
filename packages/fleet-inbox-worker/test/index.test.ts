@@ -14,6 +14,7 @@ import {
   handleCallback,
   handleUpdate,
   isAllowedChat,
+  isAllowedSender,
   secretMatches,
 } from "../src/index";
 import { buildKeyboard, renderSummary, type Proposal } from "../src/callback";
@@ -140,6 +141,7 @@ function keepQuery(overrides: { text?: string; keyboard?: unknown } = {}) {
   return {
     id: "cbq-1",
     data: "k|togather|10",
+    from: { id: 42 },
     message: {
       message_id: 500,
       chat: { id: 42 },
@@ -360,11 +362,81 @@ test("a message from another chat touches nothing at all", async () => {
   const env = makeEnv();
 
   await handleUpdate(
-    { message: { message_id: 1, chat: { id: 999 }, text: "queue: do a thing" } },
+    {
+      message: {
+        message_id: 1,
+        chat: { id: 999 },
+        from: { id: 999 },
+        text: "queue: do a thing",
+      },
+    },
     env,
   );
 
   assert.equal(calls.length, 0);
+});
+
+/* -------------------------------------------------------------------------- */
+/* The sender gate (N4)                                                        */
+/* -------------------------------------------------------------------------- */
+
+test("isAllowedSender matches the configured id and refuses an absent one", () => {
+  assert.equal(isAllowedSender(42, "42"), true);
+  assert.equal(isAllowedSender(43, "42"), false);
+  // Telegram always sends `from`; an update without one is not one it sent.
+  assert.equal(isAllowedSender(undefined, "42"), false);
+});
+
+test("someone else pressing ✅ in the bot's chat changes nothing (N4)", async () => {
+  // The failure this closes: point TELEGRAM_CHAT_ID at a group and every member
+  // could approve work, because the gate checked the chat rather than the
+  // presser. In a 1:1 chat the two ids coincide, so nothing legitimate changes.
+  const calls = mock([{ match: /./, body: {} }]);
+  const env = makeEnv();
+
+  await handleCallback(
+    { ...keepQuery(), from: { id: 999 } },
+    env,
+    new TelegramClient(env.TELEGRAM_BOT_TOKEN),
+  );
+
+  assert.equal(calls.length, 0, "no GitHub call, and the button is not even answered");
+});
+
+test("a message from someone else in the bot's chat is dropped (N4)", async () => {
+  const calls = mock([{ match: /./, body: {} }]);
+  const env = makeEnv();
+
+  await handleUpdate(
+    {
+      message: {
+        message_id: 1,
+        chat: { id: 42 },
+        from: { id: 999 },
+        text: "queue: do a thing",
+      },
+    },
+    env,
+  );
+
+  assert.equal(calls.length, 0, "nothing is filed on someone else's say-so");
+});
+
+test("a channel post is still chat-gated only — it has no sender (N4)", async () => {
+  const calls = mock([
+    { match: /\/issues$/, status: 201, body: { number: 78, html_url: "https://x/78" } },
+  ]);
+  const env = makeEnv();
+
+  await handleUpdate(
+    { channel_post: { message_id: 2, chat: { id: 42 }, text: "queue: ship the thing" } },
+    env,
+  );
+
+  assert.ok(
+    calls.some((call) => call.url.endsWith("/issues")),
+    "the channel_post branch stays reachable",
+  );
 });
 
 test("an unparseable callback answers the button without touching GitHub", async () => {
@@ -397,6 +469,7 @@ test("queue: files one issue and replies with a keyboard, with no model call", a
       message: {
         message_id: 9,
         chat: { id: 42 },
+        from: { id: 42 },
         text: "queue: let a leader pin a prayer thread",
       },
     },

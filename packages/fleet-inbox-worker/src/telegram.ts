@@ -26,9 +26,19 @@ export interface TelegramChat {
   id: number;
 }
 
+/**
+ * The sender. In a 1:1 chat this id equals the chat id, which is what lets
+ * `TELEGRAM_CHAT_ID` pin the sender as well as the chat — see `isAllowedSender`.
+ */
+export interface TelegramUser {
+  id: number;
+}
+
 export interface TelegramMessage {
   message_id: number;
   chat: TelegramChat;
+  /** Who sent it. Absent on a channel post, which has no individual author. */
+  from?: TelegramUser;
   text?: string;
   caption?: string;
   voice?: TelegramFileRef;
@@ -45,6 +55,13 @@ export interface TelegramMessage {
 export interface TelegramCallbackQuery {
   id: string;
   data?: string;
+  /**
+   * Who pressed the button. Telegram always sends it; it is optional here
+   * because this shape describes a parsed request body, not a promise — an
+   * update without it is one Telegram did not send, and `isAllowedSender`
+   * refuses it.
+   */
+  from?: TelegramUser;
   message?: {
     message_id: number;
     chat: TelegramChat;
