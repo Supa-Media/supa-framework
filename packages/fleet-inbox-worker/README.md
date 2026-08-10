@@ -227,12 +227,25 @@ forged `callback_query` updates:
 | File proposals in the four repos | Yes |
 | Comment on any issue in the four repos | Yes |
 | Close any issue in the four repos | Yes |
+| Seed `learnings.md` from **any** issue title in the four repos | Yes — a forged ❌ records the title of whatever issue it names, and that line is injected into every later extraction prompt |
 | Remove `inbox:proposed` from / add `agent:ready` to an **arbitrary** issue | **No** — the keep path refuses any issue not currently carrying `inbox:proposed` |
 | Push, merge, or open a pull request | No — not in the PAT's permissions |
 
 `agent:ready` is the label the fleet acts on, so that row is the one that
 matters. The precondition is in `handleCallback` (`src/index.ts`) and is
 covered by tests; it is what keeps this table's last two rows honest.
+
+The `learnings.md` row is the one write path that outlives the request. ❌ is
+not gated on `inbox:proposed` (closing something already handled is harmless and
+is what ❌ means), so a forged reject can name any issue number and put that
+issue's title — or a title someone with write access to one of the four repos
+chose — into the next thirty extraction prompts. It is bounded rather than
+prevented: `formatRejectionLearning` collapses whitespace so a title cannot forge
+extra lines or a fake `##` header, strips backticks and quotes so it cannot close
+the quoting around it, and caps the span at 120 characters; the file itself is
+30 lines, FIFO. The blast radius is prompt *noise* in a prompt that only ever
+proposes `inbox:proposed` issues — it cannot reach `agent:ready`. Clear it with
+`wrangler kv key delete` (see "Extraction learnings" below).
 
 **What never gets logged.** No transcript, no message text, no chat id. Log
 lines carry an event name, a repo slug, an issue number, and an error's *class
