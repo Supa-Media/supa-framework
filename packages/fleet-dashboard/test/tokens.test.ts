@@ -141,6 +141,17 @@ test("a blank field keeps the saved token; a filled one replaces it", () => {
   assert.deepEqual(merged, { togathernyc: "a", "Supa-Media": "b2", shyoh: "c" });
 });
 
+test("re-entering an owner under different casing replaces the token, never shadows it", () => {
+  // Everything else in the module matches owners case-insensitively, so a
+  // case-sensitive write left both keys in the map — and `tokenForOwner` scans
+  // in insertion order, so it kept handing back the stale one. Latent until an
+  // owner's casing changes in fleet.config or in a hand-edited map.
+  const merged = mergeTokens({ "supa-media": "stale" }, { "Supa-Media": "fresh" });
+
+  assert.deepEqual(merged, { "Supa-Media": "fresh" }, "one key for one owner");
+  assert.equal(tokenForRepo(merged, "Supa-Media/events-os"), "fresh");
+});
+
 test("sign out forgets every token, including a legacy key that never migrated", () => {
   // "Sign out" that left two of three tokens in localStorage would be a lie
   // with a reassuring label on it.
