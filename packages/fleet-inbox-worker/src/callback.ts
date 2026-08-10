@@ -102,6 +102,13 @@ function truncate(text: string, max: number): string {
  * and the issue link, so a wall of criteria cannot push the buttons off the
  * screen — but the message never silently hides that there is more to read.
  *
+ * NOTE: showing the criteria here is **coupled to a rule in the extraction
+ * prompt**. `buildSystemPrompt` lets the model author a checkable outcome the
+ * owner only stated loosely — which is safe precisely because he reads the
+ * result before pressing ✅. If this function ever stops rendering criteria,
+ * that prompt rule has to be revisited in the same change, or the model would
+ * be writing acceptance criteria nobody sees.
+ *
  * Plain text, no Markdown — see `TelegramClient.sendMessage`.
  */
 export function renderSummary(
