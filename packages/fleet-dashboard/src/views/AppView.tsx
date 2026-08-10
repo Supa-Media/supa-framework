@@ -133,17 +133,20 @@ export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }
         </div>
       )}
 
-      {misc.prefixes.length > 0 && (
+      {misc.prs.length > 0 && (
+        // Keyed off the PRs, not the prefix list: a repo whose only noise is
+        // branches with no prefix at all has work here and nothing to name.
         <Rows>
           <Group right={`${misc.prs.length} open ${misc.prs.length === 1 ? "PR" : "PRs"}`}>
             misc
           </Group>
           <Row>
             <span className="grow">
-              {misc.prefixes.join(" · ")}
+              {misc.prefixes.length > 0 ? misc.prefixes.join(" · ") : "branches with no prefix"}
               <span className="sm">
-                Conventional-commit and agent-harness branch prefixes. They group work, they do not
-                name it — so they get one row rather than a card each.
+                Conventional-commit and agent-harness branch prefixes, and branches with no prefix
+                at all. They group work, they do not name it — so they get one row rather than a
+                card each.
               </span>
             </span>
           </Row>

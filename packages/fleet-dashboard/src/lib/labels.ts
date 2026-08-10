@@ -97,10 +97,17 @@ export const AUTOMATION_AUTHORS: readonly string[] = ["github-actions", "github-
  * Whether the fleet is managing this issue at all.
  *
  * `init:*` counts even on its own: naming an initiative is a human saying where
- * the work belongs, which is more triage than most issues ever get.
+ * the work belongs, which is more triage than most issues ever get. A bare
+ * `init:` names nothing, so it does not count — `initiativeLabels` already
+ * drops it, and treating it as managed would have hidden an issue from triage
+ * on the strength of a label with no value in it.
  */
 export function isManaged(labels: readonly string[]): boolean {
-  return labels.some((name) => MANAGED_LABELS.includes(name) || name.startsWith(INIT_PREFIX));
+  return labels.some(
+    (name) =>
+      MANAGED_LABELS.includes(name) ||
+      (name.startsWith(INIT_PREFIX) && name.length > INIT_PREFIX.length),
+  );
 }
 
 export interface LabelLike {

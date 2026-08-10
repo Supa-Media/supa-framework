@@ -53,6 +53,10 @@ test("every label in the fleet's vocabulary counts as managed", () => {
   // Naming an initiative is a human saying where the work belongs, which is more
   // triage than most issues ever get.
   assert.equal(isManaged(["init:giving"]), true);
+  // A bare prefix names no initiative — `initiativeLabels` already drops it, and
+  // counting it as managed would hide an issue from triage on a label with no
+  // value in it.
+  assert.equal(isManaged(["init:"]), false);
   assert.equal(isManaged([]), false);
 });
 
