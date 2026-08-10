@@ -414,8 +414,10 @@ whole read cache** — the cache is keyed by path with no notion of what a write
 touched, so total invalidation is the only safe kind. It costs one cold refresh.
 
 **Caps.** Open PRs page to 5 × 100 per repo; merges cap at 50 per repo per
-window; labelled issues cap at 100 across the fleet; untriaged issues at 100 per
-owner; issue comments at the last 20. The project card always shows the exact
+window; labelled and untriaged issues cap at 100 each **per owner** — the search
+node lives inside the owner's document, so splitting the fleet search by
+credential multiplied that cap by the number of owners rather than sharing one;
+issue comments at the last 20. The project card always shows the exact
 count from `issueCount`, never the number of rows fetched, and a truncated list
 says so. Triage is the one count that shows the **filtered** number rather than
 the search's `issueCount`: the search cannot exclude `init:*`, so its count is a

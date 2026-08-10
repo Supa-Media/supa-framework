@@ -30,9 +30,11 @@ export const MAX_PR_PAGES = 5;
 export const MAX_MERGED = 50;
 
 /**
- * Labelled issues fetched across the whole fleet. Not paginated: the queue is
- * meant to be a day's work, and a "queue" of 200 is a signal, not a list to
- * scroll. The UI shows the true `issueCount` beside the rows.
+ * Labelled issues fetched **per owner** — the search node lives inside each
+ * owner's document, so the fleet-wide ceiling is this times the number of
+ * owners. Not paginated: the queue is meant to be a day's work, and a "queue"
+ * of 200 is a signal, not a list to scroll. The UI shows the true `issueCount`
+ * beside the rows.
  */
 export const MAX_ISSUES = 100;
 
