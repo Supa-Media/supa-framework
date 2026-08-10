@@ -97,7 +97,7 @@ genuinely useful), but it is marked at every layer:
   there the two ids are the same number, which is why this needs no extra
   secret. (A `channel_post` has no sender to check and stays chat-gated only.)
 
-The blast radius for a secret-holder is bounded by the PAT and by the
+The blast radius for a secret-holder is bounded by the PATs and by the
 `inbox:proposed` precondition on the keep path. They can file proposals, and
 they can comment on or close issues in the four repos. They **cannot** promote
 an arbitrary issue to `agent:ready`: that path refuses any issue not currently
@@ -140,7 +140,7 @@ practice this only ever bites the video path.
 
 ### 2. Secrets
 
-Five, all set with `wrangler secret put`. None of them appear in
+Six, all set with `wrangler secret put`. None of them appear in
 `wrangler.jsonc`, and none are ever committed:
 
 ```bash
@@ -148,8 +148,22 @@ npx wrangler secret put TELEGRAM_BOT_TOKEN       # from BotFather
 npx wrangler secret put TELEGRAM_WEBHOOK_SECRET  # you invent this: openssl rand -hex 32
 npx wrangler secret put TELEGRAM_CHAT_ID         # your chat id, digits only
 npx wrangler secret put ANTHROPIC_API_KEY        # extraction only
-npx wrangler secret put GH_TOKEN                 # see "The token" below
+
+# One GitHub token per resource owner — see "The tokens" below for why.
+npx wrangler secret put GH_TOKEN_TOGATHERNYC     # togathernyc/togather
+npx wrangler secret put GH_TOKEN_SUPA_MEDIA      # Supa-Media/events-os, Supa-Media/supa-framework
+npx wrangler secret put GH_TOKEN_SHYOH           # shyoh/fount-studios
 ```
+
+The secret name is derived, not configured: `GH_TOKEN_` plus the owner
+uppercased, with every non-alphanumeric character an underscore. Add a repo
+under a fourth owner to `src/fleet.ts` and its secret name follows from the
+slug.
+
+A single `GH_TOKEN` is still read as the fallback for any owner without its own
+— which is all a **classic** PAT needs, since one of those already spans every
+owner your account can reach. Fine-grained tokens cannot do that, so prefer the
+three above.
 
 ### 3. KV namespace
 
@@ -191,24 +205,32 @@ curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
 This worker is **the one place in the fleet that holds power**. Everything else
 reads. So the scope is as small as it can be while still doing the job:
 
-**The token.** `GH_TOKEN` is a GitHub **fine-grained personal access token**,
-scoped to exactly four repositories:
+**The tokens.** A GitHub **fine-grained personal access token** is scoped to
+exactly one *resource owner*, and the fleet's four repos span three of them — so
+there is no single fine-grained token that reaches them all, and the worker
+holds one per owner, routing every request by the owner half of the repo slug:
 
-- `togathernyc/togather`
-- `Supa-Media/events-os`
-- `shyoh/fount-studios`
-- `Supa-Media/supa-framework`
+| Secret | Resource owner | Repositories |
+| --- | --- | --- |
+| `GH_TOKEN_TOGATHERNYC` | `togathernyc` | `togathernyc/togather` |
+| `GH_TOKEN_SUPA_MEDIA` | `Supa-Media` | `Supa-Media/events-os`, `Supa-Media/supa-framework` |
+| `GH_TOKEN_SHYOH` | `shyoh` | `shyoh/fount-studios` |
 
-with exactly two repository permissions:
+Each with exactly two repository permissions:
 
 - **Issues: Read and write** — file proposals, label, comment, close
 - **Contents: Read** — read `.fleet/initiatives.json`, nothing more
 - (Metadata: Read is mandatory on every fine-grained token)
 
-It cannot push a commit, open a pull request, merge anything, or touch a repo
-outside that list. Give it the shortest expiry you'll tolerate re-issuing.
-Everything the token is used for lives in one file, `src/github.ts` — that's
+None of them can push a commit, open a pull request, merge anything, or touch a
+repo outside its list. Give them the shortest expiry you'll tolerate re-issuing.
+Everything the tokens are used for lives in one file, `src/github.ts` — that's
 deliberate, so "what can the inbox actually do to my repos" has a short answer.
+
+An owner with no token configured is not silently skipped: the first request for
+one of its repos fails with `No GitHub token for <owner> — set GH_TOKEN_<OWNER>`,
+which arrives as a Telegram DM. A 404 from GitHub, which is what a wrongly-scoped
+token would produce, would send you hunting the wrong problem.
 
 **Who can talk to it.** Three gates, all before any work happens:
 
@@ -237,7 +259,7 @@ forged `callback_query` updates:
 | Close any issue in the four repos | Yes |
 | Seed `learnings.md` from **any** issue title in the four repos | Yes — a forged ❌ records the title of whatever issue it names, and that line is injected into every later extraction prompt |
 | Remove `inbox:proposed` from / add `agent:ready` to an **arbitrary** issue | **No** — the keep path refuses any issue not currently carrying `inbox:proposed` |
-| Push, merge, or open a pull request | No — not in the PAT's permissions |
+| Push, merge, or open a pull request | No — not in any of the PATs' permissions |
 
 `agent:ready` is the label the fleet acts on, so that row is the one that
 matters. The precondition is in `handleCallback` (`src/index.ts`) and is
@@ -341,5 +363,5 @@ a trade worth making. Use `npx wrangler` when the time comes.
 ## Not deployed
 
 This ships the worker; it does not run it. Deploying needs the owner's
-Cloudflare account for the KV namespace, the Workers AI binding, the five
+Cloudflare account for the KV namespace, the Workers AI binding, the six
 secrets, and the webhook registration above.

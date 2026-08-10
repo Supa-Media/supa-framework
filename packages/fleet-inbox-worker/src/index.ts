@@ -29,7 +29,7 @@ import {
 } from "./callback";
 import { callExtraction, type FleetContext } from "./extract";
 import { FLEET_APPS, UNASSIGNED, labelForApp, slugForApp } from "./fleet";
-import { GitHubClient } from "./github";
+import { GitHubClient, githubTokens } from "./github";
 import {
   clampTitle,
   isThirdPartyContent,
@@ -202,7 +202,7 @@ async function handleMessage(
   telegram: TelegramClient,
 ): Promise<void> {
   const described = describeMessage(message);
-  const github = new GitHubClient(env.GH_TOKEN);
+  const github = new GitHubClient(githubTokens(env));
   const source: SourceRef = {
     messageId: message.message_id,
     kind: described.kind,
@@ -424,7 +424,7 @@ export async function handleCallback(
   }
 
   const slug = slugForApp(payload.appKey);
-  const github = new GitHubClient(env.GH_TOKEN);
+  const github = new GitHubClient(githubTokens(env));
   const issue = await github.getIssue(slug, payload.issueNumber);
 
   // The precondition that makes ✅ mean what it says.

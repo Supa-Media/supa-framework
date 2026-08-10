@@ -2,11 +2,17 @@
  * The GitHub REST calls this worker makes, and how it discovers each repo's
  * initiatives.
  *
- * This client holds the only real power in the pipeline — a token that can
+ * This client holds the only real power in the pipeline — tokens that can
  * write issues to four repos. Everything it can do is here, in one file, so
  * "what can the inbox actually do to my repos" has a short answer: create an
  * issue, comment on one, add or remove a label, close one. It cannot push, it
  * cannot merge, it cannot read a private file outside `.fleet/`.
+ *
+ * **Tokens, plural.** A fine-grained GitHub PAT is scoped to exactly one
+ * *resource owner*, and the fleet spans three — `togathernyc`, `Supa-Media`,
+ * `shyoh`. So there is no single fine-grained token that reaches all four
+ * repos, and every request is routed to the token for the owner half of its
+ * slug. See {@link githubTokens} for where those come from.
  *
  * Initiative discovery has two sources, in order:
  *
@@ -20,9 +26,60 @@
  * a voice note.
  */
 
+import { FLEET_APPS, UNASSIGNED_SLUG } from "./fleet";
 import { errorName, log } from "./log";
+import type { Env } from "./env";
 
 const API_ROOT = "https://api.github.com";
+
+/* -------------------------------------------------------------------------- */
+/* Which token talks to which repo                                             */
+/* -------------------------------------------------------------------------- */
+
+/** Resource owner (lowercased) → the token that can reach that owner's repos. */
+export type TokenMap = Record<string, string>;
+
+/**
+ * The `owner` half of an `owner/name` slug, lowercased.
+ *
+ * Lowercased because GitHub logins are case-insensitive and `fleet.ts` spells
+ * `Supa-Media` the way GitHub displays it — a lookup that respected case would
+ * miss the repo for no reason a reader could see.
+ */
+export function ownerOf(slug: string): string {
+  return (slug.split("/")[0] ?? "").toLowerCase();
+}
+
+/**
+ * The secret name holding one owner's token: `GH_TOKEN_` plus the owner
+ * uppercased, with every non-alphanumeric character an underscore. So
+ * `togathernyc` → `GH_TOKEN_TOGATHERNYC` and `Supa-Media` → `GH_TOKEN_SUPA_MEDIA`.
+ */
+export function tokenEnvKey(owner: string): `GH_TOKEN_${string}` {
+  return `GH_TOKEN_${owner.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`;
+}
+
+/**
+ * Resolve one token per fleet owner from the worker's secrets.
+ *
+ * `GH_TOKEN_<OWNER>` wins; `GH_TOKEN` is the fallback for any owner without
+ * one, which is all a classic (non-fine-grained) PAT needs — it already spans
+ * every owner the account can reach. An owner with neither is simply absent
+ * from the map, and a request for its repos fails with a message naming the
+ * secret to set rather than a confusing 404 from GitHub.
+ */
+export function githubTokens(env: Env): TokenMap {
+  const tokens: TokenMap = {};
+  const fallback = (env.GH_TOKEN ?? "").trim();
+
+  for (const slug of [...FLEET_APPS.map((app) => app.slug), UNASSIGNED_SLUG]) {
+    const owner = ownerOf(slug);
+    const perOwner = (env[tokenEnvKey(owner)] ?? "").trim();
+    const token = perOwner === "" ? fallback : perOwner;
+    if (token !== "") tokens[owner] = token;
+  }
+  return tokens;
+}
 
 export class GitHubError extends Error {
   readonly status: number;
@@ -96,21 +153,38 @@ function decodeBase64Content(encoded: string): string {
 }
 
 export class GitHubClient {
-  private readonly token: string;
+  private readonly tokens: TokenMap;
 
-  constructor(token: string) {
-    this.token = token;
+  constructor(tokens: TokenMap) {
+    this.tokens = tokens;
   }
 
+  /**
+   * One REST call against `slug`, signed with that repo owner's token.
+   *
+   * `path` is the part after `/repos/{slug}`, so the slug appears once and the
+   * token lookup cannot drift from the repo actually being called.
+   */
   private async request<T>(
+    slug: string,
     path: string,
     init?: { method?: string; body?: unknown },
   ): Promise<T> {
-    const response = await fetch(API_ROOT + path, {
+    const owner = ownerOf(slug);
+    const token = this.tokens[owner];
+    if (token === undefined) {
+      // Not a GitHubError: nothing was asked of GitHub. This message reaches
+      // the owner as a Telegram DM, so it names the fix.
+      throw new Error(
+        `No GitHub token for ${owner} — set ${tokenEnvKey(owner)} (or GH_TOKEN).`,
+      );
+    }
+
+    const response = await fetch(`${API_ROOT}/repos/${slug}${path}`, {
       method: init?.method ?? "GET",
       headers: {
         Accept: "application/vnd.github+json",
-        Authorization: `Bearer ${this.token}`,
+        Authorization: `Bearer ${token}`,
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "supa-fleet-inbox-worker",
         ...(init?.body === undefined ? {} : { "Content-Type": "application/json" }),
@@ -126,7 +200,10 @@ export class GitHubClient {
       } catch {
         // Non-JSON error body; the status alone is enough.
       }
-      throw new GitHubError(`GitHub ${response.status} for ${path}${detail}`, response.status);
+      throw new GitHubError(
+        `GitHub ${response.status} for /repos/${slug}${path}${detail}`,
+        response.status,
+      );
     }
 
     // 204 No Content (label removal) has no body to parse.
@@ -156,7 +233,8 @@ export class GitHubClient {
   async listInitiatives(slug: string): Promise<Initiative[]> {
     try {
       const file = await this.request<{ content?: string }>(
-        `/repos/${slug}/contents/.fleet/initiatives.json`,
+        slug,
+        "/contents/.fleet/initiatives.json",
       );
       if (file.content !== undefined) {
         return parseInitiativesFile(JSON.parse(decodeBase64Content(file.content)));
@@ -171,7 +249,8 @@ export class GitHubClient {
 
     try {
       const labels = await this.request<Array<{ name: string }>>(
-        `/repos/${slug}/labels?per_page=100`,
+        slug,
+        "/labels?per_page=100",
       );
       return labels
         .filter((label) => label.name.startsWith("init:"))
@@ -197,7 +276,7 @@ export class GitHubClient {
     slug: string,
     issue: { title: string; body: string; labels: string[] },
   ): Promise<CreatedIssue> {
-    return this.request<CreatedIssue>(`/repos/${slug}/issues`, {
+    return this.request<CreatedIssue>(slug, "/issues", {
       method: "POST",
       body: issue,
     });
@@ -209,7 +288,7 @@ export class GitHubClient {
       title: string;
       html_url: string;
       labels?: Array<{ name?: string } | string>;
-    }>(`/repos/${slug}/issues/${issueNumber}`);
+    }>(slug, `/issues/${issueNumber}`);
 
     // GitHub returns label objects, but the same field is a bare string array
     // in some older payloads. Normalize so callers can just check membership.
@@ -221,7 +300,7 @@ export class GitHubClient {
   }
 
   async addLabels(slug: string, issueNumber: number, labels: string[]): Promise<void> {
-    await this.request(`/repos/${slug}/issues/${issueNumber}/labels`, {
+    await this.request(slug, `/issues/${issueNumber}/labels`, {
       method: "POST",
       body: { labels },
     });
@@ -230,7 +309,8 @@ export class GitHubClient {
   async removeLabel(slug: string, issueNumber: number, label: string): Promise<void> {
     try {
       await this.request(
-        `/repos/${slug}/issues/${issueNumber}/labels/${encodeURIComponent(label)}`,
+        slug,
+        `/issues/${issueNumber}/labels/${encodeURIComponent(label)}`,
         { method: "DELETE" },
       );
     } catch (error) {
@@ -242,14 +322,14 @@ export class GitHubClient {
   }
 
   async comment(slug: string, issueNumber: number, body: string): Promise<void> {
-    await this.request(`/repos/${slug}/issues/${issueNumber}/comments`, {
+    await this.request(slug, `/issues/${issueNumber}/comments`, {
       method: "POST",
       body: { body },
     });
   }
 
   async closeIssue(slug: string, issueNumber: number): Promise<void> {
-    await this.request(`/repos/${slug}/issues/${issueNumber}`, {
+    await this.request(slug, `/issues/${issueNumber}`, {
       method: "PATCH",
       body: { state: "closed", state_reason: "not_planned" },
     });

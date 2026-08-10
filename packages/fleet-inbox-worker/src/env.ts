@@ -54,6 +54,26 @@ export interface Env {
   TELEGRAM_CHAT_ID: string;
   /** Anthropic API key used for extraction only. */
   ANTHROPIC_API_KEY: string;
-  /** Fine-grained PAT: the four fleet repos, `issues:write` + `contents:read`. */
-  GH_TOKEN: string;
+
+  /**
+   * Fallback GitHub token, used for any owner with no `GH_TOKEN_<OWNER>`.
+   *
+   * Optional, because a fine-grained PAT is scoped to exactly one resource
+   * owner and the fleet spans three — the per-owner secrets below are the
+   * supported setup. This is what a classic PAT (which already spans every
+   * owner the account can reach) needs, and it is the migration path from the
+   * single-token version.
+   */
+  GH_TOKEN?: string;
+
+  /**
+   * Per-owner GitHub tokens: `GH_TOKEN_TOGATHERNYC`, `GH_TOKEN_SUPA_MEDIA`,
+   * `GH_TOKEN_SHYOH`. Each is a fine-grained PAT for that owner's fleet repos,
+   * with `issues:write` + `contents:read`.
+   *
+   * A pattern index signature rather than three named fields: the owners come
+   * from `fleet.ts`, so naming them here too would be a second list that can
+   * disagree with the first. `github.ts` derives the key with `tokenEnvKey`.
+   */
+  [perOwnerGitHubToken: `GH_TOKEN_${string}`]: string | undefined;
 }

@@ -2,7 +2,7 @@
   // Cloudflare Worker config for the fleet inbox.
   //
   // SECRETS ARE NOT HERE AND MUST NEVER BE. `vars` in this file is committed
-  // to git; every value the worker needs is a real secret, so all five are set
+  // to git; every value the worker needs is a real secret, so all six are set
   // with `wrangler secret put` and reach the worker through the `Env` interface
   // in src/env.ts. See README.md for the list and the commands.
   //
@@ -39,7 +39,13 @@
   // Secrets (set with `wrangler secret put <NAME>`, never committed):
   //   TELEGRAM_BOT_TOKEN       BotFather token for the inbox bot
   //   TELEGRAM_WEBHOOK_SECRET  echoed by Telegram in X-Telegram-Bot-Api-Secret-Token
-  //   TELEGRAM_CHAT_ID         the ONE chat allowed to drive this worker
+  //   TELEGRAM_CHAT_ID         the ONE chat — and the ONE sender — allowed here
   //   ANTHROPIC_API_KEY        extraction only
-  //   GH_TOKEN                 fine-grained PAT, 4 repos, issues:write
+  //
+  // One fine-grained PAT per resource owner (issues:write + contents:read); a
+  // fine-grained token cannot span owners, which is why there are three:
+  //   GH_TOKEN_TOGATHERNYC     togathernyc/togather
+  //   GH_TOKEN_SUPA_MEDIA      Supa-Media/events-os, Supa-Media/supa-framework
+  //   GH_TOKEN_SHYOH           shyoh/fount-studios
+  //   GH_TOKEN                 optional fallback for any owner without its own
 }

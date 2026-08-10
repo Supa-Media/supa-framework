@@ -1,6 +1,14 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { GitHubClient, GitHubError, parseInitiativesFile } from "../src/github";
+import {
+  GitHubClient,
+  GitHubError,
+  githubTokens,
+  ownerOf,
+  parseInitiativesFile,
+  tokenEnvKey,
+} from "../src/github";
+import type { Env } from "../src/env";
 
 /* -------------------------------------------------------------------------- */
 /* fetch mock                                                                  */
@@ -44,6 +52,11 @@ function mockFetch(
 
 function base64(text: string): string {
   return Buffer.from(text, "utf8").toString("base64");
+}
+
+/** Every test repo below is owned by `o`, so one entry covers the fleet. */
+function client(tokens: Record<string, string> = { o: "t" }): GitHubClient {
+  return new GitHubClient(tokens);
 }
 
 const realLog = console.log;
@@ -99,7 +112,7 @@ test("initiatives come from .fleet/initiatives.json when it exists", async () =>
     },
   ]);
 
-  const initiatives = await new GitHubClient("t").listInitiatives("o/r");
+  const initiatives = await client().listInitiatives("o/r");
   assert.deepEqual(initiatives, [{ name: "inbox" }]);
   assert.equal(calls.length, 1, "labels are not fetched when the file exists");
   assert.equal(calls[0]?.headers["Authorization"], "Bearer t");
@@ -114,7 +127,7 @@ test("initiatives fall back to init:* labels when the file is absent", async () 
     },
   ]);
 
-  assert.deepEqual(await new GitHubClient("t").listInitiatives("o/r"), [
+  assert.deepEqual(await client().listInitiatives("o/r"), [
     { name: "wa-parity" },
   ]);
 });
@@ -125,7 +138,7 @@ test("a repo the token cannot see contributes nothing rather than failing", asyn
     { match: /contents\/\.fleet/, status: 403 },
     { match: /\/labels/, status: 403 },
   ]);
-  assert.deepEqual(await new GitHubClient("t").listInitiatives("o/private"), []);
+  assert.deepEqual(await client().listInitiatives("o/private"), []);
 });
 
 test("a malformed initiatives file degrades to labels, it does not throw (M6)", async () => {
@@ -137,7 +150,7 @@ test("a malformed initiatives file degrades to labels, it does not throw (M6)", 
     { match: /\/labels/, body: [{ name: "init:fallback" }] },
   ]);
 
-  assert.deepEqual(await new GitHubClient("t").listInitiatives("o/r"), [{ name: "fallback" }]);
+  assert.deepEqual(await client().listInitiatives("o/r"), [{ name: "fallback" }]);
 });
 
 test("a corrupt base64 payload also degrades to labels (M6)", async () => {
@@ -147,7 +160,7 @@ test("a corrupt base64 payload also degrades to labels (M6)", async () => {
     { match: /\/labels/, body: [{ name: "init:fallback" }] },
   ]);
 
-  assert.deepEqual(await new GitHubClient("t").listInitiatives("o/r"), [{ name: "fallback" }]);
+  assert.deepEqual(await client().listInitiatives("o/r"), [{ name: "fallback" }]);
 });
 
 test("a malformed file with unreachable labels yields an empty list, still no throw", async () => {
@@ -155,7 +168,7 @@ test("a malformed file with unreachable labels yields an empty list, still no th
     { match: /contents\/\.fleet/, body: { content: base64("[[[") } },
     { match: /\/labels/, status: 500 },
   ]);
-  assert.deepEqual(await new GitHubClient("t").listInitiatives("o/r"), []);
+  assert.deepEqual(await client().listInitiatives("o/r"), []);
 });
 
 /* -------------------------------------------------------------------------- */
@@ -171,7 +184,7 @@ test("a repo with no initiatives at all says so in the log (N2)", async () => {
   ]);
   const logs = captureLogs();
 
-  assert.deepEqual(await new GitHubClient("t").listInitiatives("o/r"), []);
+  assert.deepEqual(await client().listInitiatives("o/r"), []);
   const unavailable = logs.find((line) => line["event"] === "initiatives.unavailable");
   assert.ok(unavailable !== undefined, "the degraded-routing signal is emitted");
   assert.equal(unavailable["repo"], "o/r");
@@ -185,7 +198,7 @@ test("a malformed initiatives file is logged even though labels rescue it (N2)",
   ]);
   const logs = captureLogs();
 
-  await new GitHubClient("t").listInitiatives("o/r");
+  await client().listInitiatives("o/r");
   const unreadable = logs.find((line) => line["event"] === "initiatives.file_unreadable");
   assert.ok(unreadable !== undefined, "a broken repo-authored file is not silent");
   assert.equal(unreadable["error"], "SyntaxError");
@@ -200,7 +213,7 @@ test("the ordinary 404 for a repo with no .fleet/ stays quiet (N2)", async () =>
   ]);
   const logs = captureLogs();
 
-  await new GitHubClient("t").listInitiatives("o/r");
+  await client().listInitiatives("o/r");
   assert.deepEqual(logs, []);
 });
 
@@ -217,13 +230,13 @@ test("getIssue normalizes labels so the keep path can check them (M4)", async ()
     },
   ]);
 
-  const issue = await new GitHubClient("t").getIssue("o/r", 9);
+  const issue = await client().getIssue("o/r", 9);
   assert.deepEqual(issue.labels, ["inbox:proposed", "size:m"]);
 });
 
 test("getIssue on an issue with no labels yields an empty array, not undefined", async () => {
   mockFetch([{ match: /issues\/9$/, body: { number: 9, title: "T", html_url: "u" } }]);
-  assert.deepEqual((await new GitHubClient("t").getIssue("o/r", 9)).labels, []);
+  assert.deepEqual((await client().getIssue("o/r", 9)).labels, []);
 });
 
 test("creating an issue posts title, body, and labels", async () => {
@@ -231,7 +244,7 @@ test("creating an issue posts title, body, and labels", async () => {
     { match: /\/issues$/, status: 201, body: { number: 9, html_url: "https://x/9" } },
   ]);
 
-  const issue = await new GitHubClient("t").createIssue("o/r", {
+  const issue = await client().createIssue("o/r", {
     title: "T",
     body: "B",
     labels: ["inbox:proposed"],
@@ -248,7 +261,7 @@ test("keeping an issue removes the proposed label and adds the ready one", async
     { match: /\/labels$/, status: 200, body: [] },
   ]);
 
-  const github = new GitHubClient("t");
+  const github = client();
   await github.removeLabel("o/r", 9, "inbox:proposed");
   await github.addLabels("o/r", 9, ["agent:ready"]);
 
@@ -260,7 +273,7 @@ test("keeping an issue removes the proposed label and adds the ready one", async
 
 test("removing a label that is already gone is success, not an error", async () => {
   mockFetch([{ match: /labels\//, status: 404 }]);
-  await new GitHubClient("t").removeLabel("o/r", 9, "inbox:proposed");
+  await client().removeLabel("o/r", 9, "inbox:proposed");
 });
 
 test("rejecting an issue comments then closes it as not planned", async () => {
@@ -269,7 +282,7 @@ test("rejecting an issue comments then closes it as not planned", async () => {
     { match: /\/issues\/9$/, status: 200, body: {} },
   ]);
 
-  const github = new GitHubClient("t");
+  const github = client();
   await github.comment("o/r", 9, "rejected via Telegram");
   await github.closeIssue("o/r", 9);
 
@@ -282,7 +295,7 @@ test("a failed write surfaces the status and GitHub's message", async () => {
   mockFetch([{ match: /\/issues$/, status: 422, body: { message: "Validation Failed" } }]);
 
   await assert.rejects(
-    () => new GitHubClient("t").createIssue("o/r", { title: "T", body: "B", labels: [] }),
+    () => client().createIssue("o/r", { title: "T", body: "B", labels: [] }),
     (error: unknown) => {
       assert.ok(error instanceof GitHubError);
       assert.equal(error.status, 422);
@@ -290,4 +303,89 @@ test("a failed write surfaces the status and GitHub's message", async () => {
       return true;
     },
   );
+});
+
+/* -------------------------------------------------------------------------- */
+/* One token per resource owner (N5)                                           */
+/* -------------------------------------------------------------------------- */
+
+test("the owner half of a slug is what the token is keyed on (N5)", () => {
+  assert.equal(ownerOf("togathernyc/togather"), "togathernyc");
+  // GitHub logins are case-insensitive; fleet.ts spells this one `Supa-Media`.
+  assert.equal(ownerOf("Supa-Media/events-os"), "supa-media");
+});
+
+test("the secret name for an owner is derivable, not configured (N5)", () => {
+  assert.equal(tokenEnvKey("togathernyc"), "GH_TOKEN_TOGATHERNYC");
+  assert.equal(tokenEnvKey("supa-media"), "GH_TOKEN_SUPA_MEDIA");
+  assert.equal(tokenEnvKey("shyoh"), "GH_TOKEN_SHYOH");
+});
+
+/** The non-GitHub half of `Env`, which token resolution never reads. */
+const envBase = {
+  AI: { run: async () => ({ text: "" }) },
+  INBOX_KV: { get: async () => null, put: async () => {} },
+  TELEGRAM_BOT_TOKEN: "b",
+  TELEGRAM_WEBHOOK_SECRET: "w",
+  TELEGRAM_CHAT_ID: "42",
+  ANTHROPIC_API_KEY: "sk",
+} satisfies Omit<Env, "GH_TOKEN">;
+
+test("each fleet owner resolves to its own token (N5)", () => {
+  // The point of the whole exercise: a fine-grained PAT covers exactly one
+  // resource owner, and the fleet spans three.
+  assert.deepEqual(
+    githubTokens({
+      ...envBase,
+      GH_TOKEN_TOGATHERNYC: "tg",
+      GH_TOKEN_SUPA_MEDIA: "sm",
+      GH_TOKEN_SHYOH: "sh",
+    }),
+    { togathernyc: "tg", "supa-media": "sm", shyoh: "sh" },
+  );
+});
+
+test("GH_TOKEN still covers every owner that has no token of its own (N5)", () => {
+  assert.deepEqual(githubTokens({ ...envBase, GH_TOKEN: "classic" }), {
+    togathernyc: "classic",
+    "supa-media": "classic",
+    shyoh: "classic",
+  });
+
+  // Mixed: the per-owner secret wins where it exists.
+  assert.deepEqual(
+    githubTokens({ ...envBase, GH_TOKEN: "classic", GH_TOKEN_SHYOH: "sh" }),
+    { togathernyc: "classic", "supa-media": "classic", shyoh: "sh" },
+  );
+});
+
+test("an owner with no token at all is absent rather than empty (N5)", () => {
+  assert.deepEqual(githubTokens({ ...envBase, GH_TOKEN_SHYOH: "sh" }), { shyoh: "sh" });
+});
+
+test("each repo is called with its own owner's token (N5)", async () => {
+  const calls = mockFetch([{ match: /\/issues$/, status: 201, body: { number: 1 } }]);
+  const github = client({ togathernyc: "tg", shyoh: "sh" });
+
+  await github.createIssue("togathernyc/togather", { title: "T", body: "B", labels: [] });
+  await github.createIssue("shyoh/fount-studios", { title: "T", body: "B", labels: [] });
+
+  assert.equal(calls[0]?.headers["Authorization"], "Bearer tg");
+  assert.equal(calls[1]?.headers["Authorization"], "Bearer sh");
+});
+
+test("a repo whose owner has no token fails by naming the secret to set (N5)", async () => {
+  // This message reaches the owner as a Telegram DM. A 404 from GitHub — which
+  // is what an unscoped token gets — would have him hunting the wrong problem.
+  const calls = mockFetch([{ match: /./, status: 201, body: {} }]);
+
+  await assert.rejects(
+    () => client({ togathernyc: "tg" }).createIssue("shyoh/fount-studios", {
+      title: "T",
+      body: "B",
+      labels: [],
+    }),
+    /No GitHub token for shyoh — set GH_TOKEN_SHYOH \(or GH_TOKEN\)/,
+  );
+  assert.equal(calls.length, 0, "nothing is sent unsigned");
 });
