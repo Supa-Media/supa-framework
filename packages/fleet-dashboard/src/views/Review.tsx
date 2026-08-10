@@ -56,6 +56,9 @@ export function Review({
     .map((project) => ({ project, count: untriagedByRepo.get(project.key) ?? 0 }))
     .filter((entry) => entry.count > 0);
   const untriagedTotal = untriaged.reduce((sum, entry) => sum + entry.count, 0);
+  // The per-owner search caps, so the total is a floor when any of the repos
+  // showing work belongs to an owner whose search was truncated.
+  const untriagedAtLeast = untriaged.some((entry) => entry.project.untriagedTruncated);
 
   const prodByRepo = new Map(
     snapshot.projects.map((project) => [project.key, project.lastProdDeploy?.at ?? null]),
@@ -245,7 +248,9 @@ export function Review({
 
           {untriagedTotal > 0 && (
             <Rows>
-              <Group right={`${untriagedTotal} untriaged across the fleet`}>
+              <Group
+                right={`${untriagedTotal}${untriagedAtLeast ? "+" : ""} untriaged across the fleet`}
+              >
                 filed, but nothing is managing it
               </Group>
               {untriaged.map(({ project, count }) => (

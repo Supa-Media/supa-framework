@@ -22,6 +22,7 @@ function project(overrides: Partial<ProjectSnapshot> & { key: string }): Project
     owner: overrides.key.split("/")[0] ?? "",
     tokenMissing: false,
     searchFailed: false,
+    untriagedTruncated: false,
     url: `https://github.com/${overrides.key}`,
     defaultBranch: "main",
     activeRuns: 0,

@@ -428,7 +428,12 @@ issue comments at the last 20. The project card always shows the exact
 count from `issueCount`, never the number of rows fetched, and a truncated list
 says so. Triage is the one count that shows the **filtered** number rather than
 the search's `issueCount`: the search cannot exclude `init:*`, so its count is a
-superset of the definition and printing it would overstate the backlog.
+superset of the definition and printing it would overstate the backlog. That
+count is still *read*, to say when the list is short: an owner with more
+untriaged issues than the cap gets a line saying so on each of its apps, and the
+fleet total on ☀️ Review reads `N+`. The untriaged search asks for a lighter
+node than the labelled one — no body, no comments, because no triage row reads
+either — which is why an issue that arrives only through it has neither.
 
 ## Notes and limitations
 

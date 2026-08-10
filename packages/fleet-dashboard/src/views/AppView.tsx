@@ -375,6 +375,21 @@ function TriageSection({
         triage — filed, but nothing is managing it
       </Group>
 
+      {project.untriagedTruncated && (
+        // The search counted more than it returned. The cap is per owner, so
+        // the issues that did not fit may be in any repo that owner covers —
+        // but a triage list that is silently the first hundred of a hundred and
+        // fifty is worse than a list that admits it.
+        <Row>
+          <span className="grow">
+            <span className="sm">
+              GitHub returned the newest page of untriaged issues for {project.owner} and there are
+              more than fitted — this list is what came back, not all of it.
+            </span>
+          </span>
+        </Row>
+      )}
+
       {work.map((issue) => (
         <TriageRow
           key={issue.id}

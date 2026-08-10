@@ -78,6 +78,25 @@ test("triage rides inside the owner's document as one more aliased search", () =
   assert.ok(query.includes(`first: ${MAX_UNTRIAGED}`));
 });
 
+test("the untriaged node asks for the fields triage rows read, and no more", () => {
+  const query = buildFleetQuery([0], true);
+
+  // A triage row reads a title, an age, an author and the labels the issue does
+  // NOT carry. Reusing IssueFields bought a body and the last 20 comments for
+  // every one of a hundred issues per owner, rendered nowhere.
+  assert.ok(query.includes("fragment TriageFields on Issue"));
+  assert.ok(query.includes("...TriageFields"));
+
+  const fragment = query.slice(
+    query.indexOf("fragment TriageFields on Issue"),
+    query.indexOf("query FleetPulse"),
+  );
+  assert.ok(!fragment.includes("comments("), "comments are the expensive half");
+  assert.ok(!/^\s*body$/m.test(fragment), "no body either");
+  assert.ok(fragment.includes("labels("), "labels are the whole definition of untriaged");
+  assert.ok(fragment.includes("login"), "the author splits automation reports out");
+});
+
 test("the untriaged node asks for issueCount, like every other search since #40", () => {
   // Same convention as `labelled`: unpaginated, but the exact count is asked for
   // so a caller can never mistake a capped node list for a total.

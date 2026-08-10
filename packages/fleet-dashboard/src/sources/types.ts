@@ -232,6 +232,17 @@ export interface ProjectSnapshot {
    * stops the card from contradicting it.
    */
   searchFailed: boolean;
+  /**
+   * `true` when the untriaged search hit its cap, so the triage list is the
+   * newest page rather than all of it.
+   *
+   * A property of the **owner**, not of this repo: the search runs once per
+   * credential across every repo that owner covers, so the flag is set on all
+   * of them and the issues that did not fit may belong to any. Which is still
+   * worth saying on each — a list that is silently the first hundred of a
+   * hundred and fifty is the failure mode a triage screen can least afford.
+   */
+  untriagedTruncated: boolean;
   url: string;
   defaultBranch: string;
   /** Workflow runs currently queued or in progress. */

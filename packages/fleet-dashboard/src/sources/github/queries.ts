@@ -146,6 +146,44 @@ const ISSUE_FIELDS = /* GraphQL */ `
 `;
 
 /**
+ * The untriaged node's fields — `IssueFields` minus the two expensive ones.
+ *
+ * A triage row reads a title, a number, an age, an author and the labels it
+ * does *not* carry. It never reads the body and never reads a comment, so
+ * asking for a body plus the last 20 comments per issue cost roughly twice the
+ * node budget for data nothing rendered — a hundred issues an owner, on a
+ * document that also carries the labelled hundred.
+ *
+ * The trade is explicit and worth naming: an issue that reaches the snapshot
+ * only through this node arrives with an empty body and no comments, so a
+ * `**[decider]**` comment written on an issue carrying nothing but an `init:*`
+ * label is no longer read into the Decisions panel. Anything an agent actually
+ * worked carries an `agent:*` label and comes through `labelled`, with its
+ * comments.
+ */
+const TRIAGE_FIELDS = /* GraphQL */ `
+  fragment TriageFields on Issue {
+    id
+    number
+    title
+    url
+    createdAt
+    updatedAt
+    author {
+      login
+    }
+    repository {
+      nameWithOwner
+    }
+    labels(first: 30) {
+      nodes {
+        name
+      }
+    }
+  }
+`;
+
+/**
  * Build the fleet document for the repos at `repoIndices`.
  *
  * Aliases are positional (`repo0`, `repo1`, …) because a GraphQL alias can't
@@ -213,6 +251,7 @@ export function buildFleetQuery(repoIndices: readonly number[], withShared: bool
   return `${PULL_FIELDS}
   ${MERGED_FIELDS}
   ${ISSUE_FIELDS}
+  ${TRIAGE_FIELDS}
   query FleetPulse(${variables}) {${searches}${merges}
     labelled: search(query: $labelQuery, type: ISSUE, first: ${MAX_ISSUES}) {
       issueCount
@@ -223,7 +262,7 @@ export function buildFleetQuery(repoIndices: readonly number[], withShared: bool
     untriaged: search(query: $untriagedQuery, type: ISSUE, first: ${MAX_UNTRIAGED}) {
       issueCount
       nodes {
-        ...IssueFields
+        ...TriageFields
       }
     }
     costIssues: search(query: $issueQuery, type: ISSUE, first: 20) {
@@ -299,6 +338,13 @@ export interface GqlIssueNode {
   };
 }
 
+/**
+ * An untriaged issue: `GqlIssueNode` without the body and comments the triage
+ * rows never read. Widened to the one issue shape on arrival — see
+ * `TRIAGE_FIELDS` for what that costs and why it is worth it.
+ */
+export type GqlTriageNode = Omit<GqlIssueNode, "body" | "comments">;
+
 export interface GqlIssue {
   title: string;
   body: string;
@@ -323,10 +369,16 @@ export interface GqlIssuePage {
   nodes: Array<GqlIssueNode | null>;
 }
 
+export interface GqlTriagePage {
+  /** Matches the search, not the node list: the gap is what "truncated" means. */
+  issueCount: number;
+  nodes: Array<GqlTriageNode | null>;
+}
+
 /** Positional aliases (`repo0`, `merged0`…) plus the three shared searches. */
 export type FleetQueryResult = Record<string, GqlSearchPage | GqlMergedPage | undefined> & {
   labelled?: GqlIssuePage;
-  untriaged?: GqlIssuePage;
+  untriaged?: GqlTriagePage;
   costIssues?: { nodes: Array<GqlIssue | null> };
 };
 
