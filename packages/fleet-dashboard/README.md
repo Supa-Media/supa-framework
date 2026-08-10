@@ -402,7 +402,10 @@ in the review window, every labelled issue, every **untriaged** issue, and the
 cost issues for that owner's repos — one aliased search node per repo, so each
 repo also reports an exact `issueCount` and paginates on its own cursor. Triage
 added one search node to that document and zero HTTP requests. Three requests instead of one is
-the price of the credential, not of the query shape. The rest is REST with
+the price of the credential, not of the query shape. A **second page**, when a
+repo has one, carries only the repos still paginating: everything else in the
+document is read once per owner, so re-asking for it would be two hundred issues
+fetched and dropped per round-trip. The rest is REST with
 `If-None-Match` conditional requests, and a `304` costs no budget. There is no
 polling: the page fetches once, and again after a write or a Refresh. Each token
 has its own hourly allowance, so the top bar shows the **tightest** remaining

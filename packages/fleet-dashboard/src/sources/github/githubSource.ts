@@ -268,7 +268,6 @@ async function fetchOwnerPulls(
   const slugs = repos.map((repo) => repo.slug);
   const { pullsByRepo, countsByRepo, mergedByRepo } = search;
 
-  const query = buildFleetQuery(slugs.length);
   const cursors: Array<string | null> = slugs.map(() => null);
   const done: boolean[] = slugs.map(() => false);
   // A repo the token can't see fails the same way on every page; reporting it
@@ -278,16 +277,28 @@ async function fetchOwnerPulls(
   for (let page = 0; page < MAX_PR_PAGES; page += 1) {
     if (done.every(Boolean)) break;
 
-    const variables: Record<string, unknown> = {
-      issueQuery: buildIssueQuery(slugs),
-      labelQuery: buildLabelQuery(slugs),
-      untriagedQuery: buildUntriagedQuery(slugs),
-    };
-    slugs.forEach((slug, i) => {
+    // Only the repos still paginating, and the once-per-owner searches only on
+    // the first page. Page two used to re-ask every alias — including two
+    // hundred issues nothing reads after page one — and to re-ask the repos
+    // that had already finished, whose replayed `null` cursor handed back a
+    // page the caller then had to recognize as a duplicate.
+    const pending = slugs.map((_, i) => i).filter((i) => !done[i]);
+    const withShared = page === 0;
+    const query = buildFleetQuery(pending, withShared);
+
+    const variables: Record<string, unknown> = withShared
+      ? {
+          issueQuery: buildIssueQuery(slugs),
+          labelQuery: buildLabelQuery(slugs),
+          untriagedQuery: buildUntriagedQuery(slugs),
+        }
+      : {};
+    for (const i of pending) {
+      const slug = slugs[i] as string;
       variables[`q${i}`] = buildPrQuery(slug);
       variables[`after${i}`] = cursors[i];
-      variables[`m${i}`] = buildMergedQuery(slug, since);
-    });
+      if (withShared) variables[`m${i}`] = buildMergedQuery(slug, since);
+    }
 
     const result = await client
       .graphqlRaw<FleetQueryResult>(query, variables, signal)

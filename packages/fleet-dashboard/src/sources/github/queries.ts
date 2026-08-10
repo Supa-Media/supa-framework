@@ -144,22 +144,39 @@ const ISSUE_FIELDS = /* GraphQL */ `
 `;
 
 /**
- * Build the fleet document for `repoCount` repos. Aliases are positional
- * (`repo0`, `repo1`, …) because a GraphQL alias can't contain `/` or `.`;
- * the caller maps them back by index.
+ * Build the fleet document for the repos at `repoIndices`.
+ *
+ * Aliases are positional (`repo0`, `repo1`, …) because a GraphQL alias can't
+ * contain `/` or `.`; the caller maps them back by index. The indices are the
+ * repos still **paginating**, not always all of them: the document is rebuilt
+ * per page, and an exhausted alias asked again replays its last cursor — for a
+ * repo that finished on page one that cursor is still `null`, so it hands back
+ * page one and the caller has to recognize and drop it. Asking only for what is
+ * still pending makes that guard belt-and-braces rather than load-bearing.
+ *
+ * `withShared` adds the nodes read **once per owner** rather than once per
+ * page: the merged-PR searches, the labelled and untriaged issue searches, and
+ * the cost-report search. Page two would otherwise re-fetch two hundred issues
+ * on every round-trip and throw all of them away. Fragments follow the same
+ * switch — GraphQL rejects a document that declares a fragment or a variable it
+ * never uses, so the two must be built together.
  */
-export function buildFleetQuery(repoCount: number): string {
+export function buildFleetQuery(repoIndices: readonly number[], withShared: boolean): string {
   const variables = [
-    ...Array.from({ length: repoCount }, (_, i) => `$q${i}: String!, $after${i}: String`),
-    ...Array.from({ length: repoCount }, (_, i) => `$m${i}: String!`),
-    "$issueQuery: String!",
-    "$labelQuery: String!",
-    "$untriagedQuery: String!",
+    ...repoIndices.map((i) => `$q${i}: String!, $after${i}: String`),
+    ...(withShared
+      ? [
+          ...repoIndices.map((i) => `$m${i}: String!`),
+          "$issueQuery: String!",
+          "$labelQuery: String!",
+          "$untriagedQuery: String!",
+        ]
+      : []),
   ].join(", ");
 
-  const searches = Array.from(
-    { length: repoCount },
-    (_, i) => `
+  const searches = repoIndices
+    .map(
+      (i) => `
     repo${i}: search(query: $q${i}, type: ISSUE, first: 100, after: $after${i}) {
       issueCount
       pageInfo {
@@ -169,19 +186,32 @@ export function buildFleetQuery(repoCount: number): string {
       nodes {
         ...PullFields
       }
-    }
+    }`,
+    )
+    .join("");
+
+  if (!withShared) {
+    return `${PULL_FIELDS}
+  query FleetPulse(${variables}) {${searches}
+  }`;
+  }
+
+  const merges = repoIndices
+    .map(
+      (i) => `
     merged${i}: search(query: $m${i}, type: ISSUE, first: ${MAX_MERGED}) {
       issueCount
       nodes {
         ...MergedFields
       }
     }`,
-  ).join("");
+    )
+    .join("");
 
   return `${PULL_FIELDS}
   ${MERGED_FIELDS}
   ${ISSUE_FIELDS}
-  query FleetPulse(${variables}) {${searches}
+  query FleetPulse(${variables}) {${searches}${merges}
     labelled: search(query: $labelQuery, type: ISSUE, first: ${MAX_ISSUES}) {
       issueCount
       nodes {
