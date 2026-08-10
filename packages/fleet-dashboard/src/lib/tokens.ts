@@ -146,6 +146,23 @@ function ownerKeys(tokens: TokenMap, owner: string): string[] {
   return Object.keys(tokens).filter((key) => key.toLowerCase() === wanted);
 }
 
+/**
+ * Forget the named owners' tokens, leaving the rest standing.
+ *
+ * `mergeTokens` cannot express this — a blank field deliberately keeps what is
+ * stored — and "Sign out all" is a hammer for the case that actually happens:
+ * one PAT revoked, or one minted against the wrong owner. Re-pasting the two
+ * that still work in order to be rid of the third is the same trap the blank
+ * field exists to avoid.
+ */
+export function dropTokens(tokens: TokenMap, owners: readonly string[]): TokenMap {
+  const kept: TokenMap = { ...tokens };
+  for (const owner of owners) {
+    for (const key of ownerKeys(kept, owner)) delete kept[key];
+  }
+  return kept;
+}
+
 function browserStore(): TokenStore | null {
   try {
     return localStorage;

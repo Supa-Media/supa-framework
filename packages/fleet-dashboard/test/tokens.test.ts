@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { fleetConfig } from "../src/fleet.config";
 import {
   clearTokens,
+  dropTokens,
   fleetOwners,
   hasAnyToken,
   loadTokens,
@@ -150,6 +151,22 @@ test("re-entering an owner under different casing replaces the token, never shad
 
   assert.deepEqual(merged, { "Supa-Media": "fresh" }, "one key for one owner");
   assert.equal(tokenForRepo(merged, "Supa-Media/events-os"), "fresh");
+});
+
+test("one owner's token can be dropped without disturbing the others", () => {
+  // "Sign out all" is the wrong size of hammer for one revoked PAT, and a blank
+  // field deliberately means "keep" — so removal needs its own verb.
+  const tokens = { togathernyc: "a", "Supa-Media": "b", shyoh: "c" };
+
+  assert.deepEqual(dropTokens(tokens, ["Supa-Media"]), { togathernyc: "a", shyoh: "c" });
+  // Case-insensitive like every other lookup here: the button is rendered from
+  // the config's spelling, the map may hold another.
+  assert.deepEqual(dropTokens({ "supa-media": "b" }, ["Supa-Media"]), {});
+  // Dropping nothing, or an owner that has no token, changes nothing.
+  assert.deepEqual(dropTokens(tokens, []), tokens);
+  assert.deepEqual(dropTokens(tokens, ["nobody"]), tokens);
+  // The source map is never mutated — the gate re-derives it on every render.
+  assert.equal(Object.keys(tokens).length, 3);
 });
 
 test("sign out forgets every token, including a legacy key that never migrated", () => {

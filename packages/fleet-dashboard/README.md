@@ -103,7 +103,12 @@ nothing is bundled into the build and nothing is committed. The optional
 backend's **read token** is stored the same way, in the same gate, and is sent
 only to the one `.convex.site` URL configured for it.
 **"Sign out all"** clears every owner's token, the backend settings, **and** the ETag response cache,
-which holds full REST bodies including private workflow file contents. Saving
+which holds full REST bodies including private workflow file contents. One
+owner's token alone is dropped with **forget** beside its field in the gate —
+for a PAT that was revoked, or minted against the wrong owner — which leaves the
+others signed in and turns that owner's repos back into "no token" cards.
+Forgetting the last one is refused, because that is Sign out all and it clears
+more than this form does. Saving
 tokens clears the cache too, so replacing one owner's PAT never inherits the
 previous identity's cached data. If a v2 single token is still in the browser
 under `fleet-dashboard:token`, it is applied to every owner once, on first load,
