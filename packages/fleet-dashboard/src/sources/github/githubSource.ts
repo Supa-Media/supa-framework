@@ -44,6 +44,7 @@ import {
   type GqlMergedPage,
   type GqlPull,
   type GqlSearchPage,
+  type GqlTriageNode,
 } from "./queries";
 
 /** Statuses GitHub reports for a run that hasn't finished yet. */
@@ -194,6 +195,10 @@ interface FleetSearch {
   countsByRepo: Map<string, number>;
   /** repoKey → PRs merged inside the review window. */
   mergedByRepo: Map<string, GqlMerged[]>;
+  /** repoKeys whose search alias came back null — see `ProjectSnapshot.searchFailed`. */
+  failedRepos: Set<string>;
+  /** Lowercased owners whose untriaged search returned fewer rows than it counted. */
+  truncatedUntriaged: Set<string>;
   /** Labelled issues and untriaged ones alike — see `FleetSnapshot.issues`. */
   issues: GqlIssueNode[];
   costIssues: Array<GqlIssue | null>;
@@ -229,6 +234,8 @@ async function fetchAllPulls(
     pullsByRepo: new Map(),
     countsByRepo: new Map(),
     mergedByRepo: new Map(),
+    failedRepos: new Set(),
+    truncatedUntriaged: new Set(),
     issues: [],
     costIssues: [],
   };
@@ -265,7 +272,6 @@ async function fetchOwnerPulls(
   const slugs = repos.map((repo) => repo.slug);
   const { pullsByRepo, countsByRepo, mergedByRepo } = search;
 
-  const query = buildFleetQuery(slugs.length);
   const cursors: Array<string | null> = slugs.map(() => null);
   const done: boolean[] = slugs.map(() => false);
   // A repo the token can't see fails the same way on every page; reporting it
@@ -275,16 +281,28 @@ async function fetchOwnerPulls(
   for (let page = 0; page < MAX_PR_PAGES; page += 1) {
     if (done.every(Boolean)) break;
 
-    const variables: Record<string, unknown> = {
-      issueQuery: buildIssueQuery(slugs),
-      labelQuery: buildLabelQuery(slugs),
-      untriagedQuery: buildUntriagedQuery(slugs),
-    };
-    slugs.forEach((slug, i) => {
+    // Only the repos still paginating, and the once-per-owner searches only on
+    // the first page. Page two used to re-ask every alias — including two
+    // hundred issues nothing reads after page one — and to re-ask the repos
+    // that had already finished, whose replayed `null` cursor handed back a
+    // page the caller then had to recognize as a duplicate.
+    const pending = slugs.map((_, i) => i).filter((i) => !done[i]);
+    const withShared = page === 0;
+    const query = buildFleetQuery(pending, withShared);
+
+    const variables: Record<string, unknown> = withShared
+      ? {
+          issueQuery: buildIssueQuery(slugs),
+          labelQuery: buildLabelQuery(slugs),
+          untriagedQuery: buildUntriagedQuery(slugs),
+        }
+      : {};
+    for (const i of pending) {
+      const slug = slugs[i] as string;
       variables[`q${i}`] = buildPrQuery(slug);
       variables[`after${i}`] = cursors[i];
-      variables[`m${i}`] = buildMergedQuery(slug, since);
-    });
+      if (withShared) variables[`m${i}`] = buildMergedQuery(slug, since);
+    }
 
     const result = await client
       .graphqlRaw<FleetQueryResult>(query, variables, signal)
@@ -315,11 +333,27 @@ async function fetchOwnerPulls(
       // Two searches, one list. They are disjoint by construction — `untriaged`
       // excludes every label `labelled` requires — so nothing is deduped here;
       // which panel an issue lands in stays a question the selectors answer.
-      search.issues.push(
-        ...[...(data.labelled?.nodes ?? []), ...(data.untriaged?.nodes ?? [])].filter(
-          (node): node is GqlIssueNode => node !== null && typeof node.number === "number",
-        ),
+      const labelled = (data.labelled?.nodes ?? []).filter(
+        (node): node is GqlIssueNode => node !== null && typeof node.number === "number",
       );
+      // The untriaged node asks for neither body nor comments, because no triage
+      // row reads either — see `TRIAGE_FIELDS`. Widened here to the one issue
+      // shape the rest of the app knows, rather than making every consumer
+      // handle two.
+      const untriagedNodes = (data.untriaged?.nodes ?? []).filter(
+        (node): node is GqlTriageNode => node !== null && typeof node.number === "number",
+      );
+      search.issues.push(
+        ...labelled,
+        ...untriagedNodes.map((node) => ({ ...node, body: null, comments: { nodes: [] } })),
+      );
+
+      // `issueCount` is the search's total; the node list is what fitted. A
+      // fleet with 150 untriaged issues under one owner used to show 100 of
+      // them and say nothing about the rest.
+      if ((data.untriaged?.issueCount ?? 0) > untriagedNodes.length) {
+        search.truncatedUntriaged.add(owner.toLowerCase());
+      }
       slugs.forEach((slug, i) => {
         const merged = data[`merged${i}`] as GqlMergedPage | undefined;
         mergedByRepo.set(
@@ -343,6 +377,11 @@ async function fetchOwnerPulls(
       const node = data[`repo${i}`];
       const key = slug.toLowerCase();
       if (!isSearchPage(node)) {
+        // The alias resolved to `null` — a repo this token cannot see, on a
+        // response that was otherwise `HTTP 200`. Nothing was observed for it,
+        // so the card must not print the fallback count as if something had
+        // been. The matching `errors` entry is already in the banner.
+        search.failedRepos.add(key);
         done[i] = true;
         return;
       }
@@ -503,6 +542,8 @@ function skeletonProject(
     label: repo.label,
     owner: ownerOf(repo.slug),
     tokenMissing,
+    searchFailed: search.failedRepos.has(key),
+    untriagedTruncated: search.truncatedUntriaged.has(ownerOf(repo.slug).toLowerCase()),
     url: `https://github.com/${repo.slug}`,
     defaultBranch: "main",
     activeRuns: 0,
@@ -707,7 +748,10 @@ async function loadGardeners(
         name: displayName,
         workflowPath: entry.path,
         sourcePath,
-        editUrl: `https://github.com/${repo.slug}/edit/${encodeURIComponent(defaultBranch)}/${encodePath(sourcePath)}`,
+        // `encodePath` on the branch too, not `encodeURIComponent`: a default
+        // branch is a ref path like any other, and `release/stable` encoded as
+        // `release%2Fstable` is a 404 on GitHub's editor.
+        editUrl: `https://github.com/${repo.slug}/edit/${encodePath(defaultBranch)}/${encodePath(sourcePath)}`,
         engine: parseEngine(sourceText),
         caps: parseCaps(sourceText),
         prompt: promptBody(sourceText),

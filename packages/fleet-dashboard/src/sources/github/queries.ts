@@ -30,9 +30,11 @@ export const MAX_PR_PAGES = 5;
 export const MAX_MERGED = 50;
 
 /**
- * Labelled issues fetched across the whole fleet. Not paginated: the queue is
- * meant to be a day's work, and a "queue" of 200 is a signal, not a list to
- * scroll. The UI shows the true `issueCount` beside the rows.
+ * Labelled issues fetched **per owner** — the search node lives inside each
+ * owner's document, so the fleet-wide ceiling is this times the number of
+ * owners. Not paginated: the queue is meant to be a day's work, and a "queue"
+ * of 200 is a signal, not a list to scroll. The UI shows the true `issueCount`
+ * beside the rows.
  */
 export const MAX_ISSUES = 100;
 
@@ -144,22 +146,77 @@ const ISSUE_FIELDS = /* GraphQL */ `
 `;
 
 /**
- * Build the fleet document for `repoCount` repos. Aliases are positional
- * (`repo0`, `repo1`, …) because a GraphQL alias can't contain `/` or `.`;
- * the caller maps them back by index.
+ * The untriaged node's fields — `IssueFields` minus the two expensive ones.
+ *
+ * A triage row reads a title, a number, an age, an author and the labels it
+ * does *not* carry. It never reads the body and never reads a comment, so
+ * asking for a body plus the last 20 comments per issue cost roughly twice the
+ * node budget for data nothing rendered — a hundred issues an owner, on a
+ * document that also carries the labelled hundred.
+ *
+ * The trade is explicit and worth naming: an issue that reaches the snapshot
+ * only through this node arrives with an empty body and no comments, so a
+ * `**[decider]**` comment written on an issue carrying nothing but an `init:*`
+ * label is no longer read into the Decisions panel. Anything an agent actually
+ * worked carries an `agent:*` label and comes through `labelled`, with its
+ * comments.
  */
-export function buildFleetQuery(repoCount: number): string {
+const TRIAGE_FIELDS = /* GraphQL */ `
+  fragment TriageFields on Issue {
+    id
+    number
+    title
+    url
+    createdAt
+    updatedAt
+    author {
+      login
+    }
+    repository {
+      nameWithOwner
+    }
+    labels(first: 30) {
+      nodes {
+        name
+      }
+    }
+  }
+`;
+
+/**
+ * Build the fleet document for the repos at `repoIndices`.
+ *
+ * Aliases are positional (`repo0`, `repo1`, …) because a GraphQL alias can't
+ * contain `/` or `.`; the caller maps them back by index. The indices are the
+ * repos still **paginating**, not always all of them: the document is rebuilt
+ * per page, and an exhausted alias asked again replays its last cursor — for a
+ * repo that finished on page one that cursor is still `null`, so it hands back
+ * page one and the caller has to recognize and drop it. Asking only for what is
+ * still pending makes that guard belt-and-braces rather than load-bearing.
+ *
+ * `withShared` adds the nodes read **once per owner** rather than once per
+ * page: the merged-PR searches, the labelled and untriaged issue searches, and
+ * the cost-report search. Page two would otherwise re-fetch two hundred issues
+ * on every round-trip and throw all of them away. Fragments follow the same
+ * switch — GraphQL rejects a document that declares a fragment or a variable it
+ * never uses, so the two must be built together.
+ */
+export function buildFleetQuery(repoIndices: readonly number[], withShared: boolean): string {
   const variables = [
-    ...Array.from({ length: repoCount }, (_, i) => `$q${i}: String!, $after${i}: String`),
-    ...Array.from({ length: repoCount }, (_, i) => `$m${i}: String!`),
-    "$issueQuery: String!",
-    "$labelQuery: String!",
-    "$untriagedQuery: String!",
+    ...repoIndices.map((i) => `$q${i}: String!, $after${i}: String`),
+    ...(withShared
+      ? [
+          ...repoIndices.map((i) => `$m${i}: String!`),
+          "$issueQuery: String!",
+          "$labelQuery: String!",
+          "$untriagedQuery: String!",
+        ]
+      : []),
   ].join(", ");
 
-  const searches = Array.from(
-    { length: repoCount },
-    (_, i) => `
+  const searches = repoIndices
+    .map(
+      (i) => `
     repo${i}: search(query: $q${i}, type: ISSUE, first: 100, after: $after${i}) {
       issueCount
       pageInfo {
@@ -169,19 +226,33 @@ export function buildFleetQuery(repoCount: number): string {
       nodes {
         ...PullFields
       }
-    }
+    }`,
+    )
+    .join("");
+
+  if (!withShared) {
+    return `${PULL_FIELDS}
+  query FleetPulse(${variables}) {${searches}
+  }`;
+  }
+
+  const merges = repoIndices
+    .map(
+      (i) => `
     merged${i}: search(query: $m${i}, type: ISSUE, first: ${MAX_MERGED}) {
       issueCount
       nodes {
         ...MergedFields
       }
     }`,
-  ).join("");
+    )
+    .join("");
 
   return `${PULL_FIELDS}
   ${MERGED_FIELDS}
   ${ISSUE_FIELDS}
-  query FleetPulse(${variables}) {${searches}
+  ${TRIAGE_FIELDS}
+  query FleetPulse(${variables}) {${searches}${merges}
     labelled: search(query: $labelQuery, type: ISSUE, first: ${MAX_ISSUES}) {
       issueCount
       nodes {
@@ -191,7 +262,7 @@ export function buildFleetQuery(repoCount: number): string {
     untriaged: search(query: $untriagedQuery, type: ISSUE, first: ${MAX_UNTRIAGED}) {
       issueCount
       nodes {
-        ...IssueFields
+        ...TriageFields
       }
     }
     costIssues: search(query: $issueQuery, type: ISSUE, first: 20) {
@@ -267,6 +338,13 @@ export interface GqlIssueNode {
   };
 }
 
+/**
+ * An untriaged issue: `GqlIssueNode` without the body and comments the triage
+ * rows never read. Widened to the one issue shape on arrival — see
+ * `TRIAGE_FIELDS` for what that costs and why it is worth it.
+ */
+export type GqlTriageNode = Omit<GqlIssueNode, "body" | "comments">;
+
 export interface GqlIssue {
   title: string;
   body: string;
@@ -291,10 +369,16 @@ export interface GqlIssuePage {
   nodes: Array<GqlIssueNode | null>;
 }
 
+export interface GqlTriagePage {
+  /** Matches the search, not the node list: the gap is what "truncated" means. */
+  issueCount: number;
+  nodes: Array<GqlTriageNode | null>;
+}
+
 /** Positional aliases (`repo0`, `merged0`…) plus the three shared searches. */
 export type FleetQueryResult = Record<string, GqlSearchPage | GqlMergedPage | undefined> & {
   labelled?: GqlIssuePage;
-  untriaged?: GqlIssuePage;
+  untriaged?: GqlTriagePage;
   costIssues?: { nodes: Array<GqlIssue | null> };
 };
 

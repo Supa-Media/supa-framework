@@ -21,6 +21,11 @@ jobs:
   verify:
     name: Install, Build & Test
     runs-on: ubuntu-latest
+    # A wedged step (a test that never exits, a registry that hangs) otherwise
+    # leaves the check spinning rather than going red, and a required check that
+    # never resolves blocks the PR with no failure to read. The whole job is
+    # ~2 minutes warm; 20 is "something is stuck", not "this was slow today".
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -33,10 +38,25 @@ jobs:
           node-version: "22"
           cache: pnpm
 
+      # NOTE: this is a fork-PR tripwire in waiting. `secrets.GITHUB_TOKEN` on a
+      # pull_request from a fork cannot read this org's private GitHub Packages,
+      # so the day any workspace package depends on a *published* `@supa-media/*`
+      # rather than a `workspace:` link, installs on outside contributions start
+      # failing here — with a 401 from the registry, which reads like a repo
+      # misconfiguration rather than a permissions boundary. Nothing in the
+      # workspace resolves from GitHub Packages today (only the create-supa-app
+      # templates name published versions, and those are never installed here),
+      # so this is a comment rather than a change.
       - run: pnpm install --frozen-lockfile
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - run: pnpm build
+
+      # Explicit, even though every package that defines `typecheck` also folds
+      # `tsc` into its own `test` today. That is a convention seven package.json
+      # files have to keep remembering; this is the gate saying it out loud, and
+      # turbo has the result cached from `build` in the common case.
+      - run: pnpm typecheck
 
       - run: pnpm test

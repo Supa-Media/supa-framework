@@ -243,7 +243,11 @@ test("branches with no prefix at all land in misc, not in a card called misc", (
     app.live.map((card) => card.name),
     ["giving"],
   );
-  assert.deepEqual(app.misc.prefixes, ["misc"]);
+  // The PRs land in the bucket; `misc` is not listed among its own prefixes,
+  // because the row is already titled that and a bucket naming itself among its
+  // contents reads as a data bug.
+  assert.deepEqual(app.misc.prefixes, []);
+  assert.equal(app.misc.prs.length, 1);
 });
 
 test("a human naming a stoplisted word outranks the stoplist", () => {

@@ -220,6 +220,29 @@ export interface ProjectSnapshot {
    * instead of rendering zeros as if someone had looked.
    */
   tokenMissing: boolean;
+  /**
+   * `true` when GitHub answered this repo's search alias with `null` — the
+   * partial-success shape, `HTTP 200` with `data` and `errors` side by side.
+   *
+   * Per-repo aliases buy an exact count and an independent cursor, and they
+   * cost this: one repo failing is no longer a fleet-wide error, it is one
+   * alias short. Without the flag `openPrs` falls back to the number of rows
+   * fetched — zero — and the card states a confident `0 open PRs` about a
+   * search that never answered. The banner names the failure; this is what
+   * stops the card from contradicting it.
+   */
+  searchFailed: boolean;
+  /**
+   * `true` when the untriaged search hit its cap, so the triage list is the
+   * newest page rather than all of it.
+   *
+   * A property of the **owner**, not of this repo: the search runs once per
+   * credential across every repo that owner covers, so the flag is set on all
+   * of them and the issues that did not fit may belong to any. Which is still
+   * worth saying on each — a list that is silently the first hundred of a
+   * hundred and fifty is the failure mode a triage screen can least afford.
+   */
+  untriagedTruncated: boolean;
   url: string;
   defaultBranch: string;
   /** Workflow runs currently queued or in progress. */
@@ -294,6 +317,16 @@ export interface RateLimitInfo {
   limit: number;
   /** ISO-8601. */
   resetAt: string;
+  /**
+   * Whose budget this is — the resource owner whose PAT the response came back
+   * on, or `null` for a source with no per-owner notion of a credential.
+   *
+   * The header shows the *tightest* budget across the loaded tokens, and each
+   * one has its own hourly allowance. Without a name, "412 left" is a number
+   * about an unnamed one of three credentials, and the reader cannot tell
+   * whether the refresh about to break is the whole fleet or one owner's repos.
+   */
+  owner: string | null;
 }
 
 export interface FleetSnapshot {

@@ -7,7 +7,7 @@
  * can honestly appear in two panels without a `kind` field having to pick one.
  */
 
-import { isNoisyInitiative } from "./initiative";
+import { isNoisyInitiative, MISC_INITIATIVE } from "./initiative";
 import { indexInitiatives, type InitiativeEntry, type InitiativesManifest } from "./initiativesFile";
 import { AGENTIC_WORKFLOWS_LABEL, AUTOMATION_AUTHORS, isManaged, LABELS } from "./labels";
 import { findMarker, parseMarkers, type MarkerBlock } from "./markers";
@@ -227,6 +227,12 @@ export interface AppInitiatives {
    * A row rather than cards, and one rather than seven, because the answer to
    * "what is `chore`?" is "nothing" — and seven cards each saying that is the
    * junk this bucket exists to absorb.
+   *
+   * `prefixes` never contains `misc` itself. A PR on a branch with no prefix
+   * belongs here — that is what `MISC_INITIATIVE` means — but the row is
+   * already titled `misc`, and a bucket listing its own name among its contents
+   * reads as a bug in the data. Its PRs are in `prs` either way, so the row's
+   * presence is a question about `prs`, not about `prefixes`.
    */
   misc: { prefixes: string[]; prs: PullRequestCard[] };
 }
@@ -266,7 +272,8 @@ export function selectAppInitiatives(
     const prs = byBranch.get(name) ?? [];
     const inferred = !named.has(name);
     if (inferred && isNoisyInitiative(name)) {
-      misc.prefixes.push(name);
+      // `misc` is the row's own title — see the field's doc.
+      if (name !== MISC_INITIATIVE) misc.prefixes.push(name);
       misc.prs.push(...prs);
       continue;
     }

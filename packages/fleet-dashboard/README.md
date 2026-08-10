@@ -103,7 +103,12 @@ nothing is bundled into the build and nothing is committed. The optional
 backend's **read token** is stored the same way, in the same gate, and is sent
 only to the one `.convex.site` URL configured for it.
 **"Sign out all"** clears every owner's token, the backend settings, **and** the ETag response cache,
-which holds full REST bodies including private workflow file contents. Saving
+which holds full REST bodies including private workflow file contents. One
+owner's token alone is dropped with **forget** beside its field in the gate —
+for a PAT that was revoked, or minted against the wrong owner — which leaves the
+others signed in and turns that owner's repos back into "no token" cards.
+Forgetting the last one is refused, because that is Sign out all and it clears
+more than this form does. Saving
 tokens clears the cache too, so replacing one owner's PAT never inherits the
 previous identity's cached data. If a v2 single token is still in the browser
 under `fleet-dashboard:token`, it is applied to every owner once, on first load,
@@ -384,7 +389,10 @@ of 5", names the ones that failed, and offers a retry scoped to just those. The
 same 200-with-errors on the read path files each message into `snapshot.errors`,
 which is what the "Partial data" banner renders — a repo a token cannot see names
 itself, scoped to the **owner** whose token was used, rather than silently
-shortening the fleet.
+shortening the fleet. The repo's own card stops claiming a number at the same
+time: a null alias fetched nothing, so the card reads **open PRs unknown**
+rather than falling back to `0`, which is the one reading a per-repo alias could
+turn into a silent lie.
 
 **A label write needs no confirmation; creating an object does.** Queue and
 Not now are single clicks, because a label is the one write this app can take
@@ -399,21 +407,33 @@ in the review window, every labelled issue, every **untriaged** issue, and the
 cost issues for that owner's repos — one aliased search node per repo, so each
 repo also reports an exact `issueCount` and paginates on its own cursor. Triage
 added one search node to that document and zero HTTP requests. Three requests instead of one is
-the price of the credential, not of the query shape. The rest is REST with
+the price of the credential, not of the query shape. A **second page**, when a
+repo has one, carries only the repos still paginating: everything else in the
+document is read once per owner, so re-asking for it would be two hundred issues
+fetched and dropped per round-trip. The rest is REST with
 `If-None-Match` conditional requests, and a `304` costs no budget. There is no
 polling: the page fetches once, and again after a write or a Refresh. Each token
 has its own hourly allowance, so the top bar shows the **tightest** remaining
-budget — the one that will break the next refresh. A write **invalidates the
+budget — the one that will break the next refresh — and names the owner it
+belongs to, because a bare number cannot say whether the next refresh loses the
+fleet or one owner's repos. A write **invalidates the
 whole read cache** — the cache is keyed by path with no notion of what a write
 touched, so total invalidation is the only safe kind. It costs one cold refresh.
 
 **Caps.** Open PRs page to 5 × 100 per repo; merges cap at 50 per repo per
-window; labelled issues cap at 100 across the fleet; untriaged issues at 100 per
-owner; issue comments at the last 20. The project card always shows the exact
+window; labelled and untriaged issues cap at 100 each **per owner** — the search
+node lives inside the owner's document, so splitting the fleet search by
+credential multiplied that cap by the number of owners rather than sharing one;
+issue comments at the last 20. The project card always shows the exact
 count from `issueCount`, never the number of rows fetched, and a truncated list
 says so. Triage is the one count that shows the **filtered** number rather than
 the search's `issueCount`: the search cannot exclude `init:*`, so its count is a
-superset of the definition and printing it would overstate the backlog.
+superset of the definition and printing it would overstate the backlog. That
+count is still *read*, to say when the list is short: an owner with more
+untriaged issues than the cap gets a line saying so on each of its apps, and the
+fleet total on ☀️ Review reads `N+`. The untriaged search asks for a lighter
+node than the labelled one — no body, no comments, because no triage row reads
+either — which is why an issue that arrives only through it has neither.
 
 ## Notes and limitations
 

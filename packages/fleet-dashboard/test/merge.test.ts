@@ -21,6 +21,8 @@ function project(overrides: Partial<ProjectSnapshot> & { key: string }): Project
     label: overrides.key,
     owner: overrides.key.split("/")[0] ?? "",
     tokenMissing: false,
+    searchFailed: false,
+    untriagedTruncated: false,
     url: `https://github.com/${overrides.key}`,
     defaultBranch: "main",
     activeRuns: 0,
@@ -110,7 +112,12 @@ test("a later null does not blank an earlier observation", () => {
       projects: [project({ key: "a/b", secretNames: ["TOKEN"] })],
       spendReportedUsd: 12,
       spendReportedAt: "2026-08-01T00:00:00.000Z",
-      rateLimit: { remaining: 10, limit: 5000, resetAt: "2026-08-01T01:00:00.000Z" },
+      rateLimit: {
+        remaining: 10,
+        limit: 5000,
+        resetAt: "2026-08-01T01:00:00.000Z",
+        owner: "Supa-Media",
+      },
     }),
     snapshot({ projects: [project({ key: "a/b" })] }),
   ]);

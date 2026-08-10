@@ -279,11 +279,28 @@ function describeWindow(fields: CronFields): string | null {
 
   // Minutes step within a CONTIGUOUS run of hours: `*/30 9-17 * * *`.
   //
-  // Contiguity is what makes the phrasing true. With hours `9,12,15,18` the
-  // schedule does not fire every 30 min from 09:00 to 18:30 — it fires twice
-  // in each of four hours — so that case must fall through to a listing.
+  // Contiguity is what makes the phrasing true, and it has two halves.
+  //
+  //  - The HOURS must run consecutively. With hours `9,12,15,18` the schedule
+  //    does not fire every 30 min from 09:00 to 18:30 — it fires twice in each
+  //    of four hours — so that case falls through to a listing.
+  //  - The MINUTES must join up across the hour boundary. `0,15 * * * *` steps
+  //    by 15 inside the hour and then waits 45 minutes for the next hour's
+  //    `:00`, so "every 15 min" is false for a schedule that fires twice an
+  //    hour. The gap over the boundary is `60 - last + first` and it has to
+  //    equal the step. A single hour has no boundary to cross, so the question
+  //    does not arise there.
   const hoursContiguous = fields.hours.length === 1 || hourStep?.step === 1;
-  if (minuteStep && minuteStep.step > 1 && fields.minutes.length > 1 && hoursContiguous) {
+  const minutesJoinUp =
+    fields.hours.length === 1 ||
+    (minuteStep !== null && 60 - lastMinute + (fields.minutes[0] as number) === minuteStep.step);
+  if (
+    minuteStep &&
+    minuteStep.step > 1 &&
+    fields.minutes.length > 1 &&
+    hoursContiguous &&
+    minutesJoinUp
+  ) {
     return `every ${minuteStep.step} min ${first}–${last} UTC`;
   }
 

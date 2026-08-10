@@ -122,15 +122,45 @@ export function hasAnyToken(tokens: TokenMap): boolean {
  * reachable from the header mid-session, so its common visit is "one token
  * expired, replace that one" — and making that visit also require re-pasting the
  * two that still work would be a trap dressed as a form. Clearing them all is
- * what Sign out is for.
+ * what Sign out is for; clearing exactly one is what `dropTokens` is for.
+ *
+ * The write is case-insensitive like every other lookup in this module. Storing
+ * under the entered spelling alone would leave a re-cased owner (`supa-media` in
+ * storage, `Supa-Media` in the config) holding *both* keys — and `tokenForOwner`
+ * scans in insertion order, so it would keep handing back the stale one.
  */
 export function mergeTokens(existing: TokenMap, entered: Record<string, string>): TokenMap {
   const merged: TokenMap = { ...existing };
   for (const [owner, value] of Object.entries(entered)) {
     const trimmed = value.trim();
-    if (trimmed !== "") merged[owner] = trimmed;
+    if (trimmed === "") continue;
+    for (const key of ownerKeys(merged, owner)) delete merged[key];
+    merged[owner] = trimmed;
   }
   return merged;
+}
+
+/** Every key of `tokens` naming `owner`, whatever its casing. */
+function ownerKeys(tokens: TokenMap, owner: string): string[] {
+  const wanted = owner.toLowerCase();
+  return Object.keys(tokens).filter((key) => key.toLowerCase() === wanted);
+}
+
+/**
+ * Forget the named owners' tokens, leaving the rest standing.
+ *
+ * `mergeTokens` cannot express this — a blank field deliberately keeps what is
+ * stored — and "Sign out all" is a hammer for the case that actually happens:
+ * one PAT revoked, or one minted against the wrong owner. Re-pasting the two
+ * that still work in order to be rid of the third is the same trap the blank
+ * field exists to avoid.
+ */
+export function dropTokens(tokens: TokenMap, owners: readonly string[]): TokenMap {
+  const kept: TokenMap = { ...tokens };
+  for (const owner of owners) {
+    for (const key of ownerKeys(kept, owner)) delete kept[key];
+  }
+  return kept;
 }
 
 function browserStore(): TokenStore | null {

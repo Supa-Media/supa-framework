@@ -3,6 +3,7 @@ import { useState } from "react";
 import { INIT_PREFIX, LABELS } from "../lib/labels";
 import { selectAppInitiatives, selectTriage, type InitiativeCardModel } from "../lib/select";
 import { absolute, age } from "../lib/time";
+import { encodePath } from "../sources/github/client";
 import type { IssueCard, ProjectSnapshot } from "../sources/types";
 import {
   Banner,
@@ -52,10 +53,14 @@ export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }
 
   const { live, archived, misc } = selectAppInitiatives(ctx.snapshot.issues, project);
 
-  const manifestUrl = `https://github.com/${project.slug}/edit/${encodeURIComponent(
+  // `encodePath`, not `encodeURIComponent`, for both the ref and the file path:
+  // a branch is a path (`release/stable`) and so is the manifest, and a `/`
+  // encoded as `%2F` 404s GitHub's editor. The `?filename=` and `&value=` below
+  // are query *values* and stay `encodeURIComponent` for the same reason.
+  const manifestUrl = `https://github.com/${project.slug}/edit/${encodePath(
     project.defaultBranch,
-  )}/${ctx.config.initiativesPath}`;
-  const newManifestUrl = `https://github.com/${project.slug}/new/${encodeURIComponent(
+  )}/${encodePath(ctx.config.initiativesPath)}`;
+  const newManifestUrl = `https://github.com/${project.slug}/new/${encodePath(
     project.defaultBranch,
   )}?filename=${encodeURIComponent(ctx.config.initiativesPath)}&value=${encodeURIComponent(
     JSON.stringify({ initiatives: [{ name: "example", phase: "building", archived: false }] }, null, 2),
@@ -66,7 +71,10 @@ export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }
     <>
       <ViewHeader
         title={project.label}
-        sub={`${project.openPrs} open PRs · ${project.activeRuns} runs in flight`}
+        // `searchFailed` means GitHub answered this repo's alias with null, so
+        // `openPrs` is a fallback rather than an observation — see the
+        // Partial-data banner above for which token could not see it.
+        sub={`${project.searchFailed ? "open PRs unknown" : `${project.openPrs} open PRs`} · ${project.activeRuns} runs in flight`}
         actions={
           <>
             <a className="bt" href={project.url} target="_blank" rel="noreferrer">
@@ -125,17 +133,20 @@ export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }
         </div>
       )}
 
-      {misc.prefixes.length > 0 && (
+      {misc.prs.length > 0 && (
+        // Keyed off the PRs, not the prefix list: a repo whose only noise is
+        // branches with no prefix at all has work here and nothing to name.
         <Rows>
           <Group right={`${misc.prs.length} open ${misc.prs.length === 1 ? "PR" : "PRs"}`}>
             misc
           </Group>
           <Row>
             <span className="grow">
-              {misc.prefixes.join(" · ")}
+              {misc.prefixes.length > 0 ? misc.prefixes.join(" · ") : "branches with no prefix"}
               <span className="sm">
-                Conventional-commit and agent-harness branch prefixes. They group work, they do not
-                name it — so they get one row rather than a card each.
+                Conventional-commit and agent-harness branch prefixes, and branches with no prefix
+                at all. They group work, they do not name it — so they get one row rather than a
+                card each.
               </span>
             </span>
           </Row>
@@ -170,7 +181,7 @@ export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }
                       <>
                         {" · "}
                         <a
-                          href={`https://github.com/${project.slug}/blob/${project.defaultBranch}/${card.entry.spec}`}
+                          href={`https://github.com/${project.slug}/blob/${encodePath(project.defaultBranch)}/${encodePath(card.entry.spec)}`}
                           target="_blank"
                           rel="noreferrer"
                         >
@@ -269,7 +280,9 @@ function InitiativeCard({
   const issueCount = card.issues.length;
   const prCount = card.prs.length;
   const specUrl =
-    entry?.spec == null ? null : `https://github.com/${slug}/blob/${branch}/${entry.spec}`;
+    entry?.spec == null
+      ? null
+      : `https://github.com/${slug}/blob/${encodePath(branch)}/${encodePath(entry.spec)}`;
 
   return (
     <div className="card">
@@ -303,7 +316,7 @@ function InitiativeCard({
           </a>
         )}
         <a
-          href={`https://github.com/${slug}/edit/${encodeURIComponent(branch)}/${manifestPath}`}
+          href={`https://github.com/${slug}/edit/${encodePath(branch)}/${encodePath(manifestPath)}`}
           target="_blank"
           rel="noreferrer"
           title="Archive or re-phase this initiative by editing the manifest"
@@ -364,6 +377,21 @@ function TriageSection({
       <Group right={work.length === 0 ? "clear" : `${work.length} untriaged`}>
         triage — filed, but nothing is managing it
       </Group>
+
+      {project.untriagedTruncated && (
+        // The search counted more than it returned. The cap is per owner, so
+        // the issues that did not fit may be in any repo that owner covers —
+        // but a triage list that is silently the first hundred of a hundred and
+        // fifty is worse than a list that admits it.
+        <Row>
+          <span className="grow">
+            <span className="sm">
+              GitHub returned the newest page of untriaged issues for {project.owner} and there are
+              more than fitted — this list is what came back, not all of it.
+            </span>
+          </span>
+        </Row>
+      )}
 
       {work.map((issue) => (
         <TriageRow
@@ -575,17 +603,30 @@ export function AppsIndex({ ctx }: { ctx: Ctx }) {
             <span className="card__body">
               {project.tokenMissing
                 ? `no token for ${project.owner} — add`
-                : project.lastProdDeploy === null
-                  ? "no production deploy seen"
-                  : `prod ${age(project.lastProdDeploy.at)} ago`}
+                : project.searchFailed
+                  ? "GitHub did not answer this repo's search"
+                  : project.lastProdDeploy === null
+                    ? "no production deploy seen"
+                    : `prod ${age(project.lastProdDeploy.at)} ago`}
             </span>
             <span className="card__stat">
               {project.tokenMissing ? (
                 <span className="muted">nothing fetched</span>
               ) : (
                 <>
+                  {/*
+                    A failed alias fetched no rows, and the count falls back to
+                    however many rows there were — so the honest card says it
+                    does not know rather than printing a confident 0.
+                  */}
                   <span>
-                    <b>{project.openPrs}</b> open PRs
+                    {project.searchFailed ? (
+                      <span className="muted">open PRs unknown</span>
+                    ) : (
+                      <>
+                        <b>{project.openPrs}</b> open PRs
+                      </>
+                    )}
                   </span>
                   <span>
                     <b>{project.activeRuns}</b> running

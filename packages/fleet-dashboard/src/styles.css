@@ -201,6 +201,23 @@ code,
   color: var(--ink);
 }
 
+/* The label row, plus `forget` for an owner whose token is already stored. */
+.gate__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+
+.gate__head label {
+  flex: 1;
+  min-width: 0;
+}
+
+.gate input:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
 .gate__repos {
   font-weight: 400;
   font-size: 0.75rem;

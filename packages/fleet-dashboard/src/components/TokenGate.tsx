@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { normalizeBackendUrl, type StoredBackend } from "../lib/backend";
 import {
+  dropTokens,
   hasAnyToken,
   mergeTokens,
   repoName,
@@ -28,6 +29,10 @@ import {
  * **Partial is a supported state.** Filling in one field loads that owner's
  * repos; the rest render a "no token for <owner>" card that comes back here.
  * That is deliberate — one expired PAT should cost you one card, not the page.
+ * **forget** beside a saved field is the same idea in reverse: dropping one
+ * revoked PAT, or one minted against the wrong owner, without signing out of
+ * the other two. Forgetting the last one is refused — that is Sign out all,
+ * which also clears the response cache and the backend settings.
  *
  * v2 needs **write** on issues, because the review screen's controls are label
  * and comment writes. That is a real escalation from v1's read-only token and
@@ -71,10 +76,12 @@ export function TokenGate({
   onCancel: (() => void) | null;
 }) {
   const [entered, setEntered] = useState<Record<string, string>>({});
+  /** Owners marked for removal on save. Nothing is dropped until you submit. */
+  const [forgotten, setForgotten] = useState<string[]>([]);
   const [backendUrl, setBackendUrl] = useState(backend.url ?? "");
   const [readToken, setReadToken] = useState("");
 
-  const merged = mergeTokens(saved, entered);
+  const merged = dropTokens(mergeTokens(saved, entered), forgotten);
   const missing = owners.filter((group) => tokenForOwner(merged, group.owner) === null);
 
   const trimmedUrl = backendUrl.trim();
@@ -107,23 +114,55 @@ export function TokenGate({
 
       {owners.map((group) => {
         const stored = tokenForOwner(saved, group.owner) !== null;
+        const forgetting = forgotten.includes(group.owner);
         const fieldId = `token-${group.owner}`;
         return (
           <div className="gate__field" key={group.owner}>
-            <label htmlFor={fieldId}>
-              {group.owner}
-              <span className="gate__repos">
-                {group.repos.map((repo) => repoName(repo.slug)).join(", ")}
-              </span>
-            </label>
+            <div className="gate__head">
+              <label htmlFor={fieldId}>
+                {group.owner}
+                <span className="gate__repos">
+                  {group.repos.map((repo) => repoName(repo.slug)).join(", ")}
+                </span>
+              </label>
+              {stored && (
+                <button
+                  type="button"
+                  className="bt quiet"
+                  onClick={() =>
+                    setForgotten((current) =>
+                      forgetting
+                        ? current.filter((owner) => owner !== group.owner)
+                        : [...current, group.owner],
+                    )
+                  }
+                  title={
+                    forgetting
+                      ? `Keep ${group.owner}'s saved token after all`
+                      : `Drop ${group.owner}'s token on save — the other owners stay signed in`
+                  }
+                >
+                  {forgetting ? "keep" : "forget"}
+                </button>
+              )}
+            </div>
             <input
               id={fieldId}
               type="password"
               autoComplete="off"
               spellCheck={false}
-              placeholder={stored ? "saved — paste to replace" : "github_pat_..."}
+              // A field marked for removal takes no input: typing a replacement
+              // and dropping it in the same save is two answers to one question.
+              disabled={forgetting}
+              placeholder={
+                forgetting
+                  ? "will be forgotten on save"
+                  : stored
+                    ? "saved — paste to replace"
+                    : "github_pat_..."
+              }
               aria-label={`GitHub token for ${group.owner}`}
-              value={entered[group.owner] ?? ""}
+              value={forgetting ? "" : (entered[group.owner] ?? "")}
               onChange={(event) =>
                 setEntered((current) => ({ ...current, [group.owner]: event.target.value }))
               }
@@ -203,6 +242,14 @@ export function TokenGate({
           <code>https://&lt;name&gt;.convex.site</code> — not the <code>.convex.cloud</code> one,
           which is the other hostname every Convex deployment has and the easier of the two to
           paste by mistake.
+        </p>
+      )}
+
+      {forgotten.length > 0 && !hasAnyToken(merged) && (
+        <p className="gate__note">
+          That forgets every token, which is what <b>Sign out all</b> is — and it clears the
+          response cache and the backend settings too, which this form does not. Keep one, or use
+          the top bar.
         </p>
       )}
 
