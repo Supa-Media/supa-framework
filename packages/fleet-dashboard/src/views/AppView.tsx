@@ -3,6 +3,7 @@ import { useState } from "react";
 import { INIT_PREFIX, LABELS } from "../lib/labels";
 import { selectAppInitiatives, selectTriage, type InitiativeCardModel } from "../lib/select";
 import { absolute, age } from "../lib/time";
+import { encodePath } from "../sources/github/client";
 import type { IssueCard, ProjectSnapshot } from "../sources/types";
 import {
   Banner,
@@ -52,10 +53,14 @@ export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }
 
   const { live, archived, misc } = selectAppInitiatives(ctx.snapshot.issues, project);
 
-  const manifestUrl = `https://github.com/${project.slug}/edit/${encodeURIComponent(
+  // `encodePath`, not `encodeURIComponent`, for both the ref and the file path:
+  // a branch is a path (`release/stable`) and so is the manifest, and a `/`
+  // encoded as `%2F` 404s GitHub's editor. The `?filename=` and `&value=` below
+  // are query *values* and stay `encodeURIComponent` for the same reason.
+  const manifestUrl = `https://github.com/${project.slug}/edit/${encodePath(
     project.defaultBranch,
-  )}/${ctx.config.initiativesPath}`;
-  const newManifestUrl = `https://github.com/${project.slug}/new/${encodeURIComponent(
+  )}/${encodePath(ctx.config.initiativesPath)}`;
+  const newManifestUrl = `https://github.com/${project.slug}/new/${encodePath(
     project.defaultBranch,
   )}?filename=${encodeURIComponent(ctx.config.initiativesPath)}&value=${encodeURIComponent(
     JSON.stringify({ initiatives: [{ name: "example", phase: "building", archived: false }] }, null, 2),
@@ -173,7 +178,7 @@ export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }
                       <>
                         {" · "}
                         <a
-                          href={`https://github.com/${project.slug}/blob/${project.defaultBranch}/${card.entry.spec}`}
+                          href={`https://github.com/${project.slug}/blob/${encodePath(project.defaultBranch)}/${encodePath(card.entry.spec)}`}
                           target="_blank"
                           rel="noreferrer"
                         >
@@ -272,7 +277,9 @@ function InitiativeCard({
   const issueCount = card.issues.length;
   const prCount = card.prs.length;
   const specUrl =
-    entry?.spec == null ? null : `https://github.com/${slug}/blob/${branch}/${entry.spec}`;
+    entry?.spec == null
+      ? null
+      : `https://github.com/${slug}/blob/${encodePath(branch)}/${encodePath(entry.spec)}`;
 
   return (
     <div className="card">
@@ -306,7 +313,7 @@ function InitiativeCard({
           </a>
         )}
         <a
-          href={`https://github.com/${slug}/edit/${encodeURIComponent(branch)}/${manifestPath}`}
+          href={`https://github.com/${slug}/edit/${encodePath(branch)}/${encodePath(manifestPath)}`}
           target="_blank"
           rel="noreferrer"
           title="Archive or re-phase this initiative by editing the manifest"

@@ -727,7 +727,10 @@ async function loadGardeners(
         name: displayName,
         workflowPath: entry.path,
         sourcePath,
-        editUrl: `https://github.com/${repo.slug}/edit/${encodeURIComponent(defaultBranch)}/${encodePath(sourcePath)}`,
+        // `encodePath` on the branch too, not `encodeURIComponent`: a default
+        // branch is a ref path like any other, and `release/stable` encoded as
+        // `release%2Fstable` is a 404 on GitHub's editor.
+        editUrl: `https://github.com/${repo.slug}/edit/${encodePath(defaultBranch)}/${encodePath(sourcePath)}`,
         engine: parseEngine(sourceText),
         caps: parseCaps(sourceText),
         prompt: promptBody(sourceText),
