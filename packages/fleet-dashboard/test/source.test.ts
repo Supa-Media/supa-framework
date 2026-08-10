@@ -102,6 +102,54 @@ test("a 200 with data and errors still fills the Partial-data banner, once", asy
   assert.equal(snapshot.projects.length, fleetConfig.repos.length);
 });
 
+test("a repo whose alias came back null says so instead of showing zero open PRs", async () => {
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (!String(input).endsWith("/graphql")) {
+      // Enough REST shape to build a card; the search is what this test is about.
+      const body = String(input).includes("/contents/")
+        ? []
+        : { default_branch: "main", workflow_runs: [], secrets: [] };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    const owner = ownerOfCall(init);
+    const repoCount = OWNERS.find((group) => group.owner === owner)?.repos.length ?? 0;
+    const payload = ownerPayload(repoCount, false) as { data: Record<string, unknown> };
+    if (owner === "shyoh") {
+      // GitHub's partial-success shape: 200, the alias resolved to null, and
+      // the reason is in `errors`.
+      payload.data["repo0"] = null;
+      return new Response(
+        JSON.stringify({
+          data: payload.data,
+          errors: [{ type: "NOT_FOUND", path: ["repo0"], message: GRAPHQL_ERROR }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  const snapshot = await createGitHubSource(fleetConfig, allTokens()).fetchFleet({
+    since: "2026-08-01T00:00:00.000Z",
+  });
+
+  const fount = snapshot.projects.find((project) => project.owner === "shyoh");
+  assert.equal(fount?.searchFailed, true, "the card must not print a confident 0 open PRs");
+  // One alias short is not a fleet-wide failure: every other card is an
+  // observation and says nothing about a search that did answer.
+  for (const project of snapshot.projects) {
+    if (project.owner !== "shyoh") assert.equal(project.searchFailed, false);
+  }
+  // And the banner still names it — the flag replaces the number, not the error.
+  assert.ok(snapshot.errors.some((error) => error.message === GRAPHQL_ERROR));
+});
+
 test("the fleet search is one request per owner, each carrying only that owner's repos", async () => {
   const documents: Array<{ owner: string; query: string; variables: Record<string, string> }> = [];
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {

@@ -194,6 +194,8 @@ interface FleetSearch {
   countsByRepo: Map<string, number>;
   /** repoKey → PRs merged inside the review window. */
   mergedByRepo: Map<string, GqlMerged[]>;
+  /** repoKeys whose search alias came back null — see `ProjectSnapshot.searchFailed`. */
+  failedRepos: Set<string>;
   /** Labelled issues and untriaged ones alike — see `FleetSnapshot.issues`. */
   issues: GqlIssueNode[];
   costIssues: Array<GqlIssue | null>;
@@ -229,6 +231,7 @@ async function fetchAllPulls(
     pullsByRepo: new Map(),
     countsByRepo: new Map(),
     mergedByRepo: new Map(),
+    failedRepos: new Set(),
     issues: [],
     costIssues: [],
   };
@@ -343,6 +346,11 @@ async function fetchOwnerPulls(
       const node = data[`repo${i}`];
       const key = slug.toLowerCase();
       if (!isSearchPage(node)) {
+        // The alias resolved to `null` — a repo this token cannot see, on a
+        // response that was otherwise `HTTP 200`. Nothing was observed for it,
+        // so the card must not print the fallback count as if something had
+        // been. The matching `errors` entry is already in the banner.
+        search.failedRepos.add(key);
         done[i] = true;
         return;
       }
@@ -503,6 +511,7 @@ function skeletonProject(
     label: repo.label,
     owner: ownerOf(repo.slug),
     tokenMissing,
+    searchFailed: search.failedRepos.has(key),
     url: `https://github.com/${repo.slug}`,
     defaultBranch: "main",
     activeRuns: 0,

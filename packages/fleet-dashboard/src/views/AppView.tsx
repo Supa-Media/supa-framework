@@ -66,7 +66,10 @@ export function AppView({ ctx, project }: { ctx: Ctx; project: ProjectSnapshot }
     <>
       <ViewHeader
         title={project.label}
-        sub={`${project.openPrs} open PRs · ${project.activeRuns} runs in flight`}
+        // `searchFailed` means GitHub answered this repo's alias with null, so
+        // `openPrs` is a fallback rather than an observation — see the
+        // Partial-data banner above for which token could not see it.
+        sub={`${project.searchFailed ? "open PRs unknown" : `${project.openPrs} open PRs`} · ${project.activeRuns} runs in flight`}
         actions={
           <>
             <a className="bt" href={project.url} target="_blank" rel="noreferrer">
@@ -575,17 +578,30 @@ export function AppsIndex({ ctx }: { ctx: Ctx }) {
             <span className="card__body">
               {project.tokenMissing
                 ? `no token for ${project.owner} — add`
-                : project.lastProdDeploy === null
-                  ? "no production deploy seen"
-                  : `prod ${age(project.lastProdDeploy.at)} ago`}
+                : project.searchFailed
+                  ? "GitHub did not answer this repo's search"
+                  : project.lastProdDeploy === null
+                    ? "no production deploy seen"
+                    : `prod ${age(project.lastProdDeploy.at)} ago`}
             </span>
             <span className="card__stat">
               {project.tokenMissing ? (
                 <span className="muted">nothing fetched</span>
               ) : (
                 <>
+                  {/*
+                    A failed alias fetched no rows, and the count falls back to
+                    however many rows there were — so the honest card says it
+                    does not know rather than printing a confident 0.
+                  */}
                   <span>
-                    <b>{project.openPrs}</b> open PRs
+                    {project.searchFailed ? (
+                      <span className="muted">open PRs unknown</span>
+                    ) : (
+                      <>
+                        <b>{project.openPrs}</b> open PRs
+                      </>
+                    )}
                   </span>
                   <span>
                     <b>{project.activeRuns}</b> running

@@ -220,6 +220,18 @@ export interface ProjectSnapshot {
    * instead of rendering zeros as if someone had looked.
    */
   tokenMissing: boolean;
+  /**
+   * `true` when GitHub answered this repo's search alias with `null` — the
+   * partial-success shape, `HTTP 200` with `data` and `errors` side by side.
+   *
+   * Per-repo aliases buy an exact count and an independent cursor, and they
+   * cost this: one repo failing is no longer a fleet-wide error, it is one
+   * alias short. Without the flag `openPrs` falls back to the number of rows
+   * fetched — zero — and the card states a confident `0 open PRs` about a
+   * search that never answered. The banner names the failure; this is what
+   * stops the card from contradicting it.
+   */
+  searchFailed: boolean;
   url: string;
   defaultBranch: string;
   /** Workflow runs currently queued or in progress. */

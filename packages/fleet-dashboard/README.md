@@ -384,7 +384,10 @@ of 5", names the ones that failed, and offers a retry scoped to just those. The
 same 200-with-errors on the read path files each message into `snapshot.errors`,
 which is what the "Partial data" banner renders — a repo a token cannot see names
 itself, scoped to the **owner** whose token was used, rather than silently
-shortening the fleet.
+shortening the fleet. The repo's own card stops claiming a number at the same
+time: a null alias fetched nothing, so the card reads **open PRs unknown**
+rather than falling back to `0`, which is the one reading a per-repo alias could
+turn into a silent lie.
 
 **A label write needs no confirmation; creating an object does.** Queue and
 Not now are single clicks, because a label is the one write this app can take
