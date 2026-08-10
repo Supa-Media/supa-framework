@@ -235,8 +235,17 @@ matters. The precondition is in `handleCallback` (`src/index.ts`) and is
 covered by tests; it is what keeps this table's last two rows honest.
 
 **What never gets logged.** No transcript, no message text, no chat id. Log
-lines carry an event name, a repo slug, and an issue number. Cloudflare's log
-tail is not a place the fleet's contents should end up.
+lines carry an event name, a repo slug, an issue number, and an error's *class
+name* — never its message, which can quote input. Cloudflare's log tail is not a
+place the fleet's contents should end up.
+
+Two of those events are worth an alert, because both mean a repo is routing
+worse than it should and nothing else says so: `initiatives.file_unreadable`
+(that repo's `.fleet/initiatives.json` is unreachable or malformed — routing
+fell back to its `init:*` labels) and `initiatives.unavailable` (the labels
+failed too, so the extraction prompt is told the repo has no initiatives at
+all). An ordinary 404 for a repo with no `.fleet/` directory is the normal case
+and is not logged.
 
 **Cost.** Extraction runs on `claude-sonnet-5` at `low` effort — this is reading
 what you said, not deciding how to build it. The hard reasoning happens later,

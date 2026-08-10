@@ -42,6 +42,7 @@ import {
   type SourceRef,
 } from "./issue";
 import { appendLearning, formatRejectionLearning, readLearnings } from "./learnings";
+import { errorName, log } from "./log";
 import { routeApp } from "./routing";
 import { describeMessage, TelegramClient, type TelegramUpdate } from "./telegram";
 import { transcribe } from "./transcribe";
@@ -79,15 +80,6 @@ export function secretMatches(provided: string | null, expected: string): boolea
  */
 export function isAllowedChat(chatId: number | undefined, expected: string): boolean {
   return chatId !== undefined && String(chatId) === expected;
-}
-
-/**
- * Structured log line. Deliberately carries no message text, chat id, or
- * transcript — Cloudflare's log tail is a place the fleet's contents should
- * never end up.
- */
-function log(event: string, fields: Record<string, string | number> = {}): void {
-  console.log(JSON.stringify({ event, ...fields }));
 }
 
 export default {
@@ -128,9 +120,7 @@ export default {
     // waitUntil promise can never reject silently.
     ctx.waitUntil(
       handleUpdate(update, env).catch((error: unknown) => {
-        log("update.unreported", {
-          error: error instanceof Error ? error.name : "unknown",
-        });
+        log("update.unreported", { error: errorName(error) });
       }),
     );
     return new Response("ok");
@@ -159,7 +149,7 @@ export async function handleUpdate(update: TelegramUpdate, env: Env): Promise<vo
 
     await handleMessage(message, env, telegram);
   } catch (error) {
-    log("update.failed", { error: error instanceof Error ? error.name : "unknown" });
+    log("update.failed", { error: errorName(error) });
     try {
       await telegram.sendMessage(
         env.TELEGRAM_CHAT_ID,
@@ -278,6 +268,11 @@ async function handleMessage(
  * do with that repo. A repo that fails contributes an empty initiative list,
  * which the prompt renders as "no initiatives declared yet" — degraded routing
  * for that one app, not a dead pipeline.
+ *
+ * Because that function cannot throw, the rejection branch below is unreachable
+ * in practice and logs under its own event name. The degraded-routing signal
+ * operators actually watch (`initiatives.unavailable`) is emitted from inside
+ * `listInitiatives`, where the failure is.
  */
 async function loadFleetContext(github: GitHubClient): Promise<FleetContext[]> {
   const settled = await Promise.allSettled(
@@ -287,7 +282,7 @@ async function loadFleetContext(github: GitHubClient): Promise<FleetContext[]> {
   return FLEET_APPS.map((app, index) => {
     const result = settled[index];
     if (result === undefined || result.status === "rejected") {
-      log("initiatives.unavailable", { repo: app.slug });
+      log("initiatives.fanout_rejected", { repo: app.slug });
       return { appKey: app.key, label: app.label, slug: app.slug, initiatives: [] };
     }
     return {

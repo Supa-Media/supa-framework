@@ -20,6 +20,8 @@
  * a voice note.
  */
 
+import { errorName, log } from "./log";
+
 const API_ROOT = "https://api.github.com";
 
 export class GitHubError extends Error {
@@ -144,6 +146,12 @@ export class GitHubClient {
    * ones that had nothing to do with that repo. `parseInitiativesFile` already
    * treats this file as untrusted input; the parse belongs inside the same
    * tolerance.
+   *
+   * Swallowing is not the same as staying quiet, though: a repo whose
+   * `.fleet/initiatives.json` has been malformed for a month routes worse than
+   * it should, forever, and the only way anyone finds out is a log line. Both
+   * catches emit one — bar the 404 that just means "this repo has no
+   * `.fleet/` yet", which is the normal case and would drown the signal.
    */
   async listInitiatives(slug: string): Promise<Initiative[]> {
     try {
@@ -153,10 +161,12 @@ export class GitHubClient {
       if (file.content !== undefined) {
         return parseInitiativesFile(JSON.parse(decodeBase64Content(file.content)));
       }
-    } catch {
-      // 404 is the common, expected case — most repos have no `.fleet/` yet.
+    } catch (error) {
       // A 403 (repo outside the token's scope), a 5xx, a malformed file, or a
       // corrupt payload are all equally survivable: fall through to labels.
+      if (!(error instanceof GitHubError && error.status === 404)) {
+        log("initiatives.file_unreadable", { repo: slug, error: errorName(error) });
+      }
     }
 
     try {
@@ -167,9 +177,11 @@ export class GitHubClient {
         .filter((label) => label.name.startsWith("init:"))
         .map((label) => ({ name: label.name.slice("init:".length) }))
         .filter((initiative) => initiative.name !== "");
-    } catch {
-      // No initiatives for this repo. The extraction prompt says so explicitly
-      // ("no initiatives declared yet") rather than pretending the repo has none.
+    } catch (error) {
+      // No initiatives for this repo at all. The extraction prompt says so
+      // explicitly ("no initiatives declared yet") rather than pretending the
+      // repo has none — but routing for this app is degraded until it's fixed.
+      log("initiatives.unavailable", { repo: slug, error: errorName(error) });
       return [];
     }
   }

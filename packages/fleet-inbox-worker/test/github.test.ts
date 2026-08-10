@@ -46,6 +46,20 @@ function base64(text: string): string {
   return Buffer.from(text, "utf8").toString("base64");
 }
 
+const realLog = console.log;
+afterEach(() => {
+  console.log = realLog;
+});
+
+/** Collect the structured log lines a call emits, parsed back into objects. */
+function captureLogs(): Array<Record<string, unknown>> {
+  const lines: Array<Record<string, unknown>> = [];
+  console.log = (line: unknown) => {
+    lines.push(JSON.parse(String(line)) as Record<string, unknown>);
+  };
+  return lines;
+}
+
 /* -------------------------------------------------------------------------- */
 /* .fleet/initiatives.json parsing                                             */
 /* -------------------------------------------------------------------------- */
@@ -142,6 +156,52 @@ test("a malformed file with unreachable labels yields an empty list, still no th
     { match: /\/labels/, status: 500 },
   ]);
   assert.deepEqual(await new GitHubClient("t").listInitiatives("o/r"), []);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Degraded routing is silent no longer (N2)                                   */
+/* -------------------------------------------------------------------------- */
+
+test("a repo with no initiatives at all says so in the log (N2)", async () => {
+  // Both catches swallow, so this log line is the only way anyone learns that
+  // an app has been routing without its initiatives for a month.
+  mockFetch([
+    { match: /contents\/\.fleet/, status: 500 },
+    { match: /\/labels/, status: 500 },
+  ]);
+  const logs = captureLogs();
+
+  assert.deepEqual(await new GitHubClient("t").listInitiatives("o/r"), []);
+  const unavailable = logs.find((line) => line["event"] === "initiatives.unavailable");
+  assert.ok(unavailable !== undefined, "the degraded-routing signal is emitted");
+  assert.equal(unavailable["repo"], "o/r");
+  assert.equal(unavailable["error"], "GitHubError");
+});
+
+test("a malformed initiatives file is logged even though labels rescue it (N2)", async () => {
+  mockFetch([
+    { match: /contents\/\.fleet/, body: { content: base64("{ not json at all") } },
+    { match: /\/labels/, body: [{ name: "init:fallback" }] },
+  ]);
+  const logs = captureLogs();
+
+  await new GitHubClient("t").listInitiatives("o/r");
+  const unreadable = logs.find((line) => line["event"] === "initiatives.file_unreadable");
+  assert.ok(unreadable !== undefined, "a broken repo-authored file is not silent");
+  assert.equal(unreadable["error"], "SyntaxError");
+});
+
+test("the ordinary 404 for a repo with no .fleet/ stays quiet (N2)", async () => {
+  // Most repos have no `.fleet/` yet. Logging that on every extraction, for
+  // every repo, would bury the signal the two tests above are about.
+  mockFetch([
+    { match: /contents\/\.fleet/, status: 404 },
+    { match: /\/labels/, body: [{ name: "init:wa-parity" }] },
+  ]);
+  const logs = captureLogs();
+
+  await new GitHubClient("t").listInitiatives("o/r");
+  assert.deepEqual(logs, []);
 });
 
 test("getIssue normalizes labels so the keep path can check them (M4)", async () => {
