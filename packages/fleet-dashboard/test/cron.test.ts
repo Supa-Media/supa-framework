@@ -57,6 +57,30 @@ test("stepped windows read as windows, not as an exhaustive list of times", () =
   assert.equal(describeCron("0 1-23/2 * * *"), "daily every 2h 01:00–23:00 UTC");
 });
 
+test("a minute list that doesn't join up across the hour is not a window", () => {
+  // `0,15` fires twice an hour and then waits 45 minutes, so "every 15 min" is
+  // a lie however contiguous the hours are. The hour guard cannot catch this:
+  // 9-17 is as contiguous as hours get, and the pre-#36 phrasing read
+  // "every 15 min 09:00–17:15 UTC" for a schedule that skips :30 and :45.
+  assert.equal(
+    describeCron("0,15 9-17 * * *"),
+    "daily at 09:00, 09:15, 10:00, 10:15 UTC, +14 more",
+  );
+  assert.equal(
+    describeCron("0,15 * * * *"),
+    "daily at 00:00, 00:15, 01:00, 01:15 UTC, +44 more",
+  );
+
+  // A run that DOES join up still reads as a window — including one anchored
+  // away from :00, where :05 and :35 really is every 30 minutes.
+  assert.equal(describeCron("0,30 9-17 * * *"), "daily every 30 min 09:00–17:30 UTC");
+  assert.equal(describeCron("5,35 9-17 * * *"), "daily every 30 min 09:05–17:35 UTC");
+
+  // Inside a single hour there is no boundary to cross, so a plain list of
+  // stepped minutes is still honestly a window.
+  assert.equal(describeCron("0,15,30 9 * * *"), "daily every 15 min 09:00–09:30 UTC");
+});
+
 test("an unsummarizable list of times is capped rather than dumped in full", () => {
   const rendered = describeCron("0,15 9,12,15,18 * * *");
   assert.match(rendered, /UTC, \+4 more$/);
