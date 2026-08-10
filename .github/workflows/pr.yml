@@ -53,4 +53,10 @@ jobs:
 
       - run: pnpm build
 
+      # Explicit, even though every package that defines `typecheck` also folds
+      # `tsc` into its own `test` today. That is a convention seven package.json
+      # files have to keep remembering; this is the gate saying it out loud, and
+      # turbo has the result cached from `build` in the common case.
+      - run: pnpm typecheck
+
       - run: pnpm test
