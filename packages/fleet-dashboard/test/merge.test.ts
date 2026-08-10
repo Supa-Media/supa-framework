@@ -111,7 +111,12 @@ test("a later null does not blank an earlier observation", () => {
       projects: [project({ key: "a/b", secretNames: ["TOKEN"] })],
       spendReportedUsd: 12,
       spendReportedAt: "2026-08-01T00:00:00.000Z",
-      rateLimit: { remaining: 10, limit: 5000, resetAt: "2026-08-01T01:00:00.000Z" },
+      rateLimit: {
+        remaining: 10,
+        limit: 5000,
+        resetAt: "2026-08-01T01:00:00.000Z",
+        owner: "Supa-Media",
+      },
     }),
     snapshot({ projects: [project({ key: "a/b" })] }),
   ]);

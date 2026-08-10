@@ -414,7 +414,9 @@ fetched and dropped per round-trip. The rest is REST with
 `If-None-Match` conditional requests, and a `304` costs no budget. There is no
 polling: the page fetches once, and again after a write or a Refresh. Each token
 has its own hourly allowance, so the top bar shows the **tightest** remaining
-budget — the one that will break the next refresh. A write **invalidates the
+budget — the one that will break the next refresh — and names the owner it
+belongs to, because a bare number cannot say whether the next refresh loses the
+fleet or one owner's repos. A write **invalidates the
 whole read cache** — the cache is keyed by path with no notion of what a write
 touched, so total invalidation is the only safe kind. It costs one cold refresh.
 

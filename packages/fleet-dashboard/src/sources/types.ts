@@ -306,6 +306,16 @@ export interface RateLimitInfo {
   limit: number;
   /** ISO-8601. */
   resetAt: string;
+  /**
+   * Whose budget this is — the resource owner whose PAT the response came back
+   * on, or `null` for a source with no per-owner notion of a credential.
+   *
+   * The header shows the *tightest* budget across the loaded tokens, and each
+   * one has its own hourly allowance. Without a name, "412 left" is a number
+   * about an unnamed one of three credentials, and the reader cannot tell
+   * whether the refresh about to break is the whole fleet or one owner's repos.
+   */
+  owner: string | null;
 }
 
 export interface FleetSnapshot {

@@ -71,7 +71,16 @@ export function Shell({
             {formatUsd(snapshot.spendReportedUsd)}
           </span>
           {snapshot.rateLimit !== null && (
-            <span title={`resets ${absolute(snapshot.rateLimit.resetAt)}`}>
+            // The tightest budget across the loaded tokens, and each token has
+            // its own hourly allowance — so the owner is half the fact. Without
+            // it, "412 left" says nothing about whether the next refresh breaks
+            // the fleet or one owner's repos.
+            <span
+              title={`${snapshot.rateLimit.owner === null ? "" : `${snapshot.rateLimit.owner} — `}tightest remaining budget, resets ${absolute(snapshot.rateLimit.resetAt)}`}
+            >
+              {snapshot.rateLimit.owner !== null && (
+                <span className="muted">{snapshot.rateLimit.owner} </span>
+              )}
               {snapshot.rateLimit.remaining}/{snapshot.rateLimit.limit}
             </span>
           )}

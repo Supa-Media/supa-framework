@@ -99,10 +99,13 @@ export function encodePath(path: string): string {
 
 export class GitHubClient {
   private readonly token: string;
+  /** The resource owner this token is scoped to — stamped onto its budget. */
+  private readonly owner: string;
   private latestRateLimit: RateLimitInfo | null = null;
 
-  constructor(token: string) {
+  constructor(token: string, owner: string) {
     this.token = token;
+    this.owner = owner;
   }
 
   get rateLimit(): RateLimitInfo | null {
@@ -118,6 +121,7 @@ export class GitHubClient {
       remaining: Number(remaining),
       limit: Number(limit),
       resetAt: new Date(Number(reset) * 1000).toISOString(),
+      owner: this.owner,
     };
   }
 
@@ -288,7 +292,7 @@ export class GitHubClients {
 
   constructor(tokens: TokenMap) {
     for (const [owner, token] of Object.entries(tokens)) {
-      if (token !== "") this.byOwner.set(owner.toLowerCase(), new GitHubClient(token));
+      if (token !== "") this.byOwner.set(owner.toLowerCase(), new GitHubClient(token, owner));
     }
   }
 
