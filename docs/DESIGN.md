@@ -100,8 +100,9 @@ supa-framework/                         (monorepo)
 │   │   └── components/                 PaywallGate, SubscriptionStatus
 │   │
 │   ├── convex/                         @supa-media/convex
-│   │   ├── auth/                       OTP auth setup (Twilio + Resend),
-│   │   │                               requireAuth, getOptionalAuth helpers
+│   │   ├── auth/                       OTP auth setup (Twilio + Resend), opt-in
+│   │   │                               magic-link provider, requireAuth,
+│   │   │                               getOptionalAuth helpers
 │   │   ├── schema/                     Base tables (users, tenants, auth),
 │   │   │                               multi-tenancy helpers
 │   │   ├── chat/                       Chat schema tables, message queries/mutations
