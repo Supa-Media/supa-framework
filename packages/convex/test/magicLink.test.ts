@@ -94,6 +94,28 @@ test("the upstream factory really does ignore `authorize: undefined`", () => {
   });
 });
 
+test("the token generator is left to the library, whose default is strong", async () => {
+  // Load-bearing, and easy to undo by "helpfully" passing a generator. This is
+  // the provider with no email check and no rate limit, so the token's entropy
+  // is the only thing between a guess and a session — and `signIn` is public,
+  // so anybody can ask for one to be minted for any address.
+  //
+  // `@convex-dev/auth` falls back to `generateRandomString(32, <62 chars>)`,
+  // about 190 bits. Asserting the absence of an override is what keeps that
+  // fallback in play.
+  const { Email } = await import("@convex-dev/auth/providers/Email");
+  const link = {
+    ...Email({ maxAge: 3600, sendVerificationRequest: async () => {} }),
+    id: MAGIC_LINK_PROVIDER_ID,
+    authorize: undefined,
+  };
+  assert.equal(
+    (link as { generateVerificationToken?: unknown }).generateVerificationToken,
+    undefined,
+    "a generator here replaces a ~190-bit default; only do it deliberately",
+  );
+});
+
 test("magic link is off unless asked for", async () => {
   const config = await providersFor({ methods: ["email"], appName: "Test" });
   assert.equal(config.magicLink, undefined);

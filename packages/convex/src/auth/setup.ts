@@ -233,6 +233,32 @@ function createEmailOtp(config: SupaAuthConfig) {
  * so it is stated rather than enforced: 32 random bytes or more. Anything
  * guessable is now guessable without a rate limit and without knowing whose
  * mailbox it was sent to.
+ *
+ * ## This provider is publicly reachable, and that is survivable
+ *
+ * `api.auth.signIn` is public, so anybody can call
+ * `signIn(MAGIC_LINK_PROVIDER_ID, { email })` for an address they do not own.
+ * Two things make that a nuisance rather than a hole, and both are worth
+ * knowing before anybody "hardens" it:
+ *
+ *  - **The code that gets minted is strong.** No `generateVerificationToken`
+ *    is passed, so `@convex-dev/auth` falls back to
+ *    `generateRandomString(32, <62-char alphabet>)` — around 190 bits. That
+ *    matters more here than for the OTP provider, because this is the provider
+ *    with no email check and no rate limit. (Passing a weak generator would not
+ *    help an attacker either: the factory ignores it, like everything else in
+ *    its config. It would help a careless *caller*, which is why the paragraph
+ *    above exists.)
+ *  - **Nothing is delivered to the attacker.** With no
+ *    `sendVerificationRequest` configured the warning below fires and no mail
+ *    goes out; with one configured, the mail goes to the address that was named,
+ *    not to whoever asked. Either way the code lands somewhere the attacker
+ *    cannot read.
+ *
+ * What they can do is mint a code for somebody else's address, which deletes
+ * that account's pending code — a denial of service on a link already in
+ * flight. That is not new: `signIn("email", { email })` has always been able to
+ * invalidate a pending OTP the same way.
  */
 function createMagicLink(config: SupaAuthConfig) {
   const magicLink = config.magicLink ?? {};
