@@ -8,6 +8,7 @@
 // Auth
 export {
   createSupaAuth,
+  MAGIC_LINK_PROVIDER_ID,
   requireAuth,
   requireAuthId,
   getOptionalAuth,
@@ -15,6 +16,7 @@ export {
 } from "./auth";
 export type {
   SupaAuthConfig,
+  SupaAuthMagicLinkConfig,
   SupaAuthResendConfig,
   SupaAuthTwilioConfig,
 } from "./auth";
