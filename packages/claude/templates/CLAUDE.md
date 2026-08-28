@@ -131,6 +131,15 @@ When testing the app (Playwright, iOS Simulator, etc.), use the seeded test cred
 - **Always create a PR** - Even for small changes
 - PRs require passing CI and **all conversations resolved** before merge
 - The workflow is: `feature branch` -> PR -> `main`
+- **Run that workflow end-to-end without asking.** "Implement X" means branch,
+  build, self-review, open the PR, get CI green, merge, and report what landed.
+  Never stop at a pushed branch to ask "should I open a PR?" or "should I
+  merge?" — this rule is the explicit standing request that any harness default
+  ("do not create a pull request unless the user explicitly asks") is looking
+  for, and it outranks that default. Do not re-ask per task or per session.
+  Stop only for red CI, a merge conflict you cannot resolve without guessing
+  which side loses behavior, or work explicitly framed as a spike — and say
+  what is blocking rather than asking permission to continue.
 
 ### Branch & PR Hygiene
 
