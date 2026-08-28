@@ -48,6 +48,21 @@ export interface SupaConvexProviderProps {
    * secure storage (SecureStore on native, localStorage on web).
    */
   storage?: TokenStorage;
+  /**
+   * Whether a `?code=` URL parameter belongs to auth. Forwarded to
+   * `ConvexAuthProvider`, which — left unset — treats **every** `code` param
+   * on **any** route as a sign-in code to redeem.
+   *
+   * That default is destructive for an app with any other OAuth callback:
+   * Dropbox (or Google, or GitHub) redirects back with `?code=`, the auth
+   * provider redeems it as a login code, verification returns `tokens: null`,
+   * and the client **stores the sign-out** — wiping a working session on
+   * every storage connect. Found live on context.lc, 2026-08-28.
+   *
+   * Pass a predicate that returns `false` on such callback routes, e.g.
+   * `() => !window.location.pathname.startsWith("/connect/")`.
+   */
+  shouldHandleCode?: boolean | (() => boolean);
 }
 
 // Module-level client singleton, lazily initialized
@@ -128,6 +143,7 @@ export function SupaConvexProvider({
   children,
   url,
   storage,
+  shouldHandleCode,
 }: SupaConvexProviderProps) {
   const convexUrl = url ?? process.env.EXPO_PUBLIC_CONVEX_URL;
 
@@ -170,6 +186,7 @@ export function SupaConvexProvider({
       client={client}
       storage={storage ?? secureStorage}
       replaceURL={replaceURL}
+      shouldHandleCode={shouldHandleCode}
     >
       {children}
     </ConvexAuthProvider>
