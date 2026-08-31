@@ -1,16 +1,4 @@
 {
-  "description": "Project hooks for Supa app",
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/ralph-logger.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
+  "description": "Project hooks for Supa app. Empty by default — add your own PreToolUse/PostToolUse/Stop entries here. Any `command` you register must be a script that actually exists in the repo; a missing script makes the hook fail on every invocation.",
+  "hooks": {}
 }
