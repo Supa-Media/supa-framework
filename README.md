@@ -73,4 +73,5 @@ jobs:
 
 ## License
 
-MIT
+[MIT](LICENSE) — Copyright (c) 2026 Supa Media LLC. A copy of the licence ships
+inside every published package tarball.
