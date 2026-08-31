@@ -1,5 +1,35 @@
 # @supa-media/core
 
+## 1.0.2
+
+### Patch Changes
+
+- cc38f27: Every package now ships an MIT LICENSE file and a README inside its tarball.
+
+  The repo declared `"license": "MIT"` in all 13 package manifests with no LICENSE
+  file anywhere, so npm rendered an MIT badge over a tarball containing no grant.
+  Each package now carries a copy of the root LICENSE (a copy, not a symlink — npm
+  does not follow symlinks into a tarball) with `"LICENSE"` in its `files` array.
+
+  12 of the 13 also had no README and would have published a blank npm page; they
+  now document their real public surface, peer dependencies, and constraints.
+
+  `@supa-media/claude` additionally changes what it scaffolds. Its
+  `templates/settings.json` previously wrote
+  `{"permissions": {"dangerouslySkipPermissions": true}}` into the consumer's
+  `.claude/` — a package that disabled the agent's permission prompts on install.
+  It now ships a conservative `permissions.allow` allowlist (routine reversible
+  commands: pnpm dev/test/lint/typecheck/build, `npx convex dev|run|logs`,
+  read-only git and gh, plus add/commit/checkout) and denies reads of `.env*`.
+  `git push`, `git reset --hard`, `gh pr merge`, `convex deploy` and `eas` are
+  deliberately left to prompt; widen the allowlist for your own repo.
+  `templates/hooks.json` no longer registers a `Stop` hook pointing at a
+  `ralph-logger.sh` that was never shipped, and is now an empty starting point.
+  Existing `.claude/settings.json` and `.claude/hooks.json` files are untouched
+  unless you run `supa-claude sync --force`.
+
+- ecfab87: `SupaConvexProvider` accepts and forwards `shouldHandleCode` to `ConvexAuthProvider`. Left unset, the auth provider treats every `?code=` URL parameter on every route as a sign-in code — so any other OAuth callback (Dropbox, Google, GitHub) redirecting back with `?code=` gets its code redeemed as a login code, verification returns `tokens: null`, and the client stores the sign-out, wiping a working session. Pass a predicate that returns `false` on non-auth callback routes.
+
 ## 1.0.1
 
 ### Patch Changes

@@ -8,6 +8,8 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [
-    "create-supa-app"
+    "create-supa-app",
+    "@supa-media/chat",
+    "@supa-media/payments"
   ]
 }

@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/dev",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Development orchestrator — runs Convex dev + Expo together",
   "main": "src/index.js",
   "bin": {
@@ -19,7 +19,7 @@
     "directory": "packages/dev"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org"
   },
   "license": "MIT"
 }
