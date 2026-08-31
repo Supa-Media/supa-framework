@@ -1,11 +1,12 @@
 {
   "name": "@supa-media/testing",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Reusable test suites that catch common Expo/React Native gotchas — routing conflicts, web bundle safety, React resolution, native import gating",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
@@ -31,7 +32,7 @@
     "directory": "packages/testing"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org"
   },
   "license": "MIT"
 }

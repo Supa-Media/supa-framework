@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/linter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "ESLint rules that enforce Supa framework conventions",
   "main": "src/index.js",
   "exports": {
@@ -8,7 +8,8 @@
     "./preset": "./src/preset.js"
   },
   "files": [
-    "src"
+    "src",
+    "LICENSE"
   ],
   "scripts": {
     "test": "node --test"
@@ -27,7 +28,7 @@
     "directory": "packages/linter"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org"
   },
   "license": "MIT"
 }

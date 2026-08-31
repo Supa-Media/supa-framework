@@ -59,7 +59,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "LICENSE"
   ],
   "repository": {
     "type": "git",
@@ -67,7 +68,7 @@
     "directory": "packages/chat"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org"
   },
   "license": "MIT"
 }

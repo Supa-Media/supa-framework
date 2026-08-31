@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/claude",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Claude Code configuration templates for Supa apps",
   "type": "module",
   "bin": {
@@ -8,7 +8,8 @@
   },
   "files": [
     "src",
-    "templates"
+    "templates",
+    "LICENSE"
   ],
   "keywords": [
     "supa",
@@ -23,7 +24,7 @@
     "directory": "packages/claude"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org"
   },
   "license": "MIT"
 }

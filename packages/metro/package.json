@@ -1,11 +1,12 @@
 {
   "name": "@supa-media/metro",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Metro bundler config factory for pnpm monorepos with Expo",
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "files": [
-    "src"
+    "src",
+    "LICENSE"
   ],
   "peerDependencies": {
     "@expo/metro-config": "*"
@@ -24,7 +25,7 @@
     "directory": "packages/metro"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org"
   },
   "license": "MIT"
 }

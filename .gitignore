@@ -5,3 +5,6 @@ dist/
 .env
 .env.local
 .DS_Store
+
+# Agent worktrees — separate checkouts, never part of this one.
+.worktrees/

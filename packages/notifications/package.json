@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/notifications",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Push notification infrastructure for Supa apps — provider, hooks, and handlers for Expo + Convex",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -32,7 +32,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
@@ -76,7 +77,7 @@
     "directory": "packages/notifications"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org"
   },
   "license": "MIT"
 }

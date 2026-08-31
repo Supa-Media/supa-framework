@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/native-safety",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Native dependency gating enforcement for Expo apps — critical for safe OTA updates",
   "main": "src/index.js",
   "types": "src/index.d.ts",
@@ -11,7 +11,8 @@
   },
   "files": [
     "src",
-    "native-deps.example.json"
+    "native-deps.example.json",
+    "LICENSE"
   ],
   "scripts": {
     "check-fingerprint": "node src/check-fingerprint.js",
@@ -40,7 +41,7 @@
     "directory": "packages/native-safety"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org"
   },
   "license": "MIT"
 }

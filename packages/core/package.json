@@ -32,7 +32,8 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
@@ -92,7 +93,7 @@
     "directory": "packages/core"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org"
   },
   "license": "MIT"
 }

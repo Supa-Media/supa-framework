@@ -22,7 +22,12 @@ pnpm dev
 
 ## Packages
 
-Published to **GitHub Packages** (private registry — requires `GITHUB_TOKEN` with `read:packages`). See [PUBLISHING.md](docs/PUBLISHING.md) for setup.
+Published to **npmjs** under the public `@supa-media` scope — `pnpm add @supa-media/core`, no token and no `.npmrc` scope line required. See [PUBLISHING.md](docs/PUBLISHING.md).
+
+> These were on GitHub Packages, which demands a token even for packages marked
+> public. That put a `read:packages` credential in front of installing an MIT
+> repo. `@supa-media/chat` and `@supa-media/payments` are not on npm yet — they
+> have open correctness bugs noted in their READMEs and nothing consumes them.
 
 | Package | Description |
 |---------|-------------|
@@ -73,4 +78,5 @@ jobs:
 
 ## License
 
-MIT
+[MIT](LICENSE) — Copyright (c) 2026 Supa Media LLC. A copy of the licence ships
+inside every published package tarball.
