@@ -8,7 +8,8 @@
   },
   "files": [
     "src",
-    "templates"
+    "templates",
+    "LICENSE"
   ],
   "keywords": [
     "supa",

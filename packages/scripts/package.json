@@ -18,7 +18,8 @@
     "bump-version": "node ./src/bump-version.js"
   },
   "files": [
-    "src/"
+    "src/",
+    "LICENSE"
   ],
   "repository": {
     "type": "git",

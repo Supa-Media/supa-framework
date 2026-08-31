@@ -7,7 +7,8 @@
     "supa-dev": "src/index.js"
   },
   "files": [
-    "src"
+    "src",
+    "LICENSE"
   ],
   "dependencies": {
     "chalk": "^4.1.2"

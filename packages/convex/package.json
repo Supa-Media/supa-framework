@@ -5,7 +5,8 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "files": [
-    "src"
+    "src",
+    "LICENSE"
   ],
   "scripts": {
     "test": "node --import ./test/register.mjs --test test/*.test.ts"

@@ -5,7 +5,8 @@
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "files": [
-    "src"
+    "src",
+    "LICENSE"
   ],
   "peerDependencies": {
     "@expo/metro-config": "*"

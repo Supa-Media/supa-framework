@@ -11,7 +11,8 @@
   },
   "files": [
     "src",
-    "native-deps.example.json"
+    "native-deps.example.json",
+    "LICENSE"
   ],
   "scripts": {
     "check-fingerprint": "node src/check-fingerprint.js",

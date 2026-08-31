@@ -8,7 +8,8 @@
     "./preset": "./src/preset.js"
   },
   "files": [
-    "src"
+    "src",
+    "LICENSE"
   ],
   "scripts": {
     "test": "node --test"
