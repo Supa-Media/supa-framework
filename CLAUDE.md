@@ -40,5 +40,15 @@ the reusable GitHub workflows. For what each package does and the overall design
   are red CI, a conflict that cannot be resolved without guessing, or work
   explicitly framed as a spike — and each of those is a statement of what is
   blocking, not a question.
+- **Merging releases, and that is the point rather than a reason to hold.**
+  `main` runs the release workflow and publishes what the changesets describe,
+  so an agent that merges is shipping to every app that installs
+  `@supa-media/*`. That is what "finished" means here and is never grounds for
+  stopping at a green branch to check first. What a merge cannot do on its own
+  is a separate ask and is not covered: a native build, a store submission,
+  rotating a secret.
+- **A session that fanned work out to several agents is not finished when the
+  agents are.** Subagents do not open pull requests; whoever dispatched them
+  owns the merge, and "they all reported back" is the middle of the task.
 - Prefer readable over clever; remove dead code rather than deprecating it; don't
   over-engineer beyond what's asked.
