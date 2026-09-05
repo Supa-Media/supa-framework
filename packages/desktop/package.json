@@ -1,6 +1,6 @@
 {
   "name": "@supa-media/desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Electron shell for Supa apps — menu-bar tray, panel windows, preload bridge, settings store, offline outbox, and an Electron-free core that tests under plain node",
   "type": "module",
   "main": "src/index.js",
