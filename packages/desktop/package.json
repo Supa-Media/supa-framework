@@ -1,0 +1,64 @@
+{
+  "name": "@supa-media/desktop",
+  "version": "0.1.0",
+  "description": "Electron shell for Supa apps — menu-bar tray, panel windows, preload bridge, settings store, offline outbox, and an Electron-free core that tests under plain node",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./electron": {
+      "types": "./src/electron/index.d.ts",
+      "default": "./src/electron/index.js"
+    },
+    "./build": {
+      "types": "./src/build.d.ts",
+      "default": "./src/build.js"
+    }
+  },
+  "bin": {
+    "check-core-isolation": "src/check-core-isolation.js"
+  },
+  "files": [
+    "src",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check-core-isolation": "node src/check-core-isolation.js",
+    "test": "node --test \"test/*.test.js\"",
+    "lint": "echo \"no lint configured\" && exit 0"
+  },
+  "peerDependencies": {
+    "electron": ">=31.0.0",
+    "esbuild": ">=0.20.0"
+  },
+  "peerDependenciesMeta": {
+    "electron": {
+      "optional": true
+    },
+    "esbuild": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "electron",
+    "desktop",
+    "menu-bar",
+    "tray",
+    "offline",
+    "outbox",
+    "supa"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Supa-Media/supa-framework.git",
+    "directory": "packages/desktop"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "license": "MIT"
+}

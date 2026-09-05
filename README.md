@@ -4,6 +4,8 @@ Opinionated full-stack framework for building apps with **Convex** + **Expo** + 
 
 Spawn a new app in 2 minutes. Get auth, notifications, chat, payments, CI/CD, and native safety out of the box. Focus on your domain logic — Supa handles the rest.
 
+Two surfaces are **opt-in** rather than default, because each is a second binary with its own build and release story: an Electron **desktop** app (`@supa-media/desktop`) and an **Apple Watch / Live Activity** target for the Expo app (`@supa-media/apple-targets`). `create-supa-app` asks about both.
+
 ## Quick Start
 
 ```bash
@@ -36,6 +38,8 @@ Published to **npmjs** under the public `@supa-media` scope — `pnpm add @supa-
 | [`@supa-media/chat`](packages/chat) | Real-time messaging with pagination, offline caching |
 | [`@supa-media/notifications`](packages/notifications) | Push notifications with deep linking |
 | [`@supa-media/payments`](packages/payments) | Stripe integration with staging/production separation |
+| [`@supa-media/desktop`](packages/desktop) | Electron shell: menu-bar tray, panel windows, preload bridge, settings store, offline outbox — with an Electron-free core that tests under plain `node` |
+| [`@supa-media/apple-targets`](packages/apple-targets) | watchOS target + Live Activity scaffolding for the Expo app: App Groups, entitlements, `expo-target.config.js`, and the phone↔watch transport rules |
 | [`@supa-media/dev-assistant`](packages/dev-assistant) | "App improves itself" AI contribution pipeline (spec → build → review → merge → deploy) |
 | [`@supa-media/metro`](packages/metro) | Metro config factory for pnpm monorepos |
 | [`@supa-media/native-safety`](packages/native-safety) | Native dependency gating for safe OTA updates |

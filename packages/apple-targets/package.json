@@ -1,0 +1,42 @@
+{
+  "name": "@supa-media/apple-targets",
+  "version": "0.1.0",
+  "description": "Config helpers for adding a watchOS target and a Live Activity to a Supa Expo app — App Groups, entitlements, expo-target configs, and the phone↔watch transport rules",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "files": [
+    "src",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "lint": "echo \"no lint configured\" && exit 0"
+  },
+  "peerDependencies": {
+    "@bacons/apple-targets": ">=0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@bacons/apple-targets": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "expo",
+    "watchos",
+    "apple-watch",
+    "live-activity",
+    "widgets",
+    "app-groups",
+    "watchconnectivity",
+    "supa"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Supa-Media/supa-framework.git",
+    "directory": "packages/apple-targets"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "license": "MIT"
+}

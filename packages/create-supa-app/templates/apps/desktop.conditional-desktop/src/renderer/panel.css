@@ -1,0 +1,65 @@
+/*
+ * The panel's own ground, painted explicitly.
+ *
+ * A menu-bar popover floats over whatever the person is doing, so it commits to
+ * one appearance rather than following the system: a panel that turns white
+ * over a dark video call is a panel that blinds somebody mid-meeting.
+ *
+ * This is a starting point, not a design system. Supa has no opinion about your
+ * colours.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: #f4f4f5;
+  background: transparent;
+}
+
+.panel {
+  margin: 8px;
+  padding: 16px;
+  border-radius: 12px;
+  background: #18181b;
+  border: 1px solid #27272a;
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+p {
+  margin: 0 0 16px;
+  color: #a1a1aa;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  background: #27272a;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #3f3f46;
+}
+
+button.quiet {
+  flex: 0 0 auto;
+  background: transparent;
+}

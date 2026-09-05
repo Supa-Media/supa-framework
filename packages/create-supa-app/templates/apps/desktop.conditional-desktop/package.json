@@ -1,0 +1,26 @@
+{
+  "name": "@{{APP_SLUG}}/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "{{APP_NAME}} on the desktop — a menu-bar app",
+  "type": "module",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "start": "electron dist/main/index.js",
+    "dev": "node scripts/build.mjs --watch",
+    "build": "node scripts/build.mjs",
+    "test": "check-core-isolation src/core && node --test \"test/*.test.js\"",
+    "lint": "echo \"no lint configured\" && exit 0"
+  },
+  "dependencies": {
+    "@supa-media/desktop": "^0.1.0",
+    "@{{APP_SLUG}}/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "esbuild": "^0.24.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

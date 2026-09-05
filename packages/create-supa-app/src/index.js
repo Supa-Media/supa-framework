@@ -66,25 +66,28 @@ function applyTemplate(content, vars) {
   return result;
 }
 
+const CONDITIONAL_SUFFIX = /\.conditional-(\w+)/;
+
 function copyTemplateDir(srcDir, destDir, vars, conditionals) {
   const entries = readdirSync(srcDir, { withFileTypes: true });
   for (const entry of entries) {
     const srcPath = join(srcDir, entry.name);
-    const destName = applyTemplate(entry.name, vars);
+
+    // Conditional entries carry a .conditional-{flag} suffix and are skipped
+    // when the flag is off. Applied to directories as well as files, so an
+    // optional piece that is a whole app — apps/desktop, mobile/targets — is
+    // one suffixed directory rather than a suffix on each of its ten files.
+    const conditionalMatch = entry.name.match(CONDITIONAL_SUFFIX);
+    if (conditionalMatch && !conditionals[conditionalMatch[1]]) continue;
+
+    const destName = applyTemplate(entry.name, vars).replace(CONDITIONAL_SUFFIX, "");
 
     if (entry.isDirectory()) {
       const destPath = join(destDir, destName);
       mkdirSync(destPath, { recursive: true });
       copyTemplateDir(srcPath, destPath, vars, conditionals);
     } else {
-      // Handle conditional files: skip files with .conditional-{flag} suffix
-      const conditionalMatch = entry.name.match(/\.conditional-(\w+)/);
-      if (conditionalMatch) {
-        const flag = conditionalMatch[1];
-        if (!conditionals[flag]) continue;
-      }
-
-      const destPath = join(destDir, destName.replace(/\.conditional-\w+/, ""));
+      const destPath = join(destDir, destName);
       const raw = readFileSync(srcPath, "utf-8");
       const content = applyTemplate(raw, vars);
       writeFileSync(destPath, content);
@@ -102,8 +105,9 @@ async function main() {
   // Optional non-interactive mode: `create-supa-app "Name" --config app.json`
   // The JSON may contain any of the prompt fields (appName, appSlug, urlScheme,
   // bundleId, stagingBundleId, multiTenant, tenantName, phoneOtp, emailOtp,
-  // pushNotifications, chat, payments, strictness, vaultName, easProjectId,
-  // expoOwner). Missing fields fall back to the same defaults as the prompts.
+  // pushNotifications, chat, payments, desktop, appleTargets, strictness,
+  // vaultName, easProjectId, expoOwner). Missing fields fall back to the same
+  // defaults as the prompts.
   let cfg = null;
   const cfgIdx = rawArgs.findIndex(
     (a) => a === "--config" || a.startsWith("--config="),
@@ -130,6 +134,7 @@ async function main() {
     let appName, appSlug, urlScheme, bundleId, stagingBundleId;
     let multiTenant, tenantName;
     let phoneOtp, emailOtp, pushNotifications, chat, payments;
+    let desktop, appleTargets;
     let strictness, vaultName, easProjectId, expoOwner;
 
     const truthy = (v, dflt) => {
@@ -157,6 +162,8 @@ async function main() {
       pushNotifications = truthy(cfg.pushNotifications, true);
       chat = truthy(cfg.chat, false);
       payments = truthy(cfg.payments, false);
+      desktop = truthy(cfg.desktop, false);
+      appleTargets = truthy(cfg.appleTargets, false);
       strictness = ["relaxed", "standard", "strict"].includes(
         String(cfg.strictness || "").toLowerCase(),
       )
@@ -240,6 +247,23 @@ async function main() {
 
         console.log("");
 
+        // ── Extra surfaces ──
+        // Both are off by default. A desktop app is a second binary with its
+        // own build, signing and release story, and an Apple companion target
+        // pulls the app out of the pure-CNG setup it starts in — neither is
+        // something to hand somebody who did not ask for it.
+        console.log("── Extra surfaces ──");
+        desktop = /^y(es)?$/i.test(
+          await prompt.ask("? Add a desktop app (Electron menu bar)? (y/N) "),
+        );
+        appleTargets = /^y(es)?$/i.test(
+          await prompt.ask(
+            "? Add Apple Watch / Live Activity scaffolding? (y/N) ",
+          ),
+        );
+
+        console.log("");
+
         // ── Deployment ──
         console.log("── Deployment ──");
         const strictnessInput = (
@@ -293,6 +317,8 @@ async function main() {
     if (pushNotifications) features.push("notifications");
     if (chat) features.push("chat");
     if (payments) features.push("payments");
+    if (desktop) features.push("desktop");
+    if (appleTargets) features.push("appleTargets");
 
     // Schema composables — names match @supa-media/convex/schema exports.
     // supaAuthTables is always imported + spread by the template itself.
@@ -426,10 +452,42 @@ async function main() {
     if (payments) {
       extraMobileDeps.push('"@supa-media/payments": "^0.2.0"');
     }
+    if (appleTargets) {
+      extraMobileDeps.push('"@supa-media/apple-targets": "^0.1.0"');
+    }
     const extraMobileDepsBlock =
       extraMobileDeps.length > 0
         ? extraMobileDeps.map((d) => `    ${d},`).join("\n")
         : "";
+
+    // app.config.js is wrapped by withAppleTargets only when the feature is on,
+    // so an app without an Apple companion target has no mention of one — same
+    // shape as the provider injection above.
+    const appleTargetsRequire = appleTargets
+      ? 'const { appGroupIdentifier, withAppleTargets } = require("@supa-media/apple-targets");\n\n'
+      : "";
+    // Both halves are always present: with the feature off they are the plain
+    // parentheses an arrow function returning an object literal needs anyway.
+    const appleTargetsOpen = appleTargets ? "withAppleTargets(" : "(";
+    const appleTargetsClose = appleTargets
+      ? [
+          ",",
+          "  {",
+          "    appGroup: appGroupIdentifier(",
+          // The real identifiers rather than {{VAR}} placeholders: this string
+          // is injected *as* a template variable, and applyTemplate has already
+          // passed over BUNDLE_ID by the time it substitutes this one.
+          `      process.env.APP_ENV === "staging"`,
+          `        ? "${stagingBundleId}"`,
+          `        : "${bundleId}",`,
+          "    ),",
+          "    // Uncomment when the phone keeps capturing in the background —",
+          "    // a usage-description string alone does not survive backgrounding.",
+          '    // backgroundModes: ["audio"],',
+          "  },",
+          ")",
+        ].join("\n")
+      : ")";
 
     // Supa config features section
     const configFeatures = [];
@@ -438,6 +496,8 @@ async function main() {
     configFeatures.push(`    pushNotifications: ${pushNotifications},`);
     configFeatures.push(`    chat: ${chat},`);
     configFeatures.push(`    payments: ${payments},`);
+    configFeatures.push(`    desktop: ${desktop},`);
+    configFeatures.push(`    appleTargets: ${appleTargets},`);
 
     // Env vars for .env.example
     const envVars = [];
@@ -471,6 +531,14 @@ async function main() {
       envVars.push(`STRIPE_WEBHOOK_SECRET=op://${vaultName || "Vault"}/Stripe/webhook-secret`);
       envVars.push("");
     }
+    if (appleTargets) {
+      // Not a credential, but an account identifier — and this repository may be
+      // public, so it stays out of app.config.js. @supa-media/apple-targets
+      // reads it from the environment and refuses to build without it.
+      envVars.push("# Apple (team ID for the watch / Live Activity targets)");
+      envVars.push(`APPLE_TEAM_ID=op://${vaultName || "Vault"}/Apple/team-id`);
+      envVars.push("");
+    }
     envVars.push("# Sentry");
     envVars.push(`SENTRY_DSN=op://${vaultName || "Vault"}/Sentry/dsn`);
 
@@ -489,6 +557,11 @@ async function main() {
       PUSH_NOTIFICATIONS: String(pushNotifications),
       CHAT: String(chat),
       PAYMENTS: String(payments),
+      DESKTOP: String(desktop),
+      APPLE_TARGETS: String(appleTargets),
+      APPLE_TARGETS_REQUIRE: appleTargetsRequire,
+      APPLE_TARGETS_OPEN: appleTargetsOpen,
+      APPLE_TARGETS_CLOSE: appleTargetsClose,
       STRICTNESS: strictness,
       VAULT_NAME: vaultName || "Vault",
       EAS_PROJECT_ID: easProjectId || "YOUR_EAS_PROJECT_ID",
@@ -519,6 +592,8 @@ async function main() {
       chat,
       notifications: pushNotifications,
       multiTenant,
+      desktop,
+      appleTargets,
     };
 
     // ── Create project directory ──
@@ -554,6 +629,14 @@ async function main() {
     console.log(
       `  ${payments ? "\u2713" : "\u2717"} Payments (Stripe)${payments ? "" : " (disabled)"}`
     );
+    if (desktop) {
+      console.log("  \u2713 Desktop app (Electron menu bar) in apps/desktop");
+    }
+    if (appleTargets) {
+      console.log(
+        "  \u2713 Apple Watch / Live Activity scaffolding (set APPLE_TEAM_ID before prebuild)",
+      );
+    }
     if (multiTenant) {
       console.log(`  \u2713 Multi-tenant (${tenantName})`);
     }

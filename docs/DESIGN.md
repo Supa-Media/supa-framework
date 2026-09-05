@@ -44,7 +44,11 @@ Togather and Fount Studios are two production Expo + Convex apps built on nearly
 - **`@supa-media/notifications`** — Push notifications with Firebase/APNs config, deep linking, rich notifications (images, actions), token management, permission flows
 - **`@supa-media/chat`** — Real-time messaging with pagination, virtual scrolling, offline caching, and pluggable data sources
 - **`@supa-media/payments`** — Stripe integration with staging/production key separation, subscription management, webhook handling
+- **`@supa-media/desktop`** — Electron shell for a menu-bar desktop app: tray lifecycle and state presentation, panel/app/hidden windows with tray-relative positioning, the preload bridge pattern, a repairing settings store, the offline outbox + drain + keychain token store, and the esbuild pass over main/preload/renderer. Its logic is an Electron-free `core/` so an app's rules test under plain `node --test`, and a `check-core-isolation` bin keeps that true.
+- **`@supa-media/apple-targets`** — watchOS target and Live Activity scaffolding for the Expo app: App Group entitlements, `ios.appleTeamId` from the environment, `UIBackgroundModes`, generated `expo-target.config.js` files, and the WatchConnectivity transport rules (`sendMessage` for live commands, `updateApplicationContext` for the latest-only snapshot, `transferUserInfo` for the queued ones).
 - *(Future: maps, file uploads, etc.)*
+
+Both new modules are **opt-in and off by default**. A desktop app is a second binary with its own build, signing and release story; an Apple companion target moves the mobile app off pure CNG-with-no-native-targets and out of the OTA channel for that target. Neither belongs in an app whose author did not ask for it.
 
 ### Layer 5: Release & Update Management
 - Configurable deployment strictness (from "push-to-prod" to "branch → staging → promote")
@@ -112,6 +116,24 @@ supa-framework/                         (monorepo)
 │   │   ├── payments/                   Stripe webhook handler, subscription tables,
 │   │   │                               customer management
 │   │   └── lib/                        Rate limiting, validation, scheduling utils
+│   │
+│   ├── desktop/                        @supa-media/desktop
+│   │   ├── src/core/                   Electron-free: settings, denylist, consent,
+│   │   │                               outbox, client, drain, tokenStore, tray, layout,
+│   │   │                               permissions — the whole `node --test` surface
+│   │   ├── src/electron/               windows, tray, bridge, JSON store,
+│   │   │                               safeStorage token store, permission broker
+│   │   ├── src/build.js                buildDesktop() — main ESM, preload CJS, renderer browser
+│   │   └── check-core-isolation        bin: no `electron` import in a directory that must
+│   │                                   stay runnable under plain node
+│   │
+│   ├── apple-targets/                  @supa-media/apple-targets
+│   │   ├── config.js                   withAppleTargets() — App Group, appleTeamId,
+│   │   │                               UIBackgroundModes, plugin list
+│   │   ├── target.js                   defineWatchTarget / defineWidgetTarget /
+│   │   │                               defineWatchWidgetTarget, renderTargetConfig
+│   │   └── watch.js                    defineWatchBridge() — which WatchConnectivity
+│   │                                   mechanism carries which command, and when
 │   │
 │   ├── metro/                          @supa-media/metro
 │   │   └── createMetroConfig()         pnpm monorepo support, shared package resolution
@@ -796,6 +818,10 @@ node packages/create-supa-app/src/index.js my-app
 ? Stripe publishable key (production): pk_live_...
 ? Stripe secret key (production): (1Password ref)
 
+── Extra surfaces ──
+? Add a desktop app (Electron menu bar)? (y/N) No
+? Add Apple Watch / Live Activity scaffolding? (y/N) No
+
 ── Deployment ──
 ? Deployment strictness:
   ○ Relaxed — push to main deploys to production (side projects)
@@ -826,6 +852,17 @@ All secrets are stored as 1Password references in the config. The setup script v
 - `apps/mobile/app/(tabs)/_layout.tsx` with placeholder tabs
 - `apps/mobile/metro.config.js` (one-liner calling `@supa-media/metro`)
 - `apps/mobile/app.config.js` with push notification config, deep linking
+- `apps/desktop/` — a working menu-bar app on `@supa-media/desktop`, with its own
+  `core/` (settings + tray), a bridge, a panel, an esbuild script, and a `test`
+  script that runs `check-core-isolation` before `node --test` *(if desktop enabled)*
+- `apps/mobile/targets/watch/expo-target.config.js`, plus `withAppleTargets(...)`
+  wrapping `app.config.js` and `APPLE_TEAM_ID` in `.env.example` *(if Apple targets
+  enabled)*
+
+Optional pieces are skipped by the `.conditional-{flag}` suffix in
+`packages/create-supa-app/templates/`, which applies to **directories as well as
+files** — so a whole optional app is one suffixed directory rather than a suffix
+on each of its files.
 - `.github/workflows/` with reusable workflow wrappers (strictness-aware)
 - `native-deps.json` with defaults
 - `.env.example` with 1Password paths for ALL configured services
