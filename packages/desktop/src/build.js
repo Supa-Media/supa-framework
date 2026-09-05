@@ -61,6 +61,8 @@ const resolveIn = (root, path) => (isAbsolute(path) ? path : join(root, path));
  * @param {boolean} [options.sourcemap]
  * @param {boolean} [options.minify]
  * @param {{ build: Function, context: Function }} [options.esbuild] injected for tests
+ * @param {() => Promise<any>} [options.loadEsbuild] how esbuild is resolved; injected so
+ *   the not-installed path can be tested on a machine where it *is* installed
  */
 export async function buildDesktop(options) {
   // Imported here rather than at module scope so that this file can be read,
@@ -69,9 +71,15 @@ export async function buildDesktop(options) {
   // the injection seam: the settings below are the whole point of this module
   // and they are worth a check, so the suite passes in a recorder rather than
   // leaving the one line that decides whether preloads run at all untested.
+  //
+  // `options.loadEsbuild` is a second, narrower seam, and it exists because the
+  // check for the missing-esbuild message used to assert an environment rather
+  // than a behaviour: it passed only while nothing in this workspace pulled
+  // esbuild in, and went green-then-red the day something did — having tested
+  // the message not at all in between.
   const esbuild =
     options.esbuild ??
-    (await import("esbuild").catch(() => {
+    (await (options.loadEsbuild ?? (() => import("esbuild")))().catch(() => {
       throw new Error(
         "@supa-media/desktop/build needs esbuild — add it as a devDependency of your desktop app (it is an optional peer here)",
       );

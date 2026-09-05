@@ -125,10 +125,19 @@ test("a missing root is an error before anything is deleted", async () => {
 });
 
 test("with no esbuild anywhere, it says so rather than half-building", async () => {
-  // This is the state this repository is actually in — esbuild is an optional
-  // peer and is not installed — so the message a person meets first is checked.
+  // The resolution is injected rather than left to the machine. This check
+  // originally called `buildDesktop({ root, main })` and relied on esbuild
+  // genuinely being absent from the workspace, which held until something else
+  // here depended on it — at which point the check started building for real
+  // and failed on a missing entry point, having never once exercised the
+  // message it is named after.
   await assert.rejects(
-    () => buildDesktop({ root, main: "src/main/index.js" }),
+    () =>
+      buildDesktop({
+        root,
+        main: "src/main/index.js",
+        loadEsbuild: () => Promise.reject(new Error("Cannot find package 'esbuild'")),
+      }),
     /needs esbuild/,
   );
 });
