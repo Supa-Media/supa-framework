@@ -1,5 +1,5 @@
-/** @type {import('expo/config').ExpoConfig} */
-module.exports = ({ config }) => ({
+{{APPLE_TARGETS_REQUIRE}}/** @type {import('expo/config').ExpoConfig} */
+module.exports = ({ config }) => {{APPLE_TARGETS_OPEN}}{
   ...config,
   name: "{{APP_NAME}}",
   slug: "{{APP_SLUG}}",
@@ -56,4 +56,4 @@ module.exports = ({ config }) => ({
   updates: {
     url: `https://u.expo.dev/{{EAS_PROJECT_ID}}`,
   },
-});
+}{{APPLE_TARGETS_CLOSE}};

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      A strict CSP, because this window renders text the app read off the
+      machine. No inline script, no remote anything — the bundle is the only
+      code that runs here.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+    />
+    <title>{{APP_NAME}}</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <h1>{{APP_NAME}}</h1>
+      <p data-status>Starting…</p>
+      <div class="row">
+        <button type="button" data-toggle>Start watching</button>
+        <button type="button" data-quit class="quiet">Quit</button>
+      </div>
+    </main>
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>

@@ -57,6 +57,10 @@ export interface FeaturesConfig {
   payments?: boolean;
   /** Enable analytics */
   analytics?: boolean;
+  /** Scaffold an Electron desktop app (`apps/desktop`, `@supa-media/desktop`) */
+  desktop?: boolean;
+  /** Scaffold watchOS / Live Activity targets (`@supa-media/apple-targets`) */
+  appleTargets?: boolean;
   /** Custom feature flags */
   [key: string]: boolean | undefined;
 }
