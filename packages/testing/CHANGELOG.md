@@ -1,5 +1,11 @@
 # @supa-media/testing
 
+## 1.0.2
+
+### Patch Changes
+
+- d8db019: Classify PostHog's current and legacy React Native replay bridges as native dependencies so pinned-runtime Expo apps must declare and gate them before shipping an OTA update.
+
 ## 1.0.1
 
 ### Patch Changes

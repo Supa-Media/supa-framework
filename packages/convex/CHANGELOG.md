@@ -1,5 +1,11 @@
 # @supa-media/convex
 
+## 1.3.0
+
+### Minor Changes
+
+- 626e40d: Add an exact-email, fixed-code auth provider for safely exercising production test accounts without enabling a global OTP bypass.
+
 ## 1.2.1
 
 ### Patch Changes
