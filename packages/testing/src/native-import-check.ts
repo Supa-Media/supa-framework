@@ -68,6 +68,8 @@ const NATIVE_PACKAGE_PATTERNS = [
   /^expo-/,
   /^@expo\//,
   /^@sentry\/react-native/,
+  /^@posthog\/react-native-plugin$/,
+  /^posthog-react-native-session-replay$/,
   /^@shopify\/flash-list/,
   /^@gorhom\/bottom-sheet/,
   /^@rnmapbox\//,
