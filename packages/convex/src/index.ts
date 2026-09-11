@@ -9,6 +9,7 @@
 export {
   createSupaAuth,
   MAGIC_LINK_PROVIDER_ID,
+  TEST_EMAIL_PROVIDER_ID,
   requireAuth,
   requireAuthId,
   getOptionalAuth,
@@ -18,6 +19,7 @@ export type {
   SupaAuthConfig,
   SupaAuthMagicLinkConfig,
   SupaAuthResendConfig,
+  SupaAuthTestEmailConfig,
   SupaAuthTwilioConfig,
 } from "./auth";
 
