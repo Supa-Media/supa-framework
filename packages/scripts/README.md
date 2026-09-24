@@ -209,9 +209,13 @@ supa-architecture-check --base origin/main   # also enforce the ratchet: no new
                                               # baseline entries, no inflated
                                               # baseline numbers, no raised
                                               # thresholds, no new `generated`
-                                              # entry (without --allow-generated-change),
+                                              # entry or `exclude` pattern
+                                              # (without --allow-generated-change),
                                               # and any file new-or-grown past
-                                              # `review` needs a `reviewed` entry
+                                              # `review` needs a `reviewed` entry.
+                                              # When the base ref has no config
+                                              # yet (the adopting change), only
+                                              # the local rules run.
 supa-architecture-check --report [--json]    # line-count stats (count, mean,
                                               # median, p95, max) per category
                                               # (tests / docs / source) and the
@@ -225,7 +229,8 @@ supa-architecture-check --init               # write a starter config: default
 supa-architecture-check --allow-generated-change --base origin/main
                                               # the one escape hatch, and only
                                               # for a deliberate PR that adds a
-                                              # `generated` entry and states why
+                                              # `generated` entry or `exclude`
+                                              # pattern and states why
                                               # — never pass this in CI
 ```
 

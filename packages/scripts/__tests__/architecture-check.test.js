@@ -314,3 +314,48 @@ test("a generated or baseline entry for a nonexistent path is an error", () => {
   assert.equal(result.status, 1);
   assert.match(result.stdout, /ghost\.js.*does not exist/);
 });
+
+test("a new exclude pattern fails under --base without the flag", () => {
+  const dir = makeRepo();
+  writeLines(dir, "src/big.js", 1500);
+  const cfg = DEFAULT_CONFIG();
+  cfg.baseline["src/big.js"] = 1500;
+  writeConfig(dir, cfg);
+  const base = commitAll(dir, "base");
+
+  const cfg2 = DEFAULT_CONFIG();
+  cfg2.exclude.push("src/**");
+  writeConfig(dir, cfg2);
+  writeLines(dir, "src/other.js", 3000);
+  commitAll(dir, "hide src from the check");
+
+  const withoutFlag = run(dir, ["--base", base]);
+  assert.equal(withoutFlag.status, 1);
+  assert.match(withoutFlag.stdout, /POLICY CHANGE: new exclude pattern/);
+
+  const withFlag = run(dir, ["--base", base, "--allow-generated-change"]);
+  assert.equal(withFlag.status, 0);
+});
+
+test("adopting the policy against a base with no config applies local rules only", () => {
+  const dir = makeRepo();
+  writeLines(dir, "big.js", 1500);
+  writeLines(dir, "ok.js", 10);
+  const base = commitAll(dir, "before adoption");
+
+  const cfg = DEFAULT_CONFIG();
+  cfg.baseline["big.js"] = 1500;
+  writeConfig(dir, cfg);
+  commitAll(dir, "adopt");
+
+  const adopted = run(dir, ["--base", base]);
+  assert.equal(adopted.status, 0, adopted.stdout + adopted.stderr);
+  assert.match(adopted.stdout, /adopting the policy/);
+
+  // Local rules still bite during adoption: an unbaselined oversized file fails.
+  writeLines(dir, "new-big.js", 1001);
+  commitAll(dir, "sneak one in");
+  const sneaked = run(dir, ["--base", base]);
+  assert.equal(sneaked.status, 1);
+  assert.match(sneaked.stdout, /new-big\.js.*no baseline entry/);
+});

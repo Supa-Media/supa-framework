@@ -86,7 +86,7 @@ Options:
   --base REF                Compare against this git ref's config and line counts (for PRs)
   --report                  Print line-count statistics instead of (in addition to) rule checking
   --json                    Machine-readable output
-  --allow-generated-change  Permit a new "generated" entry vs --base (never pass this in CI)
+  --allow-generated-change  Permit a new "generated" entry or "exclude" pattern vs --base (never pass this in CI)
   --init                    Write a starter architecture.config.json and exit
   -h, --help                Show this help message
 `);
@@ -181,7 +181,13 @@ function buildBaseContext({ cwd, ref, configPath, allowGeneratedChange }) {
     return result;
   }
 
-  return { cfg: baseCfg, thresholds: baseThresholds, getBaseLineCount, allowGeneratedChange };
+  return {
+    cfg: baseCfg,
+    thresholds: baseThresholds,
+    getBaseLineCount,
+    allowGeneratedChange,
+    bootstrap: baseRaw === null,
+  };
 }
 
 function runInit({ configPath, cwd, trackedFiles }) {

@@ -42,10 +42,21 @@ function evaluateRules({ cfg, thresholds, files, base }) {
   evaluateReviewedEntries({ cfg, thresholds, files, base, findings });
   evaluateInfoAndLongLines({ cfg, thresholds, files, findings });
 
-  if (base) {
+  if (base && base.bootstrap) {
+    // The base ref has no config at all: this change is the one that adopts
+    // the policy, so there is no earlier allowance to ratchet against. The
+    // local rules above still apply in full; every later change is compared
+    // against the config this one commits.
+    findings.push({
+      level: "info",
+      path: "architecture.config.json",
+      message: "no config at the base ref — adopting the policy; base comparisons start from this config",
+    });
+  } else if (base) {
     evaluateBaseBaselineDiff({ cfg, base, findings });
     evaluateBaseThresholdDiff({ thresholds, base, findings });
     evaluateBaseGeneratedDiff({ cfg, base, findings });
+    evaluateBaseExcludeDiff({ cfg, base, findings });
   }
 
   return findings;
@@ -237,6 +248,26 @@ function evaluateBaseGeneratedDiff({ cfg, base, findings }) {
       message: `POLICY CHANGE: new generated entry versus base ("${entry.reason}")`,
       action:
         "run locally with --allow-generated-change once you've deliberately reviewed why this file is generated (never pass that flag in CI)",
+    });
+  }
+}
+
+/**
+ * A new `exclude` pattern hides files from every rule, so it is the same
+ * policy change as a new `generated` entry and needs the same deliberate flag.
+ */
+function evaluateBaseExcludeDiff({ cfg, base, findings }) {
+  const basePatterns = new Set(base.cfg.exclude);
+  for (const pattern of cfg.exclude) {
+    if (basePatterns.has(pattern)) continue;
+    if (base.allowGeneratedChange) continue;
+
+    findings.push({
+      level: "error",
+      path: "architecture.config.json",
+      message: `POLICY CHANGE: new exclude pattern versus base ("${pattern}")`,
+      action:
+        "run locally with --allow-generated-change once you've deliberately reviewed why these files are exempt (never pass that flag in CI)",
     });
   }
 }
