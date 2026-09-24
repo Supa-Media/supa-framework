@@ -1,9 +1,9 @@
 # @supa-media/scripts
 
-**Five CI and release binaries for Supa apps:** moving secrets from 1Password to
-GitHub and on to Convex, generating OTA version strings, and bumping app
-versions. No library surface — these are executables you call from a workflow or
-a terminal.
+**Six CI and release binaries for Supa apps:** moving secrets from 1Password to
+GitHub and on to Convex, generating OTA version strings, bumping app versions,
+and guarding file size / architecture. No library surface — these are
+executables you call from a workflow or a terminal.
 
 ## Install
 
@@ -168,6 +168,83 @@ version that isn't strictly greater than the current one is refused.
 > compatible, that rewrite silently orphans every installed build. Check the
 > `app.config.js` diff, or bump `app.json` only.
 
+## `supa-architecture-check`
+
+*Runs in CI (via the reusable `ci.yml` workflow's `architecture-check` input),
+or locally.*
+
+A zero-dependency file-size / architecture guard. It scans every git-tracked
+file, counts physical lines, and enforces the thresholds in
+`architecture.config.json` at the repo root (`--config` to override).
+
+```json
+{
+  "thresholds": { "warn": 500, "review": 700, "max": 1000 },
+  "exclude": ["**/*.png"],
+  "generated": [
+    { "path": "pnpm-lock.yaml", "reason": "Package manager lockfile.", "command": "pnpm install" }
+  ],
+  "reviewed": { "path/to/file.ts": "Why this cohesive module earns 700-1000 lines" },
+  "baseline": { "apps/x/big.ts": 14515 }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `thresholds` | `warn` — informational; `review` — needs a `reviewed` reason; `max` — needs a `baseline` entry to exceed it. |
+| `exclude` | Extra glob patterns (`**`, `*`, `?` — no other syntax) skipped entirely. Binary files (a NUL byte in the first 8 KB) are always skipped. |
+| `generated` | Exact paths (no globs) fully exempt from every size/line-length check — lockfiles, bundles, anything machine-written. Each entry needs a non-empty `reason` and `command`. |
+| `reviewed` | A file between `review` and... well, above `review` at all, with a stated reason it's one cohesive thing. Stale once the file drops back to `<= review`. |
+| `baseline` | The one-way ratchet for legacy debt: a file over `max` may exist only if `baseline[path]` is >= its current line count. It can only be lowered (never removed by inflating the number) and, under `--base`, it can never gain a new key — see below. |
+
+Line counts match `wc -l` (the count of `\n` bytes) for a file that ends in a
+newline; a file whose last line has no trailing newline still counts that
+line — a deliberate, documented departure from raw `wc -l`, chosen because a
+missing trailing newline is exactly the kind of hand-edited file this tool
+exists to flag, not one to under-count.
+
+```
+supa-architecture-check                      # check the working tree
+supa-architecture-check --base origin/main   # also enforce the ratchet: no new
+                                              # baseline entries, no inflated
+                                              # baseline numbers, no raised
+                                              # thresholds, no new `generated`
+                                              # entry or `exclude` pattern
+                                              # (without --allow-generated-change),
+                                              # and any file new-or-grown past
+                                              # `review` needs a `reviewed` entry.
+                                              # When the base ref has no config
+                                              # yet (the adopting change), only
+                                              # the local rules run.
+supa-architecture-check --report [--json]    # line-count stats (count, mean,
+                                              # median, p95, max) per category
+                                              # (tests / docs / source) and the
+                                              # top 20 largest handwritten files
+supa-architecture-check --init               # write a starter config: default
+                                              # thresholds, present lockfiles as
+                                              # `generated`, and a `baseline`
+                                              # entry for every file already
+                                              # over `max` — for adopting the
+                                              # tool in an existing repo
+supa-architecture-check --allow-generated-change --base origin/main
+                                              # the one escape hatch, and only
+                                              # for a deliberate PR that adds a
+                                              # `generated` entry or `exclude`
+                                              # pattern and states why
+                                              # — never pass this in CI
+```
+
+`--json` (with either a normal run or `--report`) prints machine-readable
+output. In GitHub Actions (`GITHUB_ACTIONS=true`) findings also print as
+`::error file=…::` / `::warning file=…::` annotations.
+
+A `--base <ref>` run reads `architecture.config.json` and each flagged file's
+line count *as they were at that ref* (`git show`), so it can tell new debt
+from debt you already own. If the ref has no config at all, base is treated as
+an empty one. This is what the framework's own reusable `ci.yml` runs on pull
+requests (`--base origin/${{ github.base_ref }}`) and what it runs plain on
+`push` (no ratchet to compare against, just the current rules).
+
 ## Tests
 
 `__tests__/sync-1password-to-github.test.js` (`node --test`) drives the
@@ -175,8 +252,15 @@ version that isn't strictly greater than the current one is refused.
 the paths that are dangerous to get wrong: zero writes on a persistent read
 failure, pruning a definitively-absent optional secret, aborting on a missing
 required secret, rejecting a malformed allowlist before touching either CLI, and
-recovering from a transient failure. The other four binaries have no automated
-tests.
+recovering from a transient failure.
+
+`__tests__/architecture-check.test.js` (`node --test`) drives
+`supa-architecture-check` end to end against real temp git repos, covering the
+threshold, baseline-ratchet, `--base`, `generated`, `reviewed`, binary-skipping
+and `--init` behavior documented above.
+
+The three other binaries (`supa-sync-secrets`, `supa-generate-ota-version`,
+`supa-setup-secrets`) have no automated tests.
 
 ---
 

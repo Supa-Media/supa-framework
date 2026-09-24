@@ -238,6 +238,15 @@ my-app/
 - Native providers must have `.web.tsx` counterparts
 - Export signatures must match between `.native` and `.web` files
 
+### File Size / Architecture (enforced by CI)
+- `supa-architecture-check` (`@supa-media/scripts`, `pnpm architecture`) enforces
+  line-count thresholds on every git-tracked file: informational past 500,
+  needs a stated `reviewed` reason past 700, and a `max` of 1000 that only a
+  shrinking `baseline` entry may exceed — see `packages/scripts/README.md`
+  for the full config format and `--base` ratchet rules.
+- Wired into the reusable `ci.yml` via the `architecture-check` input, which
+  every scaffolded app opts into.
+
 ---
 
 ## `@supa-media/chat` — Chat Module (Deep Dive)

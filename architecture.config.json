@@ -1,0 +1,25 @@
+{
+  "thresholds": {
+    "warn": 500,
+    "review": 700,
+    "max": 1000
+  },
+  "exclude": [],
+  "generated": [
+    {
+      "path": "pnpm-lock.yaml",
+      "reason": "Package manager lockfile — machine-generated, not hand-authored.",
+      "command": "pnpm install"
+    }
+  ],
+  "reviewed": {
+    "docs/DESIGN.md": "The single design document for the whole framework; splitting it loses the one-document mental model it's meant to give a new reader.",
+    "packages/dev-assistant/src/functions/actions.ts": "Legacy debt tracked via baseline, not yet reviewed for a split.",
+    "packages/fleet-dashboard/src/styles.css": "Legacy debt tracked via baseline, not yet reviewed for a split."
+  },
+  "baseline": {
+    "docs/DESIGN.md": 1029,
+    "packages/dev-assistant/src/functions/actions.ts": 1035,
+    "packages/fleet-dashboard/src/styles.css": 1184
+  }
+}

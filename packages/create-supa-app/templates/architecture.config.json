@@ -1,0 +1,13 @@
+{
+  "thresholds": { "warn": 500, "review": 700, "max": 1000 },
+  "exclude": [],
+  "generated": [
+    {
+      "path": "pnpm-lock.yaml",
+      "reason": "Package manager lockfile — machine-generated, not hand-authored.",
+      "command": "pnpm install"
+    }
+  ],
+  "reviewed": {},
+  "baseline": {}
+}

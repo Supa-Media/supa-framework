@@ -60,3 +60,17 @@ jobs:
       - run: pnpm typecheck
 
       - run: pnpm test
+
+  architecture-check:
+    name: Architecture check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so --base can resolve and diff against the PR's base ref.
+          fetch-depth: 0
+
+      # Runs the tool straight from its source in this workspace (this IS
+      # @supa-media/scripts) rather than through `pnpm exec`, so this job
+      # needs no install step.
+      - run: node packages/scripts/src/architecture-check/cli.js --base origin/${{ github.base_ref }}
