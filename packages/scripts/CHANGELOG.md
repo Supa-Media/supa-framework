@@ -1,5 +1,14 @@
 # @supa-media/scripts
 
+## 1.2.1
+
+### Patch Changes
+
+- 027b071: `supa-architecture-check --base` now compares against the commit the branch
+  forked from (`git merge-base`), not the base branch's current tip. Against the
+  tip, a baseline entry that another merged change had removed read as one the
+  branch added, failing every open branch until it merged the base.
+
 ## 1.2.0
 
 ### Minor Changes
