@@ -205,7 +205,9 @@ exists to flag, not one to under-count.
 
 ```
 supa-architecture-check                      # check the working tree
-supa-architecture-check --base origin/main   # also enforce the ratchet: no new
+supa-architecture-check --base origin/main   # compare with where this branch forked
+                                              # from origin/main (git merge-base), and
+                                              # enforce the ratchet: no new
                                               # baseline entries, no inflated
                                               # baseline numbers, no raised
                                               # thresholds, no new `generated`
