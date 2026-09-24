@@ -138,7 +138,13 @@ function main() {
 
   let base = null;
   if (opts.base) {
-    base = buildBaseContext({ cwd, ref: opts.base, configPath, allowGeneratedChange: opts.allowGeneratedChange });
+    // Compare against where this branch forked from the base, not the base's
+    // current tip. Against the tip, a baseline entry the base has since
+    // removed (because another change shrank that file) reads as one this
+    // branch added, and every open branch fails until it merges the base.
+    // On a merge commit the two are the same commit.
+    const ref = git.mergeBase(cwd, opts.base) || opts.base;
+    base = buildBaseContext({ cwd, ref, configPath, allowGeneratedChange: opts.allowGeneratedChange });
   }
 
   const findings = [

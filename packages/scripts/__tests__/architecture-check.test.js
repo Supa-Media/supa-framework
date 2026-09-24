@@ -359,3 +359,42 @@ test("adopting the policy against a base with no config applies local rules only
   assert.equal(sneaked.status, 1);
   assert.match(sneaked.stdout, /new-big\.js.*no baseline entry/);
 });
+
+test("--base compares against the fork point, so a base that shrank a file since does not fail the branch", () => {
+  const dir = makeRepo();
+  writeLines(dir, "big.js", 1500);
+  writeLines(dir, "other.js", 1200);
+  const cfg = DEFAULT_CONFIG();
+  cfg.baseline["big.js"] = 1500;
+  cfg.baseline["other.js"] = 1200;
+  writeConfig(dir, cfg);
+  commitAll(dir, "base");
+  git(dir, ["branch", "-M", "main"]);
+
+  // A branch forks and does unrelated work.
+  git(dir, ["checkout", "-q", "-b", "feature"]);
+  writeLines(dir, "small.js", 10);
+  commitAll(dir, "feature work");
+
+  // Meanwhile main splits other.js and drops its baseline entry.
+  git(dir, ["checkout", "-q", "main"]);
+  writeLines(dir, "other.js", 400);
+  const cfgMain = DEFAULT_CONFIG();
+  cfgMain.baseline["big.js"] = 1500;
+  writeConfig(dir, cfgMain);
+  commitAll(dir, "split other.js on main");
+
+  git(dir, ["checkout", "-q", "feature"]);
+  const result = run(dir, ["--base", "main"]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+
+  // The ratchet still holds against the fork point: inflating an entry fails.
+  const cfgBad = DEFAULT_CONFIG();
+  cfgBad.baseline["big.js"] = 2000;
+  cfgBad.baseline["other.js"] = 1200;
+  writeConfig(dir, cfgBad);
+  commitAll(dir, "inflate");
+  const inflated = run(dir, ["--base", "main"]);
+  assert.equal(inflated.status, 1);
+  assert.match(inflated.stdout, /baseline allowance raised from 1500 to 2000/);
+});

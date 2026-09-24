@@ -57,4 +57,15 @@ function refExists(cwd, ref) {
   return result.ok;
 }
 
-module.exports = { listTrackedFiles, readFileAtRef, readJsonAtRef, refExists };
+/**
+ * The commit a branch forked from `ref`: `git merge-base <ref> HEAD`. Returns
+ * null when there is none (unrelated histories, a shallow clone that cannot
+ * see it).
+ */
+function mergeBase(cwd, ref) {
+  const result = run(cwd, ["merge-base", ref, "HEAD"]);
+  if (!result.ok) return null;
+  return result.stdout.trim() || null;
+}
+
+module.exports = { listTrackedFiles, readFileAtRef, readJsonAtRef, refExists, mergeBase };
