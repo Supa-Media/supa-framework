@@ -7,7 +7,8 @@
     "supa-sync-1password-to-github": "./src/sync-1password-to-github.sh",
     "supa-generate-ota-version": "./src/generate-ota-version.js",
     "supa-setup-secrets": "./src/setup-secrets.sh",
-    "supa-bump-version": "./src/bump-version.js"
+    "supa-bump-version": "./src/bump-version.js",
+    "supa-architecture-check": "./src/architecture-check/cli.js"
   },
   "scripts": {
     "test": "node --test",
@@ -15,7 +16,8 @@
     "sync-1password-to-github": "./src/sync-1password-to-github.sh",
     "setup-secrets": "./src/setup-secrets.sh",
     "generate-ota-version": "node ./src/generate-ota-version.js",
-    "bump-version": "node ./src/bump-version.js"
+    "bump-version": "node ./src/bump-version.js",
+    "architecture-check": "node ./src/architecture-check/cli.js"
   },
   "files": [
     "src/",
