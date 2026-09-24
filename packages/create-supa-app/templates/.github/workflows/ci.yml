@@ -12,4 +12,5 @@ jobs:
     with:
       app-slug: "{{APP_SLUG}}"
       strictness: "{{STRICTNESS}}"
+      architecture-check: true
     secrets: inherit

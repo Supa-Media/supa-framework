@@ -9,9 +9,11 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "architecture": "supa-architecture-check",
     "setup:secrets": "op inject -i .env.example -o .env.local"
   },
   "devDependencies": {
+    "@supa-media/scripts": "^1.1.1",
     "convex": "^1.31.3",
     "turbo": "^2.0.0",
     "typescript": "~5.9.2"

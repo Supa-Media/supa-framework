@@ -108,6 +108,10 @@ on:
         description: "Whether lint failures should be non-blocking"
         type: boolean
         default: true
+      architecture-check:
+        description: "Whether to run supa-architecture-check (file-size / architecture guard)"
+        type: boolean
+        default: false
     secrets:
       packages-token:
         description: "Token for installing private @supa-media/* packages from GitHub Packages, for callers whose default GITHUB_TOKEN can't read them (e.g. cross-org). Falls back to the workflow's own token."
@@ -363,10 +367,55 @@ jobs:
           path: test-results/
           retention-days: 7
 
+  architecture-check:
+    name: Architecture check
+    runs-on: ubuntu-latest
+    if: ${{ inputs.architecture-check }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history so `--base origin/${{ github.base_ref }}` on a
+          # pull_request can resolve the base ref and diff against it.
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version || null }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          # `secrets.packages-token` lets cross-org callers supply a token that can
+          # read this org's packages; otherwise `github.token` (not
+          # `secrets.GITHUB_TOKEN`, which is empty inside a reusable workflow)
+          # authenticates pnpm to GitHub Packages (@supa-media/*, private).
+          GITHUB_TOKEN: ${{ secrets.packages-token || github.token }}
+
+      # On a pull_request, --base enforces the ratchet against the branch
+      # being merged into (no new/inflated baseline entries, no raised
+      # thresholds, no new `generated` entry, review-worthy new files need a
+      # reason). On push (a merge to the base branch itself) there is no
+      # meaningful base to diff against, so it just checks the current tree.
+      - name: Run architecture check (pull_request)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: pnpm exec supa-architecture-check --base origin/${{ github.base_ref }}
+
+      - name: Run architecture check (push)
+        if: ${{ github.event_name != 'pull_request' }}
+        run: pnpm exec supa-architecture-check
+
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [detect-changes, lint, test-shared, test-mobile, test-convex, test-e2e]
+    needs: [detect-changes, lint, test-shared, test-mobile, test-convex, test-e2e, architecture-check]
     if: always()
     steps:
       - name: Check test results
@@ -384,7 +433,7 @@ jobs:
 
           # Skipped jobs (due to no relevant changes or disabled features) count as passing
           failed=false
-          for job in lint test-shared test-mobile test-convex test-e2e; do
+          for job in lint test-shared test-mobile test-convex test-e2e architecture-check; do
             result=""
             case "$job" in
               lint) result="${{ needs.lint.result }}" ;;
@@ -392,6 +441,7 @@ jobs:
               test-mobile) result="${{ needs.test-mobile.result }}" ;;
               test-convex) result="${{ needs.test-convex.result }}" ;;
               test-e2e) result="${{ needs.test-e2e.result }}" ;;
+              architecture-check) result="${{ needs.architecture-check.result }}" ;;
             esac
 
             if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
