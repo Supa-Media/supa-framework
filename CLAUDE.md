@@ -52,3 +52,7 @@ the reusable GitHub workflows. For what each package does and the overall design
   owns the merge, and "they all reported back" is the middle of the task.
 - Prefer readable over clever; remove dead code rather than deprecating it; don't
   over-engineer beyond what's asked.
+- **File size is enforced.** Run `pnpm architecture` (`supa-architecture-check`,
+  `@supa-media/scripts`) before calling work done — extract a cohesive module
+  before a file crosses 500 lines, never exceed 1,000, and see
+  `packages/scripts/README.md` for the `reviewed`/`baseline` escape hatches.

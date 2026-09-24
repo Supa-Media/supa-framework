@@ -204,6 +204,22 @@ If you're asked to do X and realize Y and Z also need fixing:
 - Classify all native deps in `apps/mobile/native-deps.json` as `core` or `gated`
 - CI enforces this via `@supa-media/native-safety` — static imports of gated deps fail
 
+### File Size and Architecture
+
+- **Check a file's size before adding to it.** If the change would push it
+  over 500 lines, extract a cohesive responsibility first instead of growing
+  it further.
+- **Never exceed 1,000 lines.** A file at 700+ lines needs a `reviewed`
+  reason in `architecture.config.json` explaining why it's one cohesive
+  module rather than several.
+- **`baseline` entries only shrink.** They exist for legacy debt already in
+  the repo, not as a way to check in a new oversized file — lower the number
+  when you cut lines, never raise it to cover growth.
+- Run `pnpm architecture` before calling work done.
+- **Don't game the count** — no minifying, no collapsing lines, no code
+  hidden in strings, no splitting one file into numbered fragments
+  (`foo.1.ts`, `foo.2.ts`) just to dodge the threshold.
+
 ### Prefer Framework Features Over Custom Solutions
 
 - **Always prefer built-in framework features** over custom implementations
