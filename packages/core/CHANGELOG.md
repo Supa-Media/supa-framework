@@ -1,5 +1,11 @@
 # @supa-media/core
 
+## 1.1.0
+
+### Minor Changes
+
+- e158587: `SupaConvexProvider` accepts `unsavedChangesWarning` and forwards it to `ConvexReactClient`. Convex's browser client prompts "Changes you made may not be saved" on reload whenever any mutation or action is in flight, including read-only actions; an app with its own unsaved-work guard can now pass `false` to stop that false alarm. Unset keeps Convex's default.
+
 ## 1.0.3
 
 ### Patch Changes
