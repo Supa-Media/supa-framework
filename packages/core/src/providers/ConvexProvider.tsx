@@ -63,15 +63,33 @@ export interface SupaConvexProviderProps {
    * `() => !window.location.pathname.startsWith("/connect/")`.
    */
   shouldHandleCode?: boolean | (() => boolean);
+  /**
+   * Whether the Convex client arms the browser's "Changes you made may not be
+   * saved" prompt. Forwarded to `ConvexReactClient`; left unset, Convex's own
+   * default applies (on whenever `window` exists).
+   *
+   * Convex raises that prompt whenever **any** mutation or action is still
+   * waiting on the server — including an action that only reads. An app that
+   * reads through actions, or keeps one in flight for long, gets the prompt on
+   * almost every reload while nothing is unsaved. Pass `false` when the app
+   * owns its own unsaved-work guard, so the prompt means what it says.
+   *
+   * Read once, when the client is created: the client is a module singleton,
+   * and changing this on a later render does not rebuild it.
+   */
+  unsavedChangesWarning?: boolean;
 }
 
 // Module-level client singleton, lazily initialized
 let _client: ConvexReactClient | null = null;
 let _clientUrl: string | null = null;
 
-function getClient(url: string): ConvexReactClient {
+function getClient(url: string, unsavedChangesWarning?: boolean): ConvexReactClient {
   if (_client && _clientUrl === url) return _client;
-  _client = new ConvexReactClient(url);
+  _client = new ConvexReactClient(
+    url,
+    unsavedChangesWarning === undefined ? undefined : { unsavedChangesWarning },
+  );
   _clientUrl = url;
   return _client;
 }
@@ -144,6 +162,7 @@ export function SupaConvexProvider({
   url,
   storage,
   shouldHandleCode,
+  unsavedChangesWarning,
 }: SupaConvexProviderProps) {
   const convexUrl = url ?? process.env.EXPO_PUBLIC_CONVEX_URL;
 
@@ -166,7 +185,7 @@ export function SupaConvexProvider({
     return <ConfigErrorScreen message={message} />;
   }
 
-  const client = getClient(convexUrl);
+  const client = getClient(convexUrl, unsavedChangesWarning);
 
   /**
    * After a magic link callback, remove the `code` param from the URL
