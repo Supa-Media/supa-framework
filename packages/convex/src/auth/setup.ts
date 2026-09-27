@@ -65,6 +65,16 @@ export interface SupaAuthTestEmailConfig {
   email: string;
   /** Fixed verification code. Defaults to `000000`. */
   code?: string;
+  /**
+   * Provider id the client signs in with. Defaults to `TEST_EMAIL_PROVIDER_ID`.
+   *
+   * Needed only when an app has more than one fixed-code account, because
+   * `@convex-dev/auth` mints a provider's code without knowing the address,
+   * so each account needs a provider, and so an id, of its own. Must start
+   * with `TEST_EMAIL_PROVIDER_ID`, which keeps it clear of the customer
+   * `email` provider whose `authorize` it must never share.
+   */
+  id?: string;
 }
 
 export interface SupaAuthMagicLinkConfig {
@@ -111,11 +121,13 @@ export interface SupaAuthConfig {
    */
   magicLink?: SupaAuthMagicLinkConfig;
   /**
-   * Register a fixed-code provider for one exact test account.
+   * Register a fixed-code provider for one exact test account, or one
+   * provider per account when given a list (each with its own `id` and code;
+   * an app store or connector-directory reviewer is the usual second one).
    * Unlike `DEV_OTP_BYPASS`, this may be used in production because every
    * other email address is refused by a distinct provider.
    */
-  testEmail?: SupaAuthTestEmailConfig;
+  testEmail?: SupaAuthTestEmailConfig | SupaAuthTestEmailConfig[];
   /** Resend email OTP configuration. */
   resend?: SupaAuthResendConfig;
   /** Twilio phone OTP configuration. */
@@ -213,6 +225,10 @@ function createEmailOtp(config: SupaAuthConfig) {
 export function createTestEmailOtp(config: SupaAuthTestEmailConfig) {
   const email = config.email.trim().toLowerCase();
   const code = config.code ?? DEV_BYPASS_CODE;
+  const id = config.id ?? TEST_EMAIL_PROVIDER_ID;
+  if (!/^test-email(-[a-z0-9]+)*$/.test(id)) {
+    throw new Error(`testEmail.id must be "${TEST_EMAIL_PROVIDER_ID}" or start with "${TEST_EMAIL_PROVIDER_ID}-"`);
+  }
   if (!/^\d{6}$/.test(code)) {
     throw new Error("testEmail.code must be exactly six digits");
   }
@@ -231,7 +247,7 @@ export function createTestEmailOtp(config: SupaAuthTestEmailConfig) {
   });
   return {
     ...provider,
-    id: TEST_EMAIL_PROVIDER_ID,
+    id,
     authorize: async (params: Record<string, unknown>, account: { providerAccountId: string }) => {
       if (
         typeof params.email !== "string" ||
@@ -242,6 +258,23 @@ export function createTestEmailOtp(config: SupaAuthTestEmailConfig) {
       }
     },
   };
+}
+
+/** One fixed-code provider per configured account, refusing a repeated id or address. */
+export function createTestEmailOtps(
+  config: SupaAuthTestEmailConfig | SupaAuthTestEmailConfig[] | undefined,
+) {
+  const configs = config === undefined ? [] : Array.isArray(config) ? config : [config];
+  const providers = configs.map(createTestEmailOtp);
+  const ids = new Set(providers.map((provider) => provider.id));
+  const emails = new Set(configs.map((entry) => entry.email.trim().toLowerCase()));
+  if (ids.size !== providers.length) {
+    throw new Error("testEmail entries must each have their own id");
+  }
+  if (emails.size !== configs.length) {
+    throw new Error("testEmail entries must each have their own email");
+  }
+  return providers;
 }
 
 /**
@@ -458,9 +491,7 @@ export function createSupaAuth(config: SupaAuthConfig = {}) {
     ...(methods.includes("email") && config.magicLink !== undefined
       ? [createMagicLink(config)]
       : []),
-    ...(methods.includes("email") && config.testEmail !== undefined
-      ? [createTestEmailOtp(config.testEmail)]
-      : []),
+    ...(methods.includes("email") ? createTestEmailOtps(config.testEmail) : []),
     ...(methods.includes("phone") ? [createPhoneOtp(config)] : []),
   ];
 
