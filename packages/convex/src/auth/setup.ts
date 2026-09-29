@@ -25,9 +25,11 @@
 import { convexAuth } from "@convex-dev/auth/server";
 import { Email } from "@convex-dev/auth/providers/Email";
 import { Phone } from "@convex-dev/auth/providers/Phone";
-import type { GenericId } from "convex/values";
-
+import { assertMayReceiveEmailCode, type SupaAuthAdmission } from "./admission";
 import { createTestEmailOtps, type SupaAuthTestEmailConfig } from "./testEmail";
+import { userCallback } from "./users";
+
+export { NOT_ADMITTED_MESSAGE, type SupaAuthAdmission } from "./admission";
 
 export {
   createTestEmailOtp,
@@ -117,6 +119,11 @@ export interface SupaAuthConfig {
    * other email address is refused by a distinct provider.
    */
   testEmail?: SupaAuthTestEmailConfig | SupaAuthTestEmailConfig[];
+  /**
+   * Make the app invite-only: who may be mailed a sign-in code, and who may
+   * get a brand-new account. Omitted, anybody may sign up. See `admission.ts`.
+   */
+  admission?: SupaAuthAdmission;
   /** Resend email OTP configuration. */
   resend?: SupaAuthResendConfig;
   /** Twilio phone OTP configuration. */
@@ -165,7 +172,10 @@ function createEmailOtp(config: SupaAuthConfig) {
   return Email({
     maxAge: 10 * 60, // 10 minutes
     generateVerificationToken: createOtpGenerator(config.productionIdentifier),
-    sendVerificationRequest: async ({ identifier: email, token }) => {
+    // `@convex-dev/auth` passes its action ctx as a second argument that the
+    // Auth.js type does not declare; the admission check needs it to ask.
+    sendVerificationRequest: async ({ identifier: email, token }, ctx?: unknown) => {
+      await assertMayReceiveEmailCode(config.admission, ctx, email);
       // Dynamic import of resend — only loaded when RESEND_API_KEY is set
       const apiKey = process.env.RESEND_API_KEY;
 
@@ -430,86 +440,6 @@ export function createSupaAuth(config: SupaAuthConfig = {}) {
 
   return convexAuth({
     providers,
-    callbacks: {
-      async createOrUpdateUser(ctx, { existingUserId, type, profile }) {
-        // Returning user — auth account already exists
-        if (existingUserId !== null) {
-          const existingUser = await ctx.db.get(existingUserId);
-          if (existingUser) {
-            const updateData: Record<string, unknown> = {};
-            if (type === "phone" || type === "verification") {
-              updateData.phoneVerificationTime = Date.now();
-            }
-            if (type === "email" || type === "verification") {
-              updateData.emailVerificationTime = Date.now();
-            }
-            if (profile.phone) updateData.phone = profile.phone;
-            if (profile.email) updateData.email = profile.email;
-            if (profile.name) updateData.name = profile.name;
-
-            if (Object.keys(updateData).length > 0) {
-              await ctx.db.patch(existingUserId, updateData);
-            }
-            return existingUserId;
-          }
-        }
-
-        // New auth account — try to link to existing user by phone
-        if (type === "phone" && typeof profile.phone === "string") {
-          const phone = profile.phone;
-          const existingUser = await ctx.db
-            .query("users")
-            .filter((q) => q.eq(q.field("phone"), phone))
-            .first();
-
-          if (existingUser) {
-            await ctx.db.patch(existingUser._id, {
-              phoneVerificationTime: Date.now(),
-            });
-            return existingUser._id;
-          }
-        }
-
-        // New auth account — try to link to existing user by email
-        if (type === "email" && typeof profile.email === "string") {
-          const email = profile.email;
-          const existingUser = await ctx.db
-            .query("users")
-            .filter((q) => q.eq(q.field("email"), email))
-            .first();
-
-          if (existingUser) {
-            await ctx.db.patch(existingUser._id, {
-              emailVerificationTime: Date.now(),
-            });
-            return existingUser._id;
-          }
-        }
-
-        // No existing user — create a new one
-        const userData: Record<string, unknown> = {};
-        if (profile.email) userData.email = profile.email;
-        if (profile.phone) userData.phone = profile.phone;
-        if (profile.name) userData.name = profile.name;
-        if (profile.image) userData.image = profile.image;
-        if (profile.emailVerified || type === "email") {
-          userData.emailVerificationTime = Date.now();
-        }
-        if (profile.phoneVerified || type === "phone") {
-          userData.phoneVerificationTime = Date.now();
-        }
-        userData.isActive = true;
-        userData.createdAt = Date.now();
-
-        const userId = await ctx.db.insert(
-          "users",
-          userData as Record<string, unknown> & {
-            email?: string;
-            phone?: string;
-          },
-        );
-        return userId as GenericId<"users">;
-      },
-    },
+    callbacks: { createOrUpdateUser: userCallback(config.admission) },
   });
 }
