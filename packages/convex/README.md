@@ -193,6 +193,7 @@ function createSupaAuth(config?: {
   appName?: string;
   methods?: Array<"email" | "phone">;      // default ["email", "phone"]
   magicLink?: SupaAuthMagicLinkConfig;     // off unless present
+  admission?: SupaAuthAdmission;           // invite-only; open sign-up unless present
   resend?: { fromAddress: string; emailSubject?: (code) => string;
              renderHtml?: (p: { code, email }) => string };
   twilio?: { tokenBridgePath?: string };   // default "/api/internal/phone-token"
@@ -243,6 +244,26 @@ production login code.
 > `signIn` with it. Neither piece is in this package. If `CONVEX_SITE_URL` or
 > `PHONE_TOKEN_BRIDGE_SECRET` is unset, the provider logs the raw token to the
 > console and returns, so local dev degrades rather than breaks.
+
+
+### Invite-only sign-in (`admission`)
+
+```ts
+createSupaAuth({
+  admission: {
+    canReceiveEmailCode: (ctx, email) => ctx.runQuery(internal.waitlist.isAdmitted, { email }),
+    canCreateUser: (ctx, { email }) => isAdmitted(ctx.db, email),
+  },
+});
+```
+
+`canReceiveEmailCode` runs before a sign-in code is mailed; refusing means no
+mail goes out and `signIn` throws. `canCreateUser` runs before a user row is
+created for somebody with no account, whichever provider they came through, and
+is never asked for an account that already exists. Both fail closed: a hook
+that throws refuses. Ask your own "is this address let in?" before calling
+`signIn` and draw the answer yourself; the error message is redacted in
+production.
 
 ### Magic link (opt-in)
 

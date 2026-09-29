@@ -1,0 +1,122 @@
+/**
+ * Invite-only admission. What matters is that both hooks fail closed and that
+ * a returning account never reaches the new-user check.
+ */
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  assertMayCreateUser,
+  assertMayReceiveEmailCode,
+  NOT_ADMITTED_MESSAGE,
+} from "../src/auth/admission";
+import { userCallback } from "../src/auth/users";
+
+const ctx = {} as never;
+
+test("no admission config lets everybody through", async () => {
+  await assertMayReceiveEmailCode(undefined, ctx, "a@example.com");
+  await assertMayCreateUser(undefined, ctx, { provider: "email", email: "a@example.com" });
+});
+
+test("a refused address is not mailed a code", async () => {
+  const admission = { canReceiveEmailCode: async (_: unknown, email: string) => email === "in@example.com" };
+  await assertMayReceiveEmailCode(admission, ctx, "in@example.com");
+  await assert.rejects(
+    () => assertMayReceiveEmailCode(admission, ctx, "out@example.com"),
+    new RegExp(NOT_ADMITTED_MESSAGE),
+  );
+});
+
+test("the code check fails closed without a ctx or when the hook throws", async () => {
+  const yes = { canReceiveEmailCode: async () => true };
+  await assert.rejects(() => assertMayReceiveEmailCode(yes, undefined, "in@example.com"));
+  const broken = {
+    canReceiveEmailCode: async () => {
+      throw new Error("database down");
+    },
+  };
+  await assert.rejects(() => assertMayReceiveEmailCode(broken, ctx, "in@example.com"));
+  const truthy = { canReceiveEmailCode: async () => "yes" as unknown as boolean };
+  await assert.rejects(() => assertMayReceiveEmailCode(truthy, ctx, "in@example.com"));
+});
+
+/** A db that holds one user, and records inserts. */
+function fakeCtx(existing: { _id: string; email?: string } | null) {
+  const inserted: unknown[] = [];
+  const db = {
+    get: async (id: string) => (existing && existing._id === id ? existing : null),
+    patch: async () => {},
+    insert: async (_table: string, row: unknown) => {
+      inserted.push(row);
+      return "new-user";
+    },
+    query: () => ({
+      filter: (f: (q: unknown) => unknown) => {
+        let wanted: unknown;
+        f({ eq: (_: unknown, v: unknown) => ((wanted = v), true), field: (n: string) => n });
+        return { first: async () => (existing && existing.email === wanted ? existing : null) };
+      },
+    }),
+  };
+  return { ctx: { db } as never, inserted };
+}
+
+const refuseAll = { canCreateUser: async () => false };
+const emailProvider = { id: "email" } as never;
+
+test("a stranger is refused a new account and nothing is written", async () => {
+  const { ctx: c, inserted } = fakeCtx(null);
+  await assert.rejects(
+    () =>
+      userCallback(refuseAll)(c, {
+        existingUserId: null,
+        type: "email",
+        provider: emailProvider,
+        profile: { email: "out@example.com" },
+      }),
+    new RegExp(NOT_ADMITTED_MESSAGE),
+  );
+  assert.equal(inserted.length, 0);
+});
+
+test("a returning account is never asked", async () => {
+  const { ctx: c } = fakeCtx({ _id: "u1", email: "old@example.com" });
+  const id = await userCallback(refuseAll)(c, {
+    existingUserId: "u1" as never,
+    type: "email",
+    provider: emailProvider,
+    profile: { email: "old@example.com" },
+  });
+  assert.equal(id, "u1");
+});
+
+test("a new sign-in method for an existing user's email links instead of asking", async () => {
+  const { ctx: c } = fakeCtx({ _id: "u1", email: "old@example.com" });
+  const id = await userCallback(refuseAll)(c, {
+    existingUserId: null,
+    type: "email",
+    provider: emailProvider,
+    profile: { email: "old@example.com" },
+  });
+  assert.equal(id, "u1");
+});
+
+test("the new-user check sees the provider id and the address", async () => {
+  const seen: unknown[] = [];
+  const admission = {
+    canCreateUser: async (_: unknown, who: unknown) => {
+      seen.push(who);
+      return true;
+    },
+  };
+  const { ctx: c, inserted } = fakeCtx(null);
+  await userCallback(admission)(c, {
+    existingUserId: null,
+    type: "email",
+    provider: { id: "magic-link" } as never,
+    profile: { email: "in@example.com" },
+  });
+  assert.deepEqual(seen, [{ provider: "magic-link", email: "in@example.com" }]);
+  assert.equal(inserted.length, 1);
+});
