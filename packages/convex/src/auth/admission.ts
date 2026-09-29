@@ -24,8 +24,8 @@
  * are what makes that answer binding rather than advisory.
  */
 import type {
+  AnyDataModel,
   GenericActionCtx,
-  GenericDataModel,
   GenericMutationCtx,
 } from "convex/server";
 
@@ -35,7 +35,7 @@ export interface SupaAuthAdmission {
    * received it; normalize it the same way the app stores addresses.
    */
   canReceiveEmailCode?: (
-    ctx: GenericActionCtx<GenericDataModel>,
+    ctx: GenericActionCtx<AnyDataModel>,
     email: string,
   ) => Promise<boolean>;
   /**
@@ -43,7 +43,7 @@ export interface SupaAuthAdmission {
    * the auth provider's id (`"email"`, `"magic-link"`, `"test-email"`, …).
    */
   canCreateUser?: (
-    ctx: GenericMutationCtx<GenericDataModel>,
+    ctx: GenericMutationCtx<AnyDataModel>,
     who: { provider: string; email?: string; phone?: string },
   ) => Promise<boolean>;
 }
@@ -71,7 +71,7 @@ export async function assertMayReceiveEmailCode(
     ctx !== undefined &&
     ctx !== null &&
     (await allowed(() =>
-      check(ctx as GenericActionCtx<GenericDataModel>, email),
+      check(ctx as GenericActionCtx<AnyDataModel>, email),
     ));
   if (!ok) throw new Error(NOT_ADMITTED_MESSAGE);
 }
@@ -79,7 +79,7 @@ export async function assertMayReceiveEmailCode(
 /** Throws unless `admission` lets this person have a new account. */
 export async function assertMayCreateUser(
   admission: SupaAuthAdmission | undefined,
-  ctx: GenericMutationCtx<GenericDataModel>,
+  ctx: GenericMutationCtx<AnyDataModel>,
   who: { provider: string; email?: string; phone?: string },
 ): Promise<void> {
   const check = admission?.canCreateUser;
