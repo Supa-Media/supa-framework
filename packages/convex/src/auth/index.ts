@@ -11,6 +11,7 @@ export type {
   SupaAuthResendConfig,
   SupaAuthTestEmailConfig,
   SupaAuthTwilioConfig,
+  SupaAuthUserCreated,
 } from "./setup";
 export {
   requireAuth,

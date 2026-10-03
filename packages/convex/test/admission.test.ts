@@ -120,3 +120,65 @@ test("the new-user check sees the provider id and the address", async () => {
   assert.deepEqual(seen, [{ provider: "magic-link", email: "in@example.com" }]);
   assert.equal(inserted.length, 1);
 });
+
+test("onUserCreated runs once, after the insert, with the new id and who it is", async () => {
+  const calls: unknown[] = [];
+  const { ctx: c, inserted } = fakeCtx(null);
+  const onUserCreated = async (_: unknown, created: unknown) => {
+    // The row is already written when the hook runs, so it can read it.
+    assert.equal(inserted.length, 1);
+    calls.push(created);
+  };
+  await userCallback(undefined, onUserCreated)(c, {
+    existingUserId: null,
+    type: "email",
+    provider: { id: "magic-link" } as never,
+    profile: { email: "in@example.com" },
+  });
+  assert.deepEqual(calls, [{ userId: "new-user", provider: "magic-link", email: "in@example.com" }]);
+});
+
+test("onUserCreated never runs for a returning account, a linked one, or a refusal", async () => {
+  const calls: unknown[] = [];
+  const onUserCreated = async (_: unknown, created: unknown) => {
+    calls.push(created);
+  };
+  const returning = fakeCtx({ _id: "u1", email: "old@example.com" });
+  await userCallback(undefined, onUserCreated)(returning.ctx, {
+    existingUserId: "u1" as never,
+    type: "email",
+    provider: emailProvider,
+    profile: { email: "old@example.com" },
+  });
+  await userCallback(undefined, onUserCreated)(returning.ctx, {
+    existingUserId: null,
+    type: "email",
+    provider: emailProvider,
+    profile: { email: "old@example.com" },
+  });
+  await assert.rejects(() =>
+    userCallback(refuseAll, onUserCreated)(fakeCtx(null).ctx, {
+      existingUserId: null,
+      type: "email",
+      provider: emailProvider,
+      profile: { email: "out@example.com" },
+    }),
+  );
+  assert.deepEqual(calls, []);
+});
+
+test("a throwing onUserCreated fails the sign-in, so its writes and the user roll back together", async () => {
+  const { ctx: c } = fakeCtx(null);
+  await assert.rejects(
+    () =>
+      userCallback(undefined, async () => {
+        throw new Error("hook broke");
+      })(c, {
+        existingUserId: null,
+        type: "email",
+        provider: emailProvider,
+        profile: { email: "in@example.com" },
+      }),
+    /hook broke/,
+  );
+});

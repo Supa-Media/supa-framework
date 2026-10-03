@@ -27,9 +27,10 @@ import { Email } from "@convex-dev/auth/providers/Email";
 import { Phone } from "@convex-dev/auth/providers/Phone";
 import { assertMayReceiveEmailCode, type SupaAuthAdmission } from "./admission";
 import { createTestEmailOtps, type SupaAuthTestEmailConfig } from "./testEmail";
-import { userCallback } from "./users";
+import { userCallback, type SupaAuthUserCreated } from "./users";
 
 export { NOT_ADMITTED_MESSAGE, type SupaAuthAdmission } from "./admission";
+export type { SupaAuthUserCreated } from "./users";
 
 export {
   createTestEmailOtp,
@@ -124,6 +125,15 @@ export interface SupaAuthConfig {
    * get a brand-new account. Omitted, anybody may sign up. See `admission.ts`.
    */
   admission?: SupaAuthAdmission;
+  /**
+   * Called once for each brand-new user row, never for a returning account or
+   * a new sign-in method linked to an existing one. Runs inside the sign-in
+   * mutation, after the insert: what it writes or schedules commits only with
+   * the account, and a hook that throws fails the sign-in. Keep it to quick
+   * writes and `ctx.scheduler` — a welcome email or a staff alert belongs in a
+   * scheduled action, not here.
+   */
+  onUserCreated?: SupaAuthUserCreated;
   /** Resend email OTP configuration. */
   resend?: SupaAuthResendConfig;
   /** Twilio phone OTP configuration. */
@@ -440,6 +450,6 @@ export function createSupaAuth(config: SupaAuthConfig = {}) {
 
   return convexAuth({
     providers,
-    callbacks: { createOrUpdateUser: userCallback(config.admission) },
+    callbacks: { createOrUpdateUser: userCallback(config.admission, config.onUserCreated) },
   });
 }
