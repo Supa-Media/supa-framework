@@ -194,6 +194,7 @@ function createSupaAuth(config?: {
   methods?: Array<"email" | "phone">;      // default ["email", "phone"]
   magicLink?: SupaAuthMagicLinkConfig;     // off unless present
   admission?: SupaAuthAdmission;           // invite-only; open sign-up unless present
+  onUserCreated?: SupaAuthUserCreated;     // once per brand-new user, same transaction
   resend?: { fromAddress: string; emailSubject?: (code) => string;
              renderHtml?: (p: { code, email }) => string };
   twilio?: { tokenBridgePath?: string };   // default "/api/internal/phone-token"
@@ -264,6 +265,22 @@ is never asked for an account that already exists. Both fail closed: a hook
 that throws refuses. Ask your own "is this address let in?" before calling
 `signIn` and draw the answer yourself; the error message is redacted in
 production.
+
+### New accounts (`onUserCreated`)
+
+```ts
+createSupaAuth({
+  onUserCreated: async (ctx, { userId, email }) => {
+    await ctx.scheduler.runAfter(0, internal.alerts.newAccount, { userId });
+  },
+});
+```
+
+Runs once for each brand-new user row, after the insert and inside the same
+mutation, so whatever it writes or schedules commits only with the account. A
+returning account, or a new sign-in method linked to an existing user, never
+calls it. A hook that throws fails the sign-in, so keep it to quick writes and
+`ctx.scheduler`.
 
 ### Magic link (opt-in)
 

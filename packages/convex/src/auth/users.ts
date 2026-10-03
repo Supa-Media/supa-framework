@@ -6,18 +6,29 @@
  * who signs in two ways is one user. Only when nobody matches is a user row
  * created — and that is the one place `admission.canCreateUser` is asked, so
  * an invite-only app can refuse a stranger without ever locking out somebody
- * who already has an account.
+ * who already has an account. It is also the one place `onUserCreated` runs,
+ * so an app hears about each brand-new account exactly once.
  */
+import type { AnyDataModel, GenericMutationCtx } from "convex/server";
 import type { GenericId } from "convex/values";
 import type { convexAuth } from "@convex-dev/auth/server";
 
 import { assertMayCreateUser, type SupaAuthAdmission } from "./admission";
 
+/** See `SupaAuthConfig.onUserCreated`. */
+export type SupaAuthUserCreated = (
+  ctx: GenericMutationCtx<AnyDataModel>,
+  created: { userId: GenericId<"users">; provider: string; email?: string; phone?: string },
+) => Promise<void>;
+
 type Handler = NonNullable<
   NonNullable<Parameters<typeof convexAuth>[0]["callbacks"]>["createOrUpdateUser"]
 >;
 
-export function userCallback(admission: SupaAuthAdmission | undefined): Handler {
+export function userCallback(
+  admission: SupaAuthAdmission | undefined,
+  onUserCreated?: SupaAuthUserCreated,
+): Handler {
   async function createOrUpdateUser(
     ctx: Parameters<Handler>[0],
     { existingUserId, type, provider, profile }: Parameters<Handler>[1],
@@ -106,6 +117,16 @@ export function userCallback(admission: SupaAuthAdmission | undefined): Handler 
         phone?: string;
       },
     );
+    // Same transaction as the insert: a hook that throws undoes the account,
+    // and anything it writes or schedules lands only if the account does.
+    if (onUserCreated !== undefined) {
+      await onUserCreated(ctx, {
+        userId: userId as GenericId<"users">,
+        provider: provider.id,
+        ...(typeof profile.email === "string" ? { email: profile.email } : {}),
+        ...(typeof profile.phone === "string" ? { phone: profile.phone } : {}),
+      });
+    }
     return userId as GenericId<"users">;
   }
 
