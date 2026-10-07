@@ -36,6 +36,10 @@ on:
         description: "Convex package filter name for pnpm (e.g. fount-convex)"
         type: string
         default: ""
+      convex-typecheck:
+        description: "Run `npx convex typecheck` in Test Convex Backend (on its first shard). Set false only when another required job in the caller already runs the same typecheck on every commit this one would; it otherwise sits in front of the first shard's tests and makes that shard the slowest."
+        type: boolean
+        default: true
       convex-test-shards:
         description: "Split the Convex test run across this many parallel runners (1-6). Shards use the runner's --shard=i/n flag (vitest/jest), so leave at 1 unless the Convex package's `test` script is one of those. Typecheck runs once, on the first shard."
         type: number
@@ -345,7 +349,7 @@ jobs:
         run: ${{ inputs.pre-deploy-build-steps }}
 
       - name: Type check Convex functions
-        if: ${{ matrix.shard == 1 }}
+        if: ${{ inputs.convex-typecheck && matrix.shard == 1 }}
         run: npx convex typecheck
 
       - name: Run Convex tests
