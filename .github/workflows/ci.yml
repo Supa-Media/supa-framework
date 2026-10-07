@@ -88,6 +88,10 @@ on:
         description: "Command to run mobile tests (from apps/mobile working dir)"
         type: string
         default: "pnpm test"
+      mobile-test-shards:
+        description: "Split the mobile test run across this many parallel runners (1-6). Each shard appends --shard=i/n to mobile-test-command, so that command must forward arguments to jest or vitest (`pnpm run test`, not `pnpm test`, which parses --shard as its own flag). The fingerprint, native-import and Metro checks run once, on the first shard."
+        type: number
+        default: 1
       has-fingerprint-check:
         description: "Whether to run fingerprint check in mobile tests"
         type: boolean
@@ -215,9 +219,14 @@ jobs:
         run: pnpm --filter ${{ inputs.shared-package }} test
 
   test-mobile:
-    name: Test Mobile App
+    name: ${{ inputs.mobile-test-shards > 1 && format('Test Mobile App ({0}/{1})', matrix.shard, inputs.mobile-test-shards) || 'Test Mobile App' }}
     runs-on: ubuntu-latest
     needs: detect-changes
+    strategy:
+      # Same shape as test-convex below: every shard reports its own failures.
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON('[null,[1],[1,2],[1,2,3],[1,2,3,4],[1,2,3,4,5],[1,2,3,4,5,6]]')[inputs.mobile-test-shards] }}
     if: >-
       !inputs.change-detection ||
       needs.detect-changes.outputs.mobile == 'true'
@@ -245,12 +254,27 @@ jobs:
           # authenticates pnpm to GitHub Packages (@supa-media/*, private).
           GITHUB_TOKEN: ${{ secrets.packages-token || github.token }}
 
+      # Jest keeps every file it has transformed under /tmp/jest_<uid>, keyed
+      # by the file's contents and its transform config, so a cache restored
+      # from an older commit can only skip work, never change a result. A
+      # Babel-heavy suite spends about a third of its time there.
+      - name: Restore the test transform cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/jest_*
+          key: mobile-tests-${{ runner.os }}-${{ matrix.shard }}of${{ inputs.mobile-test-shards }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            mobile-tests-${{ runner.os }}-${{ matrix.shard }}of${{ inputs.mobile-test-shards }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            mobile-tests-${{ runner.os }}-${{ matrix.shard }}of${{ inputs.mobile-test-shards }}-
+
       - name: Run tests
         working-directory: apps/mobile
-        run: ${{ inputs.mobile-test-command }}
+        env:
+          SHARD_ARGS: ${{ inputs.mobile-test-shards > 1 && format('--shard={0}/{1}', matrix.shard, inputs.mobile-test-shards) || '' }}
+        run: ${{ inputs.mobile-test-command }} $SHARD_ARGS
 
       - name: Check native fingerprint
-        if: ${{ inputs.has-fingerprint-check }}
+        if: ${{ inputs.has-fingerprint-check && matrix.shard == 1 }}
         working-directory: apps/mobile
         run: |
           if [ -f scripts/check-fingerprint.js ]; then
@@ -260,7 +284,7 @@ jobs:
           fi
 
       - name: Check native import gating
-        if: ${{ inputs.has-native-import-check }}
+        if: ${{ inputs.has-native-import-check && matrix.shard == 1 }}
         working-directory: apps/mobile
         run: |
           if [ -f scripts/check-native-imports.js ]; then
@@ -270,7 +294,7 @@ jobs:
           fi
 
       - name: Verify Metro bundler (catch import errors)
-        if: ${{ inputs.has-metro-verify }}
+        if: ${{ inputs.has-metro-verify && matrix.shard == 1 }}
         working-directory: apps/mobile
         env: ${{ fromJSON(inputs.metro-env-vars) }}
         run: |
