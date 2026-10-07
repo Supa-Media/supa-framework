@@ -327,11 +327,14 @@ jobs:
       - name: Run Convex tests
         env:
           SHARD_ARGS: ${{ inputs.convex-test-shards > 1 && format('--shard={0}/{1}', matrix.shard, inputs.convex-test-shards) || '' }}
+        # `pnpm run test`, not `pnpm test`: the shorthand parses `--shard` as
+        # one of pnpm's own options and refuses it, where `run` hands every
+        # argument after the script name to the script.
         run: |
           if [ -n "${{ inputs.convex-package }}" ]; then
-            pnpm --filter ${{ inputs.convex-package }} test $SHARD_ARGS
+            pnpm --filter ${{ inputs.convex-package }} run test $SHARD_ARGS
           else
-            cd apps/convex && pnpm test $SHARD_ARGS
+            cd apps/convex && pnpm run test $SHARD_ARGS
           fi
 
   test-e2e:
