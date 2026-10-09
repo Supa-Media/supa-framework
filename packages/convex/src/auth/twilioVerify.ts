@@ -13,6 +13,12 @@
  * because it can be revoked on its own. With no usable pair, `twilioVerifyKeys`
  * answers `null`, and the app decides what that means. It should never mean
  * "verified".
+ *
+ * Twilio writes the text itself — "Your <name> verification code is: …" — and
+ * `<name>` is the Verify service's friendly name. A service shared by several
+ * apps would sign every app's codes with one app's name, so `friendlyName`
+ * (or `TWILIO_VERIFY_FRIENDLY_NAME`) names the app per request instead, sent
+ * as Twilio's `CustomFriendlyName`. Unset, the service's own name is used.
  */
 
 export interface TwilioVerifyKeys {
@@ -22,6 +28,8 @@ export interface TwilioVerifyKeys {
   serviceSid: string;
   /** Set when signing requests with an API key rather than the auth token. */
   apiKeySid?: string;
+  /** The name the texted code is signed with, in place of the service's own. */
+  friendlyName?: string;
 }
 
 export type TwilioSendResult =
@@ -41,11 +49,13 @@ export function twilioVerifyKeys(
   const authToken = env.TWILIO_AUTH_TOKEN?.trim();
   const serviceSid = env.TWILIO_VERIFY_SERVICE_SID?.trim();
   if (!accountSid || !serviceSid) return null;
-  if (authToken) return { accountSid, authToken, serviceSid };
+  const friendlyName = env.TWILIO_VERIFY_FRIENDLY_NAME?.trim();
+  const named = friendlyName ? { friendlyName } : {};
+  if (authToken) return { accountSid, authToken, serviceSid, ...named };
   const apiKeySid = env.TWILIO_API_KEY_SID?.trim();
   const apiKeySecret = env.TWILIO_API_KEY_SECRET?.trim();
   if (!apiKeySid || !apiKeySecret) return null;
-  return { accountSid, authToken: apiKeySecret, serviceSid, apiKeySid };
+  return { accountSid, authToken: apiKeySecret, serviceSid, apiKeySid, ...named };
 }
 
 function request(keys: TwilioVerifyKeys, path: string, body: Record<string, string>, fetchImpl: Fetch) {
@@ -77,7 +87,10 @@ export async function sendTwilioVerification(
   phone: string,
   fetchImpl: Fetch = fetch,
 ): Promise<TwilioSendResult> {
-  const response = await request(keys, "Verifications", { To: phone, Channel: "sms" }, fetchImpl);
+  const body: Record<string, string> = { To: phone, Channel: "sms" };
+  const friendlyName = keys.friendlyName?.trim();
+  if (friendlyName) body.CustomFriendlyName = friendlyName;
+  const response = await request(keys, "Verifications", body, fetchImpl);
   if (response.ok) return { ok: true };
   const error = await errorOf(response);
   // Logged without the number: a phone number is personal data.
