@@ -51,6 +51,26 @@ test("sending posts the number to the service's Verifications, by SMS", async ()
   assert.equal(seen.auth, `Basic ${btoa("AC_test:token_test")}`);
 });
 
+test("a friendly name signs the text in place of the service's own", async () => {
+  const seen: { url?: string; body?: string; auth?: string } = {};
+  await sendTwilioVerification({ ...KEYS, friendlyName: "Context" }, "+15555550100", fake(201, { status: "pending" }, seen));
+  assert.equal(new URLSearchParams(seen.body).get("CustomFriendlyName"), "Context");
+  // Unset or blank, nothing is sent and the service's name stands.
+  await sendTwilioVerification(KEYS, "+15555550100", fake(201, { status: "pending" }, seen));
+  assert.equal(new URLSearchParams(seen.body).has("CustomFriendlyName"), false);
+  await sendTwilioVerification({ ...KEYS, friendlyName: " " }, "+15555550100", fake(201, { status: "pending" }, seen));
+  assert.equal(new URLSearchParams(seen.body).has("CustomFriendlyName"), false);
+  // From the environment too, alongside either kind of key.
+  assert.equal(
+    twilioVerifyKeys({ TWILIO_ACCOUNT_SID: "a", TWILIO_AUTH_TOKEN: "b", TWILIO_VERIFY_SERVICE_SID: "c", TWILIO_VERIFY_FRIENDLY_NAME: " Context " })?.friendlyName,
+    "Context",
+  );
+  assert.equal(
+    twilioVerifyKeys({ TWILIO_ACCOUNT_SID: "a", TWILIO_API_KEY_SID: "SK", TWILIO_API_KEY_SECRET: "s", TWILIO_VERIFY_SERVICE_SID: "c", TWILIO_VERIFY_FRIENDLY_NAME: "Context" })?.friendlyName,
+    "Context",
+  );
+});
+
 test("a send Twilio refuses says why, in three words at most", async () => {
   assert.deepEqual(await sendTwilioVerification(KEYS, "+1", fake(400, { code: 60200, message: "Invalid parameter `To`" })), { ok: false, reason: "invalid_phone" });
   assert.deepEqual(await sendTwilioVerification(KEYS, "+1", fake(429, { code: 60203 })), { ok: false, reason: "too_many" });
