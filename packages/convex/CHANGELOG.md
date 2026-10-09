@@ -1,5 +1,11 @@
 # @supa-media/convex
 
+## 1.7.1
+
+### Patch Changes
+
+- 1b80e96: `twilioVerifyKeys` accepts a Twilio API key (`TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET`) in place of `TWILIO_AUTH_TOKEN`, and the Verify helpers sign with it.
+
 ## 1.7.0
 
 ### Minor Changes
