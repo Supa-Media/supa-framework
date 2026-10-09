@@ -1,5 +1,12 @@
 # @supa-media/convex
 
+## 1.8.0
+
+### Minor Changes
+
+- 7ab57f8: `createSupaAuth({ findUserByEmail })`: an app that attaches extra sign-in emails to a user answers which user an address belongs to, and an email sign-in with no auth account yet reaches that user instead of making a new one.
+- 7ab57f8: A returning sign-in no longer overwrites the user's `email` or `phone` with the address it came through; it only fills one in when the user has none. An app can attach several sign-in emails to one user (extra `authAccounts` rows) without the last one used replacing the address mail goes to.
+
 ## 1.7.1
 
 ### Patch Changes
