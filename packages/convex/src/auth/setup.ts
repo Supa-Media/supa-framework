@@ -28,10 +28,18 @@ import { Email } from "@convex-dev/auth/providers/Email";
 import { Phone } from "@convex-dev/auth/providers/Phone";
 import { assertMayReceiveEmailCode, type SupaAuthAdmission } from "./admission";
 import { createTestEmailOtps, type SupaAuthTestEmailConfig } from "./testEmail";
+import { createPhoneVerifySignIn, type SupaAuthPhoneVerifyConfig } from "./phoneVerify";
 import { userCallback, type SupaAuthFindUserByEmail, type SupaAuthUserCreated } from "./users";
 
 export { NOT_ADMITTED_MESSAGE, type SupaAuthAdmission } from "./admission";
 export type { SupaAuthFindUserByEmail, SupaAuthUserCreated } from "./users";
+
+export {
+  createPhoneVerifySignIn,
+  phoneVerifyAuthorize,
+  PHONE_VERIFY_PROVIDER_ID,
+  type SupaAuthPhoneVerifyConfig,
+} from "./phoneVerify";
 
 export {
   createTestEmailOtp,
@@ -144,6 +152,13 @@ export interface SupaAuthConfig {
    * signs in as them.
    */
   findUserByEmail?: SupaAuthFindUserByEmail;
+  /**
+   * Sign in with a phone through Twilio Verify, for people who already have
+   * an account: the app texts the code, this checks it. Independent of
+   * `methods`, which governs the older bridge-based phone provider. See
+   * `phoneVerify.ts`.
+   */
+  phoneVerify?: SupaAuthPhoneVerifyConfig;
   /** Resend email OTP configuration. */
   resend?: SupaAuthResendConfig;
   /** Twilio phone OTP configuration. */
@@ -430,6 +445,7 @@ export function createSupaAuth(config: SupaAuthConfig = {}) {
       : []),
     ...(methods.includes("email") ? createTestEmailOtps(config.testEmail) : []),
     ...(methods.includes("phone") ? [createPhoneOtp(config)] : []),
+    ...(config.phoneVerify !== undefined ? [createPhoneVerifySignIn(config.phoneVerify)] : []),
   ];
 
   return convexAuth({

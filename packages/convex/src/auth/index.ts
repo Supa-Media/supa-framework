@@ -1,6 +1,7 @@
 export {
   createSupaAuth,
   MAGIC_LINK_PROVIDER_ID,
+  PHONE_VERIFY_PROVIDER_ID,
   NOT_ADMITTED_MESSAGE,
   TEST_EMAIL_PROVIDER_ID,
 } from "./setup";
@@ -8,6 +9,7 @@ export type {
   SupaAuthAdmission,
   SupaAuthConfig,
   SupaAuthMagicLinkConfig,
+  SupaAuthPhoneVerifyConfig,
   SupaAuthResendConfig,
   SupaAuthTestEmailConfig,
   SupaAuthTwilioConfig,

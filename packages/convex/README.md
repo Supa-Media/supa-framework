@@ -339,6 +339,29 @@ not own. That is a nuisance, not a hole: the library's own generator produces
 attacker gets is the ability to invalidate somebody's pending code — which
 `signIn("email", { email })` could always do too.
 
+### Phone sign-in through Twilio Verify (`phoneVerify`, opt-in)
+
+For people who already have an account. The app texts the code itself with
+`sendTwilioVerification`, after deciding who may be texted, and the client
+signs in with `signIn(PHONE_VERIFY_PROVIDER_ID, { phone, code })`:
+
+```ts
+createSupaAuth({
+  methods: ["email"],
+  phoneVerify: {
+    findUserByPhone: (ctx, phone) => ctx.runQuery(internal.phones.holder, { phone }),
+    mayCheck: (ctx, phone) => ctx.runMutation(internal.phones.spendCheck, { phone }),
+  },
+});
+```
+
+Twilio holds the code, so nothing secret is stored. Only `approved` signs
+anybody in, and a phone `findUserByPhone` does not know is refused: the
+provider never creates an account, so it never reaches `admission`. A
+credentials provider is not rate-limited by `@convex-dev/auth`; the limits are
+Twilio's (five checks per code, ten minutes) and `mayCheck`, which fails closed.
+This is separate from the bridge-based `"phone"` method.
+
 ### Auth helpers
 
 ```ts
