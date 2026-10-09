@@ -209,3 +209,36 @@ test("a returning user with no address on file gets the one they signed in with"
   });
   assert.equal(patches[0]!.email, "home@example.com");
 });
+
+test("an address the app attached to a user signs in as that user, not a new one", async () => {
+  const { ctx: c, inserted, patches } = fakeCtx({ _id: "u1", email: "home@example.com" });
+  const created: unknown[] = [];
+  const id = await userCallback(
+    refuseAll,
+    async (_: unknown, user: unknown) => {
+      created.push(user);
+    },
+    async (_: unknown, email: string) => (email === "work@example.com" ? ("u1" as never) : null),
+  )(c, {
+    existingUserId: null,
+    type: "email",
+    provider: emailProvider,
+    profile: { email: "work@example.com" },
+  });
+  assert.equal(id, "u1");
+  assert.equal(inserted.length, 0);
+  assert.deepEqual(created, []);
+  assert.equal(patches[0]!.email, undefined);
+});
+
+test("an address the app does not know falls through to the usual rules", async () => {
+  const { ctx: c } = fakeCtx(null);
+  await assert.rejects(() =>
+    userCallback(refuseAll, undefined, async () => null)(c, {
+      existingUserId: null,
+      type: "email",
+      provider: emailProvider,
+      profile: { email: "stranger@example.com" },
+    }),
+  );
+});

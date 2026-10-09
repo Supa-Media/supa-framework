@@ -12,6 +12,7 @@ export type {
   SupaAuthTestEmailConfig,
   SupaAuthTwilioConfig,
   SupaAuthUserCreated,
+  SupaAuthFindUserByEmail,
 } from "./setup";
 export {
   checkTwilioVerification,
