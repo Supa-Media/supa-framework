@@ -548,6 +548,7 @@ Delay.seconds(n) | minutes(n) | hours(n) | days(n)   // → ms, for ctx.schedule
 | `RESEND_API_KEY` | Email OTP send (absent → code logged to console) |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE_SID` | Phone OTP send; the auth token also signs Twilio webhooks |
 | `TWILIO_VERIFY_FRIENDLY_NAME` | Optional: the app name texted codes are signed with ("Your <name> verification code"), when the Verify service is shared with another app |
+| `TWILIO_FROM_NUMBER` or `TWILIO_MESSAGING_SERVICE_SID` | `sendTwilioSms`: who an app-worded text (its own sign-in code) is from |
 | `CONVEX_SITE_URL` | Phone token bridge target; production check for the dev bypass |
 | `PHONE_TOKEN_BRIDGE_SECRET` | Bearer credential for your bridge endpoint |
 | `DEV_OTP_BYPASS` | `"true"` forces the `000000` code — guard it with `productionIdentifier` |

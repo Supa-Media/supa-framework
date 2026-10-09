@@ -43,8 +43,12 @@ export interface SupaAuthPhoneVerifyConfig {
   findUserByPhone: (ctx: GenericActionCtx<AnyDataModel>, phone: string) => Promise<GenericId<"users"> | null>;
   /** Spend one check for `phone`; `false` refuses before Twilio is asked. */
   mayCheck?: (ctx: GenericActionCtx<AnyDataModel>, phone: string) => Promise<boolean>;
-  /** Overridable for tests. */
-  check?: (phone: string, code: string) => Promise<TwilioCheckResult>;
+  /**
+   * Whether `code` is the one texted to `phone`. Twilio Verify by default; an
+   * app that texts its own codes (`sendTwilioSms`) answers from its records,
+   * which is why it gets the action context.
+   */
+  check?: (phone: string, code: string, ctx: GenericActionCtx<AnyDataModel>) => Promise<TwilioCheckResult>;
 }
 
 async function twilioCheck(phone: string, code: string): Promise<TwilioCheckResult> {
@@ -72,7 +76,7 @@ export function phoneVerifyAuthorize(config: SupaAuthPhoneVerifyConfig) {
       }
       if (!ok) return null;
     }
-    if ((await check(phone, code)) !== "approved") return null;
+    if ((await check(phone, code, ctx)) !== "approved") return null;
     const userId = await config.findUserByPhone(ctx, phone);
     return userId === null ? null : { userId };
   };
