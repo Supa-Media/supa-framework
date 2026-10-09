@@ -8,14 +8,20 @@
  * the code, so the app stores no secret and only records the result.
  *
  * The keys are the provider's: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
- * `TWILIO_VERIFY_SERVICE_SID`. With any missing, `twilioVerifyKeys` answers
- * `null`, and the app decides what that means. It should never mean "verified".
+ * `TWILIO_VERIFY_SERVICE_SID`. An API key works in place of the auth token:
+ * `TWILIO_API_KEY_SID` with `TWILIO_API_KEY_SECRET`, which Twilio recommends
+ * because it can be revoked on its own. With no usable pair, `twilioVerifyKeys`
+ * answers `null`, and the app decides what that means. It should never mean
+ * "verified".
  */
 
 export interface TwilioVerifyKeys {
   accountSid: string;
+  /** The account's auth token, or the API key's secret when `apiKeySid` is set. */
   authToken: string;
   serviceSid: string;
+  /** Set when signing requests with an API key rather than the auth token. */
+  apiKeySid?: string;
 }
 
 export type TwilioSendResult =
@@ -34,15 +40,19 @@ export function twilioVerifyKeys(
   const accountSid = env.TWILIO_ACCOUNT_SID?.trim();
   const authToken = env.TWILIO_AUTH_TOKEN?.trim();
   const serviceSid = env.TWILIO_VERIFY_SERVICE_SID?.trim();
-  if (!accountSid || !authToken || !serviceSid) return null;
-  return { accountSid, authToken, serviceSid };
+  if (!accountSid || !serviceSid) return null;
+  if (authToken) return { accountSid, authToken, serviceSid };
+  const apiKeySid = env.TWILIO_API_KEY_SID?.trim();
+  const apiKeySecret = env.TWILIO_API_KEY_SECRET?.trim();
+  if (!apiKeySid || !apiKeySecret) return null;
+  return { accountSid, authToken: apiKeySecret, serviceSid, apiKeySid };
 }
 
 function request(keys: TwilioVerifyKeys, path: string, body: Record<string, string>, fetchImpl: Fetch) {
   return fetchImpl(`https://verify.twilio.com/v2/Services/${keys.serviceSid}/${path}`, {
     method: "POST",
     headers: {
-      Authorization: `Basic ${btoa(`${keys.accountSid}:${keys.authToken}`)}`,
+      Authorization: `Basic ${btoa(`${keys.apiKeySid ?? keys.accountSid}:${keys.authToken}`)}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams(body),

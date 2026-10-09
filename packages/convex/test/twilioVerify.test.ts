@@ -27,6 +27,21 @@ test("keys come from the environment, and any one missing means none", () => {
   assert.equal(twilioVerifyKeys({ TWILIO_ACCOUNT_SID: "a", TWILIO_AUTH_TOKEN: " ", TWILIO_VERIFY_SERVICE_SID: "c" }), null);
 });
 
+test("an API key stands in for the auth token, and signs the requests", async () => {
+  const keys = twilioVerifyKeys({
+    TWILIO_ACCOUNT_SID: "a",
+    TWILIO_API_KEY_SID: "SK_test",
+    TWILIO_API_KEY_SECRET: "secret_test",
+    TWILIO_VERIFY_SERVICE_SID: "c",
+  });
+  assert.deepEqual(keys, { accountSid: "a", authToken: "secret_test", serviceSid: "c", apiKeySid: "SK_test" });
+  // Half an API key is no key.
+  assert.equal(twilioVerifyKeys({ TWILIO_ACCOUNT_SID: "a", TWILIO_API_KEY_SID: "SK", TWILIO_VERIFY_SERVICE_SID: "c" }), null);
+  const seen: { url?: string; body?: string; auth?: string } = {};
+  await sendTwilioVerification(keys!, "+15555550100", fake(201, { status: "pending" }, seen));
+  assert.equal(seen.auth, `Basic ${btoa("SK_test:secret_test")}`);
+});
+
 test("sending posts the number to the service's Verifications, by SMS", async () => {
   const seen: { url?: string; body?: string; auth?: string } = {};
   assert.deepEqual(await sendTwilioVerification(KEYS, "+15555550100", fake(201, { status: "pending" }, seen)), { ok: true });
