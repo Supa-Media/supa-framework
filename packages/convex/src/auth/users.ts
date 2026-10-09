@@ -44,8 +44,12 @@ export function userCallback(
         if (type === "email" || type === "verification") {
           updateData.emailVerificationTime = Date.now();
         }
-        if (profile.phone) updateData.phone = profile.phone;
-        if (profile.email) updateData.email = profile.email;
+        // Fill in a missing address, never replace one. A user may sign in
+        // through several auth accounts (an app that lets one person keep a
+        // work and a home email), and the address on the user row is the one
+        // they chose for mail, not whichever they signed in with last.
+        if (profile.phone && !existingUser.phone) updateData.phone = profile.phone;
+        if (profile.email && !existingUser.email) updateData.email = profile.email;
         if (profile.name) updateData.name = profile.name;
 
         if (Object.keys(updateData).length > 0) {
