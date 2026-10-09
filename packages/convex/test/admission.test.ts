@@ -42,11 +42,14 @@ test("the code check fails closed without a ctx or when the hook throws", async 
 });
 
 /** A db that holds one user, and records inserts. */
-function fakeCtx(existing: { _id: string; email?: string } | null) {
+function fakeCtx(existing: { _id: string; email?: string; phone?: string } | null) {
   const inserted: unknown[] = [];
+  const patches: Record<string, unknown>[] = [];
   const db = {
     get: async (id: string) => (existing && existing._id === id ? existing : null),
-    patch: async () => {},
+    patch: async (_id: string, data: Record<string, unknown>) => {
+      patches.push(data);
+    },
     insert: async (_table: string, row: unknown) => {
       inserted.push(row);
       return "new-user";
@@ -59,7 +62,7 @@ function fakeCtx(existing: { _id: string; email?: string } | null) {
       },
     }),
   };
-  return { ctx: { db } as never, inserted };
+  return { ctx: { db } as never, inserted, patches };
 }
 
 const refuseAll = { canCreateUser: async () => false };
@@ -180,5 +183,62 @@ test("a throwing onUserCreated fails the sign-in, so its writes and the user rol
         profile: { email: "in@example.com" },
       }),
     /hook broke/,
+  );
+});
+
+test("signing in through a second address keeps the address the user has", async () => {
+  const { ctx: c, patches } = fakeCtx({ _id: "u1", email: "home@example.com", phone: "+15555550100" });
+  await userCallback(undefined)(c, {
+    existingUserId: "u1" as never,
+    type: "email",
+    provider: emailProvider,
+    profile: { email: "work@example.com" },
+  });
+  assert.equal(patches.length, 1);
+  assert.equal(patches[0]!.email, undefined);
+  assert.equal(typeof patches[0]!.emailVerificationTime, "number");
+});
+
+test("a returning user with no address on file gets the one they signed in with", async () => {
+  const { ctx: c, patches } = fakeCtx({ _id: "u1" });
+  await userCallback(undefined)(c, {
+    existingUserId: "u1" as never,
+    type: "email",
+    provider: emailProvider,
+    profile: { email: "home@example.com" },
+  });
+  assert.equal(patches[0]!.email, "home@example.com");
+});
+
+test("an address the app attached to a user signs in as that user, not a new one", async () => {
+  const { ctx: c, inserted, patches } = fakeCtx({ _id: "u1", email: "home@example.com" });
+  const created: unknown[] = [];
+  const id = await userCallback(
+    refuseAll,
+    async (_: unknown, user: unknown) => {
+      created.push(user);
+    },
+    async (_: unknown, email: string) => (email === "work@example.com" ? ("u1" as never) : null),
+  )(c, {
+    existingUserId: null,
+    type: "email",
+    provider: emailProvider,
+    profile: { email: "work@example.com" },
+  });
+  assert.equal(id, "u1");
+  assert.equal(inserted.length, 0);
+  assert.deepEqual(created, []);
+  assert.equal(patches[0]!.email, undefined);
+});
+
+test("an address the app does not know falls through to the usual rules", async () => {
+  const { ctx: c } = fakeCtx(null);
+  await assert.rejects(() =>
+    userCallback(refuseAll, undefined, async () => null)(c, {
+      existingUserId: null,
+      type: "email",
+      provider: emailProvider,
+      profile: { email: "stranger@example.com" },
+    }),
   );
 });

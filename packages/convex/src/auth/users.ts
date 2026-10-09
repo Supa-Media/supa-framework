@@ -15,6 +15,12 @@ import type { convexAuth } from "@convex-dev/auth/server";
 
 import { assertMayCreateUser, type SupaAuthAdmission } from "./admission";
 
+/** See `SupaAuthConfig.findUserByEmail`. */
+export type SupaAuthFindUserByEmail = (
+  ctx: GenericMutationCtx<AnyDataModel>,
+  email: string,
+) => Promise<GenericId<"users"> | null>;
+
 /** See `SupaAuthConfig.onUserCreated`. */
 export type SupaAuthUserCreated = (
   ctx: GenericMutationCtx<AnyDataModel>,
@@ -28,6 +34,7 @@ type Handler = NonNullable<
 export function userCallback(
   admission: SupaAuthAdmission | undefined,
   onUserCreated?: SupaAuthUserCreated,
+  findUserByEmail?: SupaAuthFindUserByEmail,
 ): Handler {
   async function createOrUpdateUser(
     ctx: Parameters<Handler>[0],
@@ -44,8 +51,12 @@ export function userCallback(
         if (type === "email" || type === "verification") {
           updateData.emailVerificationTime = Date.now();
         }
-        if (profile.phone) updateData.phone = profile.phone;
-        if (profile.email) updateData.email = profile.email;
+        // Fill in a missing address, never replace one. A user may sign in
+        // through several auth accounts (an app that lets one person keep a
+        // work and a home email), and the address on the user row is the one
+        // they chose for mail, not whichever they signed in with last.
+        if (profile.phone && !existingUser.phone) updateData.phone = profile.phone;
+        if (profile.email && !existingUser.email) updateData.email = profile.email;
         if (profile.name) updateData.name = profile.name;
 
         if (Object.keys(updateData).length > 0) {
@@ -74,6 +85,13 @@ export function userCallback(
     // New auth account — try to link to existing user by email
     if (type === "email" && typeof profile.email === "string") {
       const email = profile.email;
+      // The app's own answer first: an address it has attached to a user as
+      // an extra sign-in email is that user, whatever the user row says.
+      const attached = findUserByEmail === undefined ? null : await findUserByEmail(ctx, email);
+      if (attached !== null) {
+        await ctx.db.patch(attached, { emailVerificationTime: Date.now() });
+        return attached;
+      }
       const existingUser = await ctx.db
         .query("users")
         .filter((q) => q.eq(q.field("email"), email))

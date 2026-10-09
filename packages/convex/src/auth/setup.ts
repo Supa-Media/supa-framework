@@ -28,10 +28,10 @@ import { Email } from "@convex-dev/auth/providers/Email";
 import { Phone } from "@convex-dev/auth/providers/Phone";
 import { assertMayReceiveEmailCode, type SupaAuthAdmission } from "./admission";
 import { createTestEmailOtps, type SupaAuthTestEmailConfig } from "./testEmail";
-import { userCallback, type SupaAuthUserCreated } from "./users";
+import { userCallback, type SupaAuthFindUserByEmail, type SupaAuthUserCreated } from "./users";
 
 export { NOT_ADMITTED_MESSAGE, type SupaAuthAdmission } from "./admission";
-export type { SupaAuthUserCreated } from "./users";
+export type { SupaAuthFindUserByEmail, SupaAuthUserCreated } from "./users";
 
 export {
   createTestEmailOtp,
@@ -135,6 +135,15 @@ export interface SupaAuthConfig {
    * scheduled action, not here.
    */
   onUserCreated?: SupaAuthUserCreated;
+  /**
+   * For an app that lets one person sign in with several emails: the user an
+   * address belongs to, or `null`. Asked when an email sign-in has no auth
+   * account yet, before the `users.email` match, so a sign-in through an
+   * attached address reaches its user rather than making a new one. Only
+   * return a user the address was confirmed for: whoever holds that mailbox
+   * signs in as them.
+   */
+  findUserByEmail?: SupaAuthFindUserByEmail;
   /** Resend email OTP configuration. */
   resend?: SupaAuthResendConfig;
   /** Twilio phone OTP configuration. */
@@ -425,6 +434,8 @@ export function createSupaAuth(config: SupaAuthConfig = {}) {
 
   return convexAuth({
     providers,
-    callbacks: { createOrUpdateUser: userCallback(config.admission, config.onUserCreated) },
+    callbacks: {
+      createOrUpdateUser: userCallback(config.admission, config.onUserCreated, config.findUserByEmail),
+    },
   });
 }
