@@ -14,6 +14,12 @@ export type {
   SupaAuthUserCreated,
 } from "./setup";
 export {
+  checkTwilioVerification,
+  sendTwilioVerification,
+  twilioVerifyKeys,
+} from "./twilioVerify";
+export type { TwilioCheckResult, TwilioSendResult, TwilioVerifyKeys } from "./twilioVerify";
+export {
   requireAuth,
   requireAuthId,
   getOptionalAuth,

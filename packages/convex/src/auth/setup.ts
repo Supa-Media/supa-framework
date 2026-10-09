@@ -22,6 +22,7 @@
  * ```
  */
 
+import { sendTwilioVerification } from "./twilioVerify";
 import { convexAuth } from "@convex-dev/auth/server";
 import { Email } from "@convex-dev/auth/providers/Email";
 import { Phone } from "@convex-dev/auth/providers/Phone";
@@ -388,39 +389,13 @@ function createPhoneOtp(config: SupaAuthConfig) {
         return;
       }
 
-      const response = await fetch(
-        `https://verify.twilio.com/v2/Services/${verifyServiceSid}/Verifications`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: new URLSearchParams({
-            To: phone,
-            Channel: "sms",
-          }),
-        },
+      const sent = await sendTwilioVerification(
+        { accountSid, authToken, serviceSid: verifyServiceSid },
+        phone,
       );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorData: { code?: number; message?: string };
-        try {
-          errorData = JSON.parse(errorText);
-        } catch {
-          errorData = { message: errorText };
-        }
-
-        console.error("Twilio Verify send error:", {
-          status: response.status,
-          errorCode: errorData?.code,
-          errorMessage: errorData?.message,
-          phone,
-        });
-
+      if (!sent.ok) {
         throw new Error(
-          errorData?.message?.includes("Invalid phone number")
+          sent.reason === "invalid_phone"
             ? "Invalid phone number. Please check and try again."
             : "Failed to send verification code. Please try again.",
         );
