@@ -1,5 +1,11 @@
 # @supa-media/convex
 
+## 1.10.0
+
+### Minor Changes
+
+- 5b0d919: Twilio Verify: `friendlyName` on the keys (or `TWILIO_VERIFY_FRIENDLY_NAME`) signs texted codes with the app's name, sent as `CustomFriendlyName`, so a Verify service shared by several apps no longer signs every app's codes with one app's name.
+
 ## 1.9.0
 
 ### Minor Changes
