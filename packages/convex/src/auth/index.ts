@@ -22,6 +22,8 @@ export {
   twilioVerifyKeys,
 } from "./twilioVerify";
 export type { TwilioCheckResult, TwilioSendResult, TwilioVerifyKeys } from "./twilioVerify";
+export { sendTwilioSms, twilioSmsKeys } from "./twilioSms";
+export type { TwilioSmsKeys } from "./twilioSms";
 export {
   requireAuth,
   requireAuthId,

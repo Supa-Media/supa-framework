@@ -78,3 +78,17 @@ test("the provider has its own id, and is registered only when configured", () =
   assert.equal(provider.type, "credentials");
   assert.doesNotThrow(() => createSupaAuth({ methods: ["email"], phoneVerify: { findUserByPhone: async () => null } }));
 });
+
+test("an app's own check is handed the action context, to read its own records", async () => {
+  const own = { db: "the app's" } as never;
+  let seen: unknown;
+  const run = phoneVerifyAuthorize({
+    check: async (_phone, _code, actionCtx) => {
+      seen = actionCtx;
+      return "approved";
+    },
+    findUserByPhone: async () => KAYLA,
+  });
+  assert.deepEqual(await run({ phone: "+14155550100", code: "123456" }, own), { userId: KAYLA });
+  assert.equal(seen, own);
+});
