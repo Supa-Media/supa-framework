@@ -1,5 +1,11 @@
 # @supa-media/convex
 
+## 1.9.0
+
+### Minor Changes
+
+- 86c074a: `createSupaAuth({ phoneVerify })` registers a `phone-verify` sign-in provider: Twilio Verify checks the code, the app says who holds the phone, and it never creates an account.
+
 ## 1.8.0
 
 ### Minor Changes
