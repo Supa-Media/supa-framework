@@ -156,6 +156,11 @@ The framework's reusable `ci.yml` runs whatever `lint-command` you pass:
       lint-continue-on-error: false
 ```
 
+Pass `lint-filter` with the name of one of your `change-filters` lists (`shared`,
+`mobile`, `convex`, `e2e`, or a `lint` list of its own) and a pull request that
+touches none of those paths skips lint; the check still reports, and pushes
+always lint. Left empty, lint runs on every pull request as before.
+
 `lint-continue-on-error` defaults to **`true`** in that workflow — set it to
 `false` if you want `no-ungated-native-import` to actually block a merge, or keep
 the `check-native-imports` CLI as the blocking gate and let lint stay advisory.
