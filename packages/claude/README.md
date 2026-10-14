@@ -39,9 +39,16 @@ work anywhere. The project root is the nearest ancestor of the cwd containing a
 | `.claude/settings.json` | `templates/settings.json` | no — copied verbatim |
 | `.claude/hooks.json` | `templates/hooks.json` | yes |
 | `.claude/commands/*.md` | `templates/commands/` | yes |
+| `.claude/skills/*/SKILL.md` | `templates/skills/` | yes |
 
 The seven commands: `auto-worker`, `feature-validate`, `fix-ci`, `ios-build`,
 `isolate`, `lock-up`, `review-cycle`.
+
+The one skill: `caveman`, a terse voice for chat and tool chatter, adapted from
+[JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (Apache-2.0).
+`templates/settings.json` loads it on every session with a `SessionStart` hook
+that prints the skill; delete that hook to turn it off. Anything persisted or
+read by a person elsewhere stays plain.
 
 Every file follows the same rule: **created if absent, skipped if it already
 exists**, and rewritten only under `--force` (and then only when the content

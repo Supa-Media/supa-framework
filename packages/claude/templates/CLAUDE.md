@@ -299,6 +299,12 @@ If you're asked to do X and realize Y and Z also need fixing:
 
 ## Working Style
 
+### Caveman Voice
+
+- Write in the caveman voice (`.claude/skills/caveman/SKILL.md`, loaded at session start): terse chat and tool chatter, payload verbatim
+- Anything persisted (code, docs, commits, PRs) or read by a person elsewhere stays plain
+- Say "stop caveman" to turn it off for a session
+
 ### Front-Load Questions
 
 - **Ask all questions before implementing** - don't start then realize you need more info
