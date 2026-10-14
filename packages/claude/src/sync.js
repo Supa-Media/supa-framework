@@ -166,7 +166,7 @@ function sync(projectRoot, options = {}) {
   }
 
   // --- 2. Sync settings.json ---
-  ensureDir(claudeDir);
+  if (!dryRun) ensureDir(claudeDir);
   const settingsTemplate = readFileSync(join(TEMPLATES_DIR, "settings.json"), "utf-8");
   const settingsPath = join(claudeDir, "settings.json");
 
@@ -206,7 +206,7 @@ function sync(projectRoot, options = {}) {
   // --- 4. Sync command and skill templates ---
   for (const kind of ["commands", "skills"]) {
     const destDir = join(claudeDir, kind);
-    ensureDir(destDir);
+    if (!dryRun) ensureDir(destDir);
     const kindTemplatesDir = join(TEMPLATES_DIR, kind);
 
     for (const relPath of getAllFiles(kindTemplatesDir)) {
@@ -215,7 +215,7 @@ function sync(projectRoot, options = {}) {
       const destPath = join(destDir, relPath);
       const label = `.claude/${kind}/${relPath}`;
 
-      ensureDir(dirname(destPath));
+      if (!dryRun) ensureDir(dirname(destPath));
 
       if (!existsSync(destPath)) {
         if (!dryRun) writeFileSync(destPath, content);
