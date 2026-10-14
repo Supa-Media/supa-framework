@@ -130,7 +130,6 @@ function sync(projectRoot, options = {}) {
   const { force = false, dryRun = false } = options;
   const config = loadSupaConfig(projectRoot);
   const claudeDir = join(projectRoot, ".claude");
-  const commandsDir = join(claudeDir, "commands");
 
   const results = {
     created: [],
@@ -204,35 +203,30 @@ function sync(projectRoot, options = {}) {
     results.skipped.push(".claude/hooks.json (exists)");
   }
 
-  // --- 4. Sync command templates ---
-  ensureDir(commandsDir);
-  const commandTemplatesDir = join(TEMPLATES_DIR, "commands");
-  const commandFiles = getAllFiles(commandTemplatesDir);
+  // --- 4. Sync command and skill templates ---
+  for (const kind of ["commands", "skills"]) {
+    const destDir = join(claudeDir, kind);
+    ensureDir(destDir);
+    const kindTemplatesDir = join(TEMPLATES_DIR, kind);
 
-  for (const relPath of commandFiles) {
-    const templatePath = join(commandTemplatesDir, relPath);
-    const templateContent = readFileSync(templatePath, "utf-8");
-    const content = applyTemplateVars(templateContent, config);
-    const destPath = join(commandsDir, relPath);
+    for (const relPath of getAllFiles(kindTemplatesDir)) {
+      const templateContent = readFileSync(join(kindTemplatesDir, relPath), "utf-8");
+      const content = applyTemplateVars(templateContent, config);
+      const destPath = join(destDir, relPath);
+      const label = `.claude/${kind}/${relPath}`;
 
-    ensureDir(dirname(destPath));
+      ensureDir(dirname(destPath));
 
-    if (!existsSync(destPath)) {
-      if (!dryRun) writeFileSync(destPath, content);
-      results.created.push(`.claude/commands/${relPath}`);
-    } else if (force) {
-      if (!filesAreEqual(destPath, content)) {
+      if (!existsSync(destPath)) {
         if (!dryRun) writeFileSync(destPath, content);
-        results.updated.push(`.claude/commands/${relPath}`);
+        results.created.push(label);
+      } else if (filesAreEqual(destPath, content)) {
+        results.unchanged.push(label);
+      } else if (force) {
+        if (!dryRun) writeFileSync(destPath, content);
+        results.updated.push(label);
       } else {
-        results.unchanged.push(`.claude/commands/${relPath}`);
-      }
-    } else {
-      // Check if the file content matches - if so, it's unchanged
-      if (filesAreEqual(destPath, content)) {
-        results.unchanged.push(`.claude/commands/${relPath}`);
-      } else {
-        results.skipped.push(`.claude/commands/${relPath} (exists, use --force to overwrite)`);
+        results.skipped.push(`${label} (exists, use --force to overwrite)`);
       }
     }
   }
