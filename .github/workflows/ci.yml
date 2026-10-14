@@ -116,6 +116,10 @@ on:
         description: "Lint command to run (empty to skip)"
         type: string
         default: ""
+      lint-filter:
+        description: "A change-filters list (shared, mobile, convex, e2e or lint); when set, a pull request lints only if that list matched. Pushes always lint"
+        type: string
+        default: ""
       lint-continue-on-error:
         description: "Whether lint failures should be non-blocking"
         type: boolean
@@ -146,6 +150,7 @@ jobs:
       mobile: ${{ steps.changes.outputs.mobile }}
       convex: ${{ steps.changes.outputs.convex }}
       e2e: ${{ steps.changes.outputs.e2e }}
+      lint: ${{ steps.changes.outputs.lint }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -159,7 +164,18 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    if: ${{ inputs.lint-command != '' }}
+    needs: detect-changes
+    # `!cancelled()` because detect-changes is skipped when change detection is
+    # off, and a skipped need would otherwise skip lint with it. Without
+    # `lint-filter` this is exactly the old unconditional lint.
+    if: >-
+      !cancelled() && inputs.lint-command != '' && (
+        inputs.lint-filter == '' ||
+        !inputs.change-detection ||
+        github.event_name != 'pull_request' ||
+        needs.detect-changes.result != 'success' ||
+        needs.detect-changes.outputs[inputs.lint-filter] == 'true'
+      )
     steps:
       - uses: actions/checkout@v4
 
