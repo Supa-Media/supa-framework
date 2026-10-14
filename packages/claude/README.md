@@ -45,7 +45,8 @@ The seven commands: `auto-worker`, `feature-validate`, `fix-ci`, `ios-build`,
 `isolate`, `lock-up`, `review-cycle`.
 
 The one skill: `caveman`, a terse voice for chat and tool chatter, adapted from
-[JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (Apache-2.0).
+[JuliusBrussee/caveman](https://github.com/JuliusBrussee/caveman) (Apache-2.0; its
+license text ships beside it as `LICENSE` and is synced with it).
 `templates/settings.json` loads it on every session with a `SessionStart` hook
 that prints the skill; delete that hook to turn it off. Anything persisted or
 read by a person elsewhere stays plain.
