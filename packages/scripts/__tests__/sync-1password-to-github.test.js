@@ -56,6 +56,11 @@ function setOpMode(stateDir, key, mode, value) {
   }
 }
 
+/** The secret names the stub gh reports the environment already holds. */
+function setGithubSecrets(stateDir, env, names) {
+  fs.writeFileSync(path.join(stateDir, `gh-secrets-${env}.list`), names.map((n) => `${n}\n`).join(""));
+}
+
 function readLog(stateDir, name) {
   const file = path.join(stateDir, name);
   if (!fs.existsSync(file)) return [];
@@ -65,11 +70,15 @@ function readLog(stateDir, name) {
     .filter((line) => line.length > 0);
 }
 
-function runSync(stateDir, args) {
+function runSync(stateDir, args, extraEnv = {}) {
+  const env = { ...process.env };
+  // Never let a run inside Actions append to the real job summary.
+  delete env.GITHUB_STEP_SUMMARY;
   return spawnSync("bash", [SCRIPT, ...args], {
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...env,
+      ...extraEnv,
       PATH: `${STUB_BIN}:${process.env.PATH}`,
       STUB_STATE_DIR: stateDir,
       OP_SERVICE_ACCOUNT_TOKEN: "stub-token",
@@ -113,7 +122,7 @@ test("aborts with zero writes when op read fails persistently on an optional sec
   assert.match(result.stdout, /FLAKY_OPTIONAL/);
 });
 
-test("prunes a definitively-absent optional secret and succeeds", () => {
+test("with --prune, prunes a definitively-absent optional secret and succeeds", () => {
   const { dir, stateDir } = makeSandbox();
   const allowlist = writeAllowlist(dir, {
     optional: ["REMOVED_FROM_1PASSWORD"],
@@ -121,11 +130,13 @@ test("prunes a definitively-absent optional secret and succeeds", () => {
   // op's real phrasing for "this item does not exist" — the one and only
   // signal that should trigger a prune.
   setOpMode(stateDir, "REMOVED_FROM_1PASSWORD", "missing");
+  setGithubSecrets(stateDir, "staging", ["REMOVED_FROM_1PASSWORD"]);
 
   const result = runSync(stateDir, [
     "--vault", "TestVault",
     "--allowlist", allowlist,
     "--environment", "staging",
+    "--prune",
   ]);
 
   assert.equal(result.status, 0, `expected exit 0, got ${result.status}\n${result.stdout}\n${result.stderr}`);
@@ -209,4 +220,68 @@ test("retries a transient op failure and succeeds once it clears up within the r
 
   const opCalls = readLog(stateDir, "op-calls.log").filter((l) => l.includes("EVENTUALLY_OK"));
   assert.equal(opCalls.length, 3, "expected exactly 3 op read attempts (2 failures + 1 success)");
+});
+
+test("without --prune, keeps a GitHub secret the vault lacks and reports it as drift", () => {
+  const { dir, stateDir } = makeSandbox();
+  // The 2026-10 Context incident: production secrets set by hand in GitHub,
+  // never added to the vault, which the old default would have deleted.
+  const allowlist = writeAllowlist(dir, {
+    optional: ["HAND_SET_IN_GITHUB", "NEW_IN_VAULT"],
+    aliases: { HAND_SET_ALIAS: "HAND_SET_IN_GITHUB" },
+  });
+  setOpMode(stateDir, "HAND_SET_IN_GITHUB", "missing");
+  setOpMode(stateDir, "NEW_IN_VAULT", "ok", "fresh");
+  setGithubSecrets(stateDir, "production", ["HAND_SET_IN_GITHUB", "HAND_SET_ALIAS", "NOT_IN_ALLOWLIST"]);
+  const summary = path.join(dir, "summary.md");
+
+  const result = runSync(
+    stateDir,
+    ["--vault", "TestVault", "--allowlist", allowlist, "--environment", "production"],
+    { GITHUB_STEP_SUMMARY: summary },
+  );
+
+  assert.equal(result.status, 0, `expected exit 0, got ${result.status}\n${result.stdout}\n${result.stderr}`);
+  assert.deepEqual(readLog(stateDir, "gh-calls.log"), ["set NEW_IN_VAULT production fresh"], "only writes, never a delete");
+
+  const report = fs.readFileSync(summary, "utf8");
+  const section = (title) => report.split(`### ${title}`)[1].split("###")[0];
+  assert.match(section("In GitHub, missing from the vault"), /- HAND_SET_IN_GITHUB\n- HAND_SET_ALIAS\n/);
+  assert.match(section("In the vault, not yet in GitHub"), /- NEW_IN_VAULT\n/);
+  assert.match(section("In GitHub, not in the allowlist"), /- NOT_IN_ALLOWLIST\n/);
+  assert.match(section("Will be deleted from GitHub"), /- none\n/);
+  assert.match(result.stdout, /KEEP {4}HAND_SET_IN_GITHUB/);
+});
+
+test("--dry-run --prune lists the deletions and changes nothing", () => {
+  const { dir, stateDir } = makeSandbox();
+  const allowlist = writeAllowlist(dir, { optional: ["GONE", "NEVER_SET"] });
+  setOpMode(stateDir, "GONE", "missing");
+  setOpMode(stateDir, "NEVER_SET", "missing");
+  setGithubSecrets(stateDir, "staging", ["GONE"]);
+
+  const result = runSync(stateDir, [
+    "--vault", "TestVault", "--allowlist", allowlist, "--environment", "staging", "--prune", "--dry-run",
+  ]);
+
+  assert.equal(result.status, 0, `expected exit 0, got ${result.status}\n${result.stdout}\n${result.stderr}`);
+  assert.deepEqual(readLog(stateDir, "gh-calls.log"), []);
+  const deletions = result.stdout.split("### Will be deleted from GitHub (--prune)")[1];
+  assert.match(deletions, /^\n- GONE\n/, "only the name GitHub actually holds is listed for deletion");
+  assert.match(result.stdout, /Would delete GONE/);
+  assert.doesNotMatch(result.stdout, /Would delete NEVER_SET/);
+});
+
+test("aborts with zero writes when GitHub's secret list cannot be read", () => {
+  const { dir, stateDir } = makeSandbox();
+  const allowlist = writeAllowlist(dir, { required: ["FINE"] });
+  fs.writeFileSync(path.join(stateDir, "gh-list.mode"), "error");
+
+  const result = runSync(stateDir, [
+    "--vault", "TestVault", "--allowlist", allowlist, "--environment", "staging", "--prune",
+  ]);
+
+  assert.equal(result.status, 1, `expected exit 1, got ${result.status}\n${result.stdout}\n${result.stderr}`);
+  assert.deepEqual(readLog(stateDir, "gh-calls.log"), []);
+  assert.match(result.stdout, /could not list GitHub secrets/);
 });

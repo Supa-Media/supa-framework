@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Stub GitHub CLI for sync-1password-to-github.test.js. Implements just
 # enough of `gh` for the script under test: `auth status` (auth check),
-# `repo view` (repo detection), `secret set` and `secret delete`. Every
+# `repo view` (repo detection), `secret list`, `secret set` and
+# `secret delete`. `secret list` prints the names in
+# $STUB_STATE_DIR/gh-secrets-<env>.list (none if absent), or fails when
+# $STUB_STATE_DIR/gh-list.mode says "error". Every
 # set/delete call is logged to $STUB_STATE_DIR/gh-calls.log so tests can
 # assert exactly which GitHub writes/deletes happened (and, critically,
 # which did NOT).
@@ -16,6 +19,23 @@ fi
 
 if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
   echo "stub-org/stub-repo"
+  exit 0
+fi
+
+if [ "$1" = "secret" ] && [ "$2" = "list" ]; then
+  shift 2
+  env=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --env) env="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  if [ -f "$STATE/gh-list.mode" ] && [ "$(cat "$STATE/gh-list.mode")" = "error" ]; then
+    echo "HTTP 502: Bad Gateway" >&2
+    exit 1
+  fi
+  [ -f "$STATE/gh-secrets-$env.list" ] && cat "$STATE/gh-secrets-$env.list"
   exit 0
 fi
 

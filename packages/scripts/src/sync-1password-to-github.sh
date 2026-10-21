@@ -12,6 +12,7 @@
 #   supa-sync-1password-to-github --vault Togather --allowlist ./ee/scripts/secrets-allowlist.json --environment staging
 #   supa-sync-1password-to-github --vault Studios --allowlist ./scripts/secrets-allowlist.json --all
 #   supa-sync-1password-to-github --vault Studios --allowlist ./scripts/secrets-allowlist.json --all --dry-run
+#   supa-sync-1password-to-github --vault Studios --allowlist ./scripts/secrets-allowlist.json -e production --prune
 #
 # Prerequisites:
 #   - 1Password CLI (`op`) authenticated (or OP_SERVICE_ACCOUNT_TOKEN set)
@@ -34,20 +35,30 @@
 #
 #   - required:  synced from 1Password; a missing value fails the sync (the
 #                deploy would be broken without it).
-#   - optional:  synced when present in 1Password; PRUNED (deleted) from the
-#                GitHub environment when absent, so a deploy can never read a
-#                stale value left over from a removed 1Password item.
+#   - optional:  synced when present in 1Password. When absent, KEPT in GitHub
+#                and reported as missing from the vault -- unless --prune is
+#                passed, which deletes it so a deploy can never read a stale
+#                value left over from a removed 1Password item.
 #   - alwaysSet: always written, every sync — the 1Password value if present,
 #                else the given default. Used for on/off switches where
 #                "missing" must mean the safe default, not "leave whatever
 #                GitHub already has."
 #   - aliases:   copies another key's already-resolved value under a second
 #                GitHub secret name (e.g. two env vars that should carry the
-#                same underlying secret). Pruned when the source is absent.
+#                same underlying secret). Absent source: kept, or pruned
+#                under --prune, exactly like an optional key.
+#
+# Deleting is opt-in (--prune). A secret set by hand in GitHub and never added
+# to the vault looks exactly like one removed from the vault on purpose, and
+# guessing "removed" deletes a live production credential. So by default the
+# sync only ever writes, and every run prints a drift report for each
+# environment: names GitHub holds that the vault lacks, names the vault holds
+# that GitHub lacks, and GitHub names outside the allowlist (never touched).
+# Reconcile until the report is empty, then --prune is safe to use.
 #
 # Two-phase, all-or-nothing execution:
 #   Phase 1 (read) reads and classifies EVERY allowlisted secret across every
-#   targeted environment before making a single GitHub API call. A secret is
+#   targeted environment before a single GitHub write (it only lists names). A secret is
 #   only ever pruned when 1Password gives a definitive "this item/field does
 #   not exist" answer — any other read failure (auth, rate limit, network,
 #   an unreachable vault, ...) aborts the whole run with zero writes/deletes,
@@ -66,6 +77,7 @@ ALLOWLIST="${SUPA_SECRETS_ALLOWLIST:-}"
 ENVIRONMENT=""
 DRY_RUN=false
 SYNC_ALL=false
+PRUNE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -101,8 +113,12 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=true
       shift
       ;;
+    --prune)
+      PRUNE=true
+      shift
+      ;;
     -h|--help)
-      sed -n '2,53p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,68p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -374,7 +390,7 @@ set_secret() {
 delete_secret() {
   local key="$1" env="$2"
   if [ "$DRY_RUN" = true ]; then
-    echo "  [dry-run] Would delete $key if present"
+    echo "  [dry-run] Would delete $key"
     return 0
   fi
   echo -n "  Clearing $key..."
@@ -409,6 +425,45 @@ plan_add() {
   PLAN_ENV+=("$2")
   PLAN_KEY+=("$3")
   PLAN_VALUE+=("${4:-}")
+  if [ "$1" = set ]; then
+    MANAGED="$MANAGED$3"$'\n'
+    in_github "$3" || drift_add "$2" new "$3"
+  fi
+}
+
+# Drift report rows: kind is vault-missing | new | unmanaged | delete.
+DRIFT_ENV=()
+DRIFT_KIND=()
+DRIFT_KEY=()
+drift_add() {
+  DRIFT_ENV+=("$1")
+  DRIFT_KIND+=("$2")
+  DRIFT_KEY+=("$3")
+}
+
+# GH_NAMES: newline-separated secret names the environment holds right now.
+# MANAGED: every name the allowlist resolves to, for the "unmanaged" report.
+# (Plain strings, not associative arrays: bash 3.2 on macOS has none.)
+GH_NAMES=""
+MANAGED=""
+in_list() { case $'\n'"$2" in *$'\n'"$1"$'\n'*) return 0 ;; esac; return 1; }
+in_github() { in_list "$1" "$GH_NAMES"; }
+
+# A key 1Password confirmed absent. Without --prune it is never deleted: if
+# GitHub holds it, that is drift for a person to reconcile, not a deletion.
+plan_absent() {
+  local env="$1" key="$2" label="$3"
+  MANAGED="$MANAGED$key"$'\n'
+  if ! in_github "$key"; then
+    echo "  ABSENT  $key$label (not in GitHub either)"
+  elif [ "$PRUNE" = true ]; then
+    echo "  ABSENT  $key$label (will prune from GitHub)"
+    plan_add delete "$env" "$key"
+    drift_add "$env" delete "$key"
+  else
+    echo "  KEEP    $key$label (in GitHub, missing from the vault)"
+    drift_add "$env" vault-missing "$key"
+  fi
 }
 
 build_plan() {
@@ -420,6 +475,16 @@ build_plan() {
     echo "  1Password: op://$VAULT/*/$env"
     echo "  GitHub:    $REPO (environment: $env)"
     echo "========================================"
+
+    # What GitHub holds is what decides KEEP vs prune and feeds the drift
+    # report, so an unreadable listing aborts like any other read error.
+    MANAGED=""
+    if ! GH_NAMES="$(gh secret list --env "$env" --repo "$REPO" --json name -q '.[].name' 2>&1)"; then
+      READ_ERRORS+=("$env: could not list GitHub secrets: $GH_NAMES")
+      GH_NAMES=""
+      continue
+    fi
+    [ -z "$GH_NAMES" ] || GH_NAMES="$GH_NAMES"$'\n'
 
     echo ""
     echo "Required:"
@@ -460,8 +525,7 @@ build_plan() {
             plan_add set "$env" "$key" "$OP_READ_VALUE"
             ;;
           missing)
-            echo "  ABSENT  $key (will prune from GitHub if present)"
-            plan_add delete "$env" "$key"
+            plan_absent "$env" "$key" ""
             ;;
           error)
             echo "  ERROR   $key: $OP_READ_ERROR"
@@ -508,8 +572,7 @@ build_plan() {
             plan_add set "$env" "$target" "$OP_READ_VALUE"
             ;;
           missing)
-            echo "  ABSENT  $target (alias for $source, will prune if present)"
-            plan_add delete "$env" "$target"
+            plan_absent "$env" "$target" " (alias for $source)"
             ;;
           error)
             echo "  ERROR   $target (alias for $source): $OP_READ_ERROR"
@@ -518,7 +581,43 @@ build_plan() {
         esac
       done
     fi
+
+    while IFS= read -r key; do
+      [ -n "$key" ] || continue
+      in_list "$key" "$MANAGED" || drift_add "$env" unmanaged "$key"
+    done <<<"$GH_NAMES"
   done
+}
+
+# Prints the drift report for every environment, and appends it to the job
+# summary when running in Actions. Names only, never a value.
+print_drift() {
+  local env kind i title out=""
+  for env in "${ENVIRONMENTS[@]}"; do
+    out="$out"$'\n'"## Secrets drift: $env"$'\n'
+    for kind in vault-missing new unmanaged delete; do
+      case "$kind" in
+        vault-missing) title="In GitHub, missing from the vault (kept; add them to the vault)" ;;
+        new) title="In the vault, not yet in GitHub (will be added)" ;;
+        unmanaged) title="In GitHub, not in the allowlist (never touched)" ;;
+        delete) title="Will be deleted from GitHub (--prune)" ;;
+      esac
+      local rows=""
+      # Guarded: bash 3.2 under `set -u` errors on an empty array's expansion.
+      if [ ${#DRIFT_KIND[@]} -gt 0 ]; then
+        for i in "${!DRIFT_KIND[@]}"; do
+          [ "${DRIFT_ENV[$i]}" = "$env" ] && [ "${DRIFT_KIND[$i]}" = "$kind" ] || continue
+          rows="$rows- ${DRIFT_KEY[$i]}"$'\n'
+        done
+      fi
+      [ -n "$rows" ] || rows="- none"$'\n'
+      out="$out"$'\n'"### $title"$'\n'"$rows"
+    done
+  done
+  echo "$out"
+  if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+    echo "$out" >>"$GITHUB_STEP_SUMMARY"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -552,7 +651,11 @@ apply_plan() {
     done
 
     echo ""
-    echo "Pruning stale secrets:"
+    if [ "$PRUNE" = true ]; then
+      echo "Pruning stale secrets:"
+    else
+      echo "Pruning: off (pass --prune to delete; see the drift report)"
+    fi
     for i in "${!PLAN_ACTION[@]}"; do
       [ "${PLAN_ENV[$i]}" = "$env" ] || continue
       [ "${PLAN_ACTION[$i]}" = "delete" ] || continue
@@ -579,6 +682,7 @@ apply_plan() {
 # Run
 # ---------------------------------------------------------------------------
 build_plan
+print_drift
 
 if [ ${#MISSING_REQUIRED[@]} -gt 0 ] || [ ${#READ_ERRORS[@]} -gt 0 ]; then
   echo ""
@@ -594,8 +698,8 @@ if [ ${#MISSING_REQUIRED[@]} -gt 0 ] || [ ${#READ_ERRORS[@]} -gt 0 ]; then
   fi
   if [ ${#READ_ERRORS[@]} -gt 0 ]; then
     echo ""
-    echo "1Password read errors — could not confirm these are actually absent," \
-      "so refusing to prune them or write anything else this run:"
+    echo "Read errors (1Password or GitHub) — could not confirm what exists," \
+      "so refusing to write or delete anything this run:"
     for entry in "${READ_ERRORS[@]}"; do
       echo "  - $entry"
     done

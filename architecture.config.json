@@ -13,6 +13,7 @@
     }
   ],
   "reviewed": {
+    "packages/scripts/src/sync-1password-to-github.sh": "One linear two-phase bash script whose read, drift and apply phases share the same state arrays; npx runs it through a bin symlink, so sourcing a sibling file would need path resolution that differs between macOS and Linux.",
     "docs/DESIGN.md": "The single design document for the whole framework; splitting it loses the one-document mental model it's meant to give a new reader.",
     "packages/dev-assistant/src/functions/actions.ts": "Legacy debt tracked via baseline, not yet reviewed for a split.",
     "packages/fleet-dashboard/src/styles.css": "Legacy debt tracked via baseline, not yet reviewed for a split."

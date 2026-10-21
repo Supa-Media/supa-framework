@@ -39,6 +39,7 @@ matching **GitHub Environment secret** (`staging` / `production`).
 --environment NAME    staging | production      (-e)
 --all                 both environments
 --dry-run             print the plan, change nothing
+--prune               also delete secrets the vault lacks (off by default)
 ```
 
 Requires `op`, `gh`, and `node` on PATH; an authenticated `op` session or
@@ -52,9 +53,18 @@ The allowlist is a JSON object — **a key not listed is never synced**:
 | Field | Behavior |
 | --- | --- |
 | `required` | Synced from 1Password. A missing value **fails the sync**. |
-| `optional` | Synced when present; **pruned** (`gh secret delete`) when confirmed absent, so a deploy can't read a value you already removed from 1Password. |
+| `optional` | Synced when present. When confirmed absent: **kept** in GitHub and listed as drift, or **pruned** (`gh secret delete`) under `--prune`, so a deploy can't read a value you already removed from 1Password. |
 | `alwaysSet` | `{KEY: default}` — written on every sync, the 1Password value if present, else the default. For on/off switches where "missing" must mean the safe default. |
-| `aliases` | `{TARGET: SOURCE}` — writes another key's resolved value under a second name. Pruned when the source is absent. |
+| `aliases` | `{TARGET: SOURCE}` — writes another key's resolved value under a second name. Absent source: kept, or pruned under `--prune`. |
+
+**Deleting is opt-in.** A secret somebody set by hand in GitHub and never put in
+the vault looks exactly like one deliberately removed from the vault, and guessing
+"removed" deletes a live credential. So without `--prune` the sync only writes,
+and every run prints (and, in Actions, adds to the job summary) a **drift report**
+per environment: names GitHub holds that the vault lacks, names the vault holds
+that GitHub lacks, names outside the allowlist, and what `--prune` would delete.
+Reconcile the vault until the first list is empty; then `--prune` deletes nothing
+you did not mean to.
 
 Execution is **two-phase and all-or-nothing per environment**: phase 1 reads and
 classifies every key before a single GitHub API call; phase 2 only runs if phase 1
