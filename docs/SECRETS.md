@@ -51,6 +51,9 @@ do **not** sync on every push:
   secret, stored as the GitHub secret `OP_SERVICE_ACCOUNT_TOKEN`), reads
   `op://<Vault>/<NAME>/<env>` for each required secret, and writes the matching
   GitHub Actions secret into the corresponding GitHub Environment.
+- It never deletes unless asked (`prune`). Each run reports drift: names GitHub
+  holds that the vault lacks (add them to the vault), names the vault holds that
+  GitHub lacks, and names outside the allowlist. Run a dry run first and read it.
 
 ## Who reads what (never skip a hop)
 
