@@ -1,5 +1,15 @@
 # @supa-media/claude
 
+## 1.1.0
+
+### Minor Changes
+
+- 438b2c3: `sync` now writes `.claude/skills/` too, starting with the `caveman` skill (terse chat and tool chatter, payload verbatim, persisted text plain), and the settings template loads it at session start with a `SessionStart` hook.
+
+### Patch Changes
+
+- 9336f76: The caveman skill now ships with its Apache-2.0 license text, the SessionStart hook uses `${CLAUDE_PROJECT_DIR}` so it also works in PowerShell, `sync --dry-run` no longer creates directories, and the hook runs only on `startup|clear` so "stop caveman" survives resume and compaction.
+
 ## 1.0.3
 
 ### Patch Changes
