@@ -424,6 +424,9 @@ jobs:
           path: ${{ inputs.convex-test-map }}
           retention-days: 1
           if-no-files-found: error
+          # A caller's map directory may be a dot-directory (it is in context:
+          # `apps/convex/.test-map`), which upload-artifact skips by default.
+          include-hidden-files: true
 
   save-convex-test-map:
     name: Save the Convex test map
