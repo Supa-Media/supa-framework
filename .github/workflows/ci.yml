@@ -44,6 +44,10 @@ on:
         description: "Split the Convex test run across this many parallel runners (1-6). Shards use the runner's --shard=i/n flag (vitest/jest), so leave at 1 unless the Convex package's `test` script is one of those. Typecheck runs once, on the first shard."
         type: number
         default: 1
+      convex-test-map:
+        description: "Directory, from the repository root, for a per-test map of which files each Convex test used. Empty (the default) changes nothing. When set, a push to the default branch runs the Convex tests with CONVEX_TEST_MAP_RECORD pointing there and saves what they write to the Actions cache; a pull request restores the newest saved map, writes its own changed files (`git diff --name-status --no-renames` against the base, one `STATUS<TAB>path` line each) to a file, and runs the tests with CONVEX_TEST_MAP and CONVEX_TEST_CHANGED pointing at the two. What the Convex package's `test` script does with them, such as running only the tests the change reaches, is the app's own choice; this workflow only moves the map."
+        type: string
+        default: ""
       pre-deploy-build-steps:
         description: "Newline-separated shell commands to run before typecheck (e.g. build shared pkg, email templates)"
         type: string
@@ -339,6 +343,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # A pull request checks out its merge commit; with the parent beside
+          # it, `HEAD^1` is the base it merges into, which is what the test
+          # map's changed-file list is measured against.
+          fetch-depth: ${{ inputs.convex-test-map != '' && github.event_name == 'pull_request' && 2 || 1 }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -368,6 +377,32 @@ jobs:
         if: ${{ inputs.convex-typecheck && matrix.shard == 1 }}
         run: npx convex typecheck
 
+      - name: Restore the Convex test map
+        if: ${{ inputs.convex-test-map != '' && github.event_name == 'pull_request' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ inputs.convex-test-map }}
+          # Never an exact hit: the newest map saved from the default branch.
+          key: convex-test-map-${{ github.sha }}
+          restore-keys: convex-test-map-
+
+      - name: Point the Convex tests at the map
+        if: ${{ inputs.convex-test-map != '' }}
+        env:
+          MAP_DIR: ${{ inputs.convex-test-map }}
+          EVENT: ${{ github.event_name }}
+          RECORD: ${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            changed="$RUNNER_TEMP/convex-test-changed.tsv"
+            git diff --name-status --no-renames HEAD^1 HEAD > "$changed"
+            echo "CONVEX_TEST_MAP=$GITHUB_WORKSPACE/$MAP_DIR" >> "$GITHUB_ENV"
+            echo "CONVEX_TEST_CHANGED=$changed" >> "$GITHUB_ENV"
+            echo "Map files restored: $(ls "$GITHUB_WORKSPACE/$MAP_DIR" 2>/dev/null | wc -l); changed files: $(wc -l < "$changed")"
+          elif [ "$RECORD" = "true" ]; then
+            echo "CONVEX_TEST_MAP_RECORD=$GITHUB_WORKSPACE/$MAP_DIR" >> "$GITHUB_ENV"
+          fi
+
       - name: Run Convex tests
         env:
           SHARD_ARGS: ${{ inputs.convex-test-shards > 1 && format('--shard={0}/{1}', matrix.shard, inputs.convex-test-shards) || '' }}
@@ -380,6 +415,38 @@ jobs:
           else
             cd apps/convex && pnpm run test $SHARD_ARGS
           fi
+
+      - name: Upload this shard's part of the Convex test map
+        if: ${{ success() && inputs.convex-test-map != '' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: convex-test-map-${{ matrix.shard || 1 }}
+          path: ${{ inputs.convex-test-map }}
+          retention-days: 1
+          if-no-files-found: error
+
+  save-convex-test-map:
+    name: Save the Convex test map
+    runs-on: ubuntu-latest
+    needs: test-convex
+    # Only a complete, green run of every shard is a map worth reading: a
+    # failed shard's tests may have stopped before recording.
+    if: >-
+      inputs.convex-test-map != '' &&
+      github.event_name == 'push' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      needs.test-convex.result == 'success'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: convex-test-map-*
+          path: ${{ inputs.convex-test-map }}
+          merge-multiple: true
+
+      - uses: actions/cache/save@v4
+        with:
+          path: ${{ inputs.convex-test-map }}
+          key: convex-test-map-${{ github.sha }}
 
   test-e2e:
     name: E2E Tests (Playwright)
