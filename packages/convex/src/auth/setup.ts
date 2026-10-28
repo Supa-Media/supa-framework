@@ -28,6 +28,7 @@ import { Email } from "@convex-dev/auth/providers/Email";
 import { Phone } from "@convex-dev/auth/providers/Phone";
 import { assertMayReceiveEmailCode, type SupaAuthAdmission } from "./admission";
 import { createTestEmailOtps, type SupaAuthTestEmailConfig } from "./testEmail";
+import { generateOtpCode } from "./otpCode";
 import { createPhoneVerifySignIn, type SupaAuthPhoneVerifyConfig } from "./phoneVerify";
 import { userCallback, type SupaAuthFindUserByEmail, type SupaAuthUserCreated } from "./users";
 
@@ -195,9 +196,7 @@ function createOtpGenerator(productionIdentifier?: string) {
         return DEV_BYPASS_CODE;
       }
     }
-    const array = new Uint32Array(1);
-    crypto.getRandomValues(array);
-    return (100000 + (array[0] % 900000)).toString();
+    return generateOtpCode();
   };
 }
 
