@@ -22,6 +22,7 @@
  * ```
  */
 
+import { sendResendEmail } from "./resendSend";
 import { sendTwilioVerification } from "./twilioVerify";
 import { convexAuth } from "@convex-dev/auth/server";
 import { Email } from "@convex-dev/auth/providers/Email";
@@ -230,26 +231,9 @@ function createEmailOtp(config: SupaAuthConfig) {
         ? resendConfig.renderHtml({ code: token, email })
         : `<p>Your verification code is: <strong>${token}</strong></p><p>This code expires in 10 minutes.</p>`;
 
-      // Use fetch to call Resend API directly to avoid hard dependency
-      const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: fromAddress,
-          to: email,
-          subject,
-          html,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Resend email send error:", errorText);
-        throw new Error("Failed to send verification email. Please try again.");
-      }
+      // Resend's HTTP API directly, to avoid a hard dependency. A refusal is
+      // logged as its status and error name, never its body (`resendSend.ts`).
+      await sendResendEmail({ apiKey, from: fromAddress, to: email, subject, html });
     },
   });
 }
