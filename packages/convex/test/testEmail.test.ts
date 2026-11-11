@@ -54,6 +54,16 @@ test("a list registers one provider per account, each with its own id and code",
   await assert.rejects(() => reviewer.authorize!({ email: "customer@example.com" }, theirAccount), /not available/);
 });
 
+test("with no code configured, the provider mints a fresh random code, never a fixed one", () => {
+  const provider = createTestEmailOtp({ email: "seyi@agentmail.to" });
+  const mint = (provider.options as { generateVerificationToken?: () => string }).generateVerificationToken!;
+  const codes = new Set(Array.from({ length: 20 }, () => mint()));
+  for (const code of codes) assert.match(code, /^\d{6}$/);
+  assert.ok(!codes.has("000000"));
+  // Twenty draws from 900,000 codes: a repeat means the code is not random.
+  assert.equal(codes.size, 20);
+});
+
 test("a single account and no account keep working as before", () => {
   assert.deepEqual(createTestEmailOtps(undefined), []);
   assert.deepEqual(
