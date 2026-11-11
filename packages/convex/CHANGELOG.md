@@ -1,5 +1,11 @@
 # @supa-media/convex
 
+## 1.12.0
+
+### Minor Changes
+
+- 6171e3f: `testEmail` providers no longer default to the fixed code `000000`. With no `code`, a provider mints a random code nobody sees, and the app issues single-use, expiring codes for the account itself (a verification code row under the provider's id). A fixed `code` is still accepted for local development.
+
 ## 1.11.2
 
 ### Patch Changes
