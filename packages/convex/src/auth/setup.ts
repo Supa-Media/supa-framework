@@ -124,11 +124,12 @@ export interface SupaAuthConfig {
    */
   magicLink?: SupaAuthMagicLinkConfig;
   /**
-   * Register a fixed-code provider for one exact test account, or one
-   * provider per account when given a list (each with its own `id` and code;
-   * an app store or connector-directory reviewer is the usual second one).
-   * Unlike `DEV_OTP_BYPASS`, this may be used in production because every
-   * other email address is refused by a distinct provider.
+   * Register a provider for one exact test account, or one provider per
+   * account when given a list (each with its own `id`; an app store or
+   * connector-directory reviewer is the usual second one). Every other email
+   * address is refused by a distinct provider. With no `code` (the default)
+   * nobody can know what it mints: the app issues single-use, expiring codes
+   * for the account itself. See `testEmail.ts`.
    */
   testEmail?: SupaAuthTestEmailConfig | SupaAuthTestEmailConfig[];
   /**
