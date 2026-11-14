@@ -31,6 +31,7 @@ import { assertMayReceiveEmailCode, type SupaAuthAdmission } from "./admission";
 import { createTestEmailOtps, type SupaAuthTestEmailConfig } from "./testEmail";
 import { generateOtpCode } from "./otpCode";
 import { createPhoneVerifySignIn, type SupaAuthPhoneVerifyConfig } from "./phoneVerify";
+import { createCredentialsSignIns, type SupaAuthCredentialsConfig } from "./credentials";
 import { userCallback, type SupaAuthFindUserByEmail, type SupaAuthUserCreated } from "./users";
 
 export { NOT_ADMITTED_MESSAGE, type SupaAuthAdmission } from "./admission";
@@ -42,6 +43,8 @@ export {
   PHONE_VERIFY_PROVIDER_ID,
   type SupaAuthPhoneVerifyConfig,
 } from "./phoneVerify";
+
+export { createCredentialsSignIns, credentialsAuthorize, type SupaAuthCredentialsConfig } from "./credentials";
 
 export {
   createTestEmailOtp,
@@ -162,6 +165,12 @@ export interface SupaAuthConfig {
    * `phoneVerify.ts`.
    */
   phoneVerify?: SupaAuthPhoneVerifyConfig;
+  /**
+   * Providers the app checks itself, each with its own id and `authorize`
+   * (`credentials.ts`). The app owns the guess limit and must name only an
+   * existing user. Independent of `methods`.
+   */
+  credentials?: SupaAuthCredentialsConfig[];
   /** Resend email OTP configuration. */
   resend?: SupaAuthResendConfig;
   /** Twilio phone OTP configuration. */
@@ -430,6 +439,7 @@ export function createSupaAuth(config: SupaAuthConfig = {}) {
     ...(methods.includes("email") ? createTestEmailOtps(config.testEmail) : []),
     ...(methods.includes("phone") ? [createPhoneOtp(config)] : []),
     ...(config.phoneVerify !== undefined ? [createPhoneVerifySignIn(config.phoneVerify)] : []),
+    ...createCredentialsSignIns(config.credentials),
   ];
 
   return convexAuth({
