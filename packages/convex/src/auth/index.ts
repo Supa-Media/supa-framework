@@ -4,9 +4,11 @@ export {
   PHONE_VERIFY_PROVIDER_ID,
   NOT_ADMITTED_MESSAGE,
   TEST_EMAIL_PROVIDER_ID,
+  credentialsAuthorize,
 } from "./setup";
 export type {
   SupaAuthAdmission,
+  SupaAuthCredentialsConfig,
   SupaAuthConfig,
   SupaAuthMagicLinkConfig,
   SupaAuthPhoneVerifyConfig,
