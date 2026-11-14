@@ -1,5 +1,11 @@
 # @supa-media/convex
 
+## 1.13.0
+
+### Minor Changes
+
+- bd9d32f: `createSupaAuth` takes `credentials`: providers an app checks itself, each with its own id and `authorize`, wrapped so a throw or malformed answer signs nobody in.
+
 ## 1.12.0
 
 ### Minor Changes
