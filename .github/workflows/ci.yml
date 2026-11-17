@@ -60,6 +60,14 @@ on:
         description: "Whether to use path-based change detection to skip unchanged jobs"
         type: boolean
         default: true
+      skip-when-only:
+        description: >-
+          Newline-separated path globs. When every file a pull request changes
+          matches one of them, every change filter reports false, so the
+          filtered jobs skip (for example, data an app's own checks prove).
+          Pushes are never skipped. Empty (the default) changes nothing.
+        type: string
+        default: ""
       change-filters:
         description: "YAML filters for dorny/paths-filter (only used when change-detection is true)"
         type: string
@@ -149,12 +157,15 @@ jobs:
     name: Detect Changes
     runs-on: ubuntu-latest
     if: ${{ inputs.change-detection }}
+    # `steps.other.outputs.other` is empty when `skip-when-only` is unset or
+    # this is not a pull request, and 'false' only when every changed file
+    # matches it.
     outputs:
-      shared: ${{ steps.changes.outputs.shared }}
-      mobile: ${{ steps.changes.outputs.mobile }}
-      convex: ${{ steps.changes.outputs.convex }}
-      e2e: ${{ steps.changes.outputs.e2e }}
-      lint: ${{ steps.changes.outputs.lint }}
+      shared: ${{ steps.other.outputs.other != 'false' && steps.changes.outputs.shared || 'false' }}
+      mobile: ${{ steps.other.outputs.other != 'false' && steps.changes.outputs.mobile || 'false' }}
+      convex: ${{ steps.other.outputs.other != 'false' && steps.changes.outputs.convex || 'false' }}
+      e2e: ${{ steps.other.outputs.other != 'false' && steps.changes.outputs.e2e || 'false' }}
+      lint: ${{ steps.other.outputs.other != 'false' && steps.changes.outputs.lint || 'false' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -164,6 +175,30 @@ jobs:
         id: changes
         with:
           filters: ${{ inputs.change-filters }}
+
+      - name: List the paths that alone skip every filter
+        id: only
+        if: inputs.skip-when-only != '' && github.event_name == 'pull_request'
+        env:
+          SKIP_WHEN_ONLY: ${{ inputs.skip-when-only }}
+        run: |
+          {
+            echo "filters<<SUPA_EOF"
+            echo "other:"
+            echo "  - '**'"
+            printf '%s\n' "$SKIP_WHEN_ONLY" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -v '^$' | sed "s/.*/  - '!&'/"
+            echo "SUPA_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # `every`: a file counts only when it matches '**' and none of the
+      # negations, so `other` is true when anything else changed.
+      - name: Did anything else change?
+        id: other
+        if: inputs.skip-when-only != '' && github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          predicate-quantifier: every
+          filters: ${{ steps.only.outputs.filters }}
 
   lint:
     name: Lint
