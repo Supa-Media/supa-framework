@@ -761,7 +761,7 @@ jobs:
 ```
 
 The reusable workflows handle:
-- **ci.yml**: Change detection, typecheck, lint (with Supa rules), test (with Supa test suites), native safety checks
+- **ci.yml**: Change detection, typecheck, lint (with Supa rules), test (with Supa test suites), native safety checks. `skip-when-only` lists paths that, when they are all a pull request changes, skip every filtered job (data the app's own checks prove); pushes always run.
 - **deploy-convex.yml**: Secret sync from 1Password → Convex, deploy functions
 - **deploy-mobile-update.yml**: Fingerprint check → OTA publish (or block if native changed)
 - **build-mobile-native.yml**: EAS native build with fingerprint detection
